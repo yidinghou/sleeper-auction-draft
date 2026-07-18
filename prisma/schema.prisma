@@ -1,0 +1,126 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum RoundStatus {
+  pending
+  open
+  revealed
+  cancelled
+}
+
+model League {
+  id              String   @id @default(cuid())
+  sleeperLeagueId String   @unique
+  name            String
+  seasonYear      Int
+  budgetPerManager Int
+  draftStatus     String   @default("not_started")
+  createdAt       DateTime @default(now())
+
+  managers   Manager[]
+  draftPool  DraftPool[]
+  rounds     NominationRound[]
+  rosterEntries RosterEntry[]
+}
+
+model Manager {
+  id               String  @id @default(cuid())
+  leagueId         String
+  league           League  @relation(fields: [leagueId], references: [id])
+  sleeperUserId    String?
+  sleeperRosterId  String?
+  displayName      String
+  pinHash          String
+  isAdmin          Boolean @default(false)
+  budgetRemaining  Int
+
+  bids             Bid[]
+  rosterEntries    RosterEntry[]
+  nominatedRounds  NominationRound[] @relation("NominatedBy")
+  wonRounds        NominationRound[] @relation("WonBy")
+
+  @@unique([leagueId, displayName])
+}
+
+model SleeperPlayer {
+  id           String   @id
+  fullName     String
+  position     String?
+  team         String?
+  status       String?
+  rawJson      Json
+  lastSyncedAt DateTime @default(now())
+
+  draftPoolEntries DraftPool[]
+  rosterEntries    RosterEntry[]
+}
+
+model DraftPool {
+  id              String  @id @default(cuid())
+  leagueId        String
+  league          League  @relation(fields: [leagueId], references: [id])
+  sleeperPlayerId String
+  sleeperPlayer   SleeperPlayer @relation(fields: [sleeperPlayerId], references: [id])
+  isNominated     Boolean @default(false)
+  isDrafted       Boolean @default(false)
+  nominationOrder Int?
+
+  rounds NominationRound[]
+
+  @@unique([leagueId, sleeperPlayerId])
+}
+
+model NominationRound {
+  id                  String      @id @default(cuid())
+  leagueId            String
+  league              League      @relation(fields: [leagueId], references: [id])
+  draftPoolId         String
+  draftPool           DraftPool   @relation(fields: [draftPoolId], references: [id])
+  nominatedByManagerId String?
+  nominatedByManager  Manager?    @relation("NominatedBy", fields: [nominatedByManagerId], references: [id])
+  status              RoundStatus @default(pending)
+  opensAt             DateTime?
+  endsAt              DateTime?
+  revealedAt          DateTime?
+  winningManagerId    String?
+  winningManager      Manager?    @relation("WonBy", fields: [winningManagerId], references: [id])
+  winningBidAmount    Int?
+
+  bids          Bid[]
+  rosterEntries RosterEntry[]
+}
+
+model Bid {
+  id                String          @id @default(cuid())
+  nominationRoundId String
+  nominationRound   NominationRound @relation(fields: [nominationRoundId], references: [id])
+  managerId         String
+  manager           Manager         @relation(fields: [managerId], references: [id])
+  amount            Int
+  submittedAt       DateTime        @default(now())
+
+  @@unique([nominationRoundId, managerId])
+}
+
+model RosterEntry {
+  id                String   @id @default(cuid())
+  leagueId          String
+  league            League   @relation(fields: [leagueId], references: [id])
+  managerId         String
+  manager           Manager  @relation(fields: [managerId], references: [id])
+  sleeperPlayerId   String
+  sleeperPlayer     SleeperPlayer @relation(fields: [sleeperPlayerId], references: [id])
+  nominationRoundId String?  @unique
+  nominationRound   NominationRound? @relation(fields: [nominationRoundId], references: [id])
+  priceAcquired     Int
+  acquiredAt        DateTime @default(now())
+}
