@@ -4,9 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "build": "prisma generate && next build",
+    "start": "prisma migrate deploy && next start",
+    "lint": "eslint",
+    "mock:generate": "tsx scripts/generate-mock-results.ts",
+    "mock:push": "tsx scripts/push-mock-results.ts",
+    "mock:clear": "tsx scripts/clear-board.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
@@ -29,7 +32,9 @@
     "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
+    "playwright": "^1.50.0",
     "tailwindcss": "^4",
+    "tsx": "^4.19.0",
     "typescript": "^5"
   }
 }

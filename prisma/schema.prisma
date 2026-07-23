@@ -23,6 +23,7 @@ model League {
   name            String
   seasonYear      Int
   budgetPerManager Int
+  rosterPositions String[] @default([])
   draftStatus     String   @default("not_started")
   createdAt       DateTime @default(now())
 
@@ -58,6 +59,8 @@ model SleeperPlayer {
   team         String?
   status       String?
   rawJson      Json
+  projPtsPpr   Float?
+  projAdp2qb   Float?
   lastSyncedAt DateTime @default(now())
 
   draftPoolEntries DraftPool[]
