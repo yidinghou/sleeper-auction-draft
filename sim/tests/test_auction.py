@@ -1,4 +1,4 @@
-from draftsim.auction import Bid, max_bid, resolve_auction_round
+from draftsim.auction import MIN_BID, Bid, can_bid, max_bid, resolve_auction_round
 
 
 def test_no_bids_has_no_winner():
@@ -50,3 +50,22 @@ def test_max_bid_full_roster_is_zero():
 
 def test_max_bid_never_negative():
     assert max_bid(5, 16) == 0
+
+
+# --- can_bid sentinel -----------------------------------------------------
+
+
+def test_can_bid_true_only_when_a_real_offer_exists():
+    assert can_bid(200, 16) is True          # plenty of room
+    assert can_bid(200, 1) is True           # last slot, whole budget
+    assert can_bid(MIN_BID, 1) is True       # exactly the floor
+
+
+def test_can_bid_false_distinguishes_the_two_zero_cases():
+    # Full roster: max_bid is 0 because there is nothing to buy...
+    assert max_bid(200, 0) == 0
+    assert can_bid(200, 0) is False
+    # ...and budget-starved: max_bid is also 0, but for lack of money. Both are
+    # "cannot bid", so callers gate on can_bid instead of reading 0 as a $0 bid.
+    assert max_bid(5, 16) == 0
+    assert can_bid(5, 16) is False

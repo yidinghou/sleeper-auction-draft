@@ -18,6 +18,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
+# The floor for any real offer. A sealed bid must be at least this to count; an
+# agent that wants to sit out simply doesn't reach it.
+MIN_BID = 1
+
 
 @dataclass(frozen=True)
 class Bid:
@@ -49,3 +53,14 @@ def max_bid(budget: int, open_slots: int) -> int:
     if open_slots <= 0:
         return 0
     return max(0, budget - (open_slots - 1))
+
+
+def can_bid(budget: int, open_slots: int) -> bool:
+    """Whether a manager can place *any* legal bid right now.
+
+    Resolves the ambiguity in `max_bid`'s 0: a ceiling of 0 means "no legal
+    offer exists" — the roster is full (open_slots <= 0) *or* the budget can't
+    even cover the reserve. Callers must gate on this rather than reading 0 as a
+    real $0 bid, since MIN_BID is the floor for any offer that counts.
+    """
+    return max_bid(budget, open_slots) >= MIN_BID
