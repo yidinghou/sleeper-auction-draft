@@ -46,3 +46,12 @@ next-env.d.ts
 /.sleeper-profile/
 /.playwright-mcp/
 /data/*.png
+
+# python (sim/ draft harness)
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+sim/.venv/
+sim/*.egg-info/
+sim/draftsim.egg-info/
