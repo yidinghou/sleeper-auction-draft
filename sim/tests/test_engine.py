@@ -1,0 +1,81 @@
+from draftsim.agents import build_field
+from draftsim.auction import MIN_BID
+from draftsim.config import DraftConfig
+from draftsim.engine import result_invariants_ok, run_draft
+from draftsim.roster import is_lineup_legal
+from draftsim.valuation import load_players
+
+# Load the real pool once; every test drafts from it.
+PLAYERS = load_players()
+
+
+def _run(seed: int, teams: int = 12):
+    config = DraftConfig(teams=teams)
+    agents = build_field(teams, seed=seed)
+    return run_draft(agents, config, PLAYERS), config
+
+
+# --- determinism -----------------------------------------------------------
+
+
+def test_same_seed_is_byte_identical():
+    a, _ = _run(seed=1)
+    b, _ = _run(seed=1)
+    assert a.picks == b.picks
+    assert {k: (v.budget, tuple(p.id for p in v.roster)) for k, v in a.managers.items()} == {
+        k: (v.budget, tuple(p.id for p in v.roster)) for k, v in b.managers.items()
+    }
+
+
+def test_different_seeds_diverge():
+    a, _ = _run(seed=1)
+    b, _ = _run(seed=2)
+    # Overwhelmingly likely to differ; if they matched, the seed noise is dead.
+    assert a.picks != b.picks
+
+
+# --- invariants ------------------------------------------------------------
+
+
+def test_all_rosters_are_legal_and_full():
+    result, config = _run(seed=7)
+    for m in result.managers.values():
+        assert len(m.roster) == config.roster_size
+        assert is_lineup_legal(m.roster, config)
+
+
+def test_no_negative_budgets_and_spend_within_budget():
+    result, config = _run(seed=3)
+    for mid, m in result.managers.items():
+        assert m.budget >= 0
+        spent = sum(pk.price for pk in result.picks if pk.winner_id == mid)
+        assert spent == result.spend(mid)
+        assert spent <= config.budget
+
+
+def test_every_price_is_at_least_min_bid():
+    result, _ = _run(seed=5)
+    assert result.picks  # something happened
+    assert all(pk.price >= MIN_BID for pk in result.picks)
+
+
+def test_invariant_checker_reports_clean():
+    result, _ = _run(seed=9)
+    assert result_invariants_ok(result) == []
+
+
+def test_pool_shrinks_by_exactly_one_per_pick():
+    # Total players drafted equals number of picks equals total slots filled.
+    result, config = _run(seed=4)
+    total_slots = config.teams * config.roster_size
+    assert len(result.picks) == total_slots
+    drafted = [pk.player.id for pk in result.picks]
+    assert len(set(drafted)) == len(drafted)  # no player drafted twice
+
+
+def test_runs_on_a_small_field():
+    # Sanity that the engine isn't hardwired to 12 seats.
+    result, config = _run(seed=1, teams=4)
+    assert len(result.managers) == 4
+    for m in result.managers.values():
+        assert is_lineup_legal(m.roster, config)
