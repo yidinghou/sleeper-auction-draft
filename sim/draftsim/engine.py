@@ -26,7 +26,7 @@ from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 from .auction import MIN_BID, Bid, can_bid, max_bid, resolve_auction_round
 from .config import DraftConfig
 from .roster import is_lineup_legal, open_slots
-from .valuation import Player, replacement_points
+from .valuation import Player, points_per_dollar, replacement_points
 
 # Structural type for a draftable agent; concrete agents live in agents.py.
 # Imported lazily under TYPE_CHECKING to keep engine <-> agents acyclic.
@@ -56,6 +56,10 @@ class DraftState:
     managers: Dict[str, ManagerState]
     available: List[Player]
     replacement: Dict[str, float]  # position -> replacement points, for VORP
+    # VORP points per auction dollar, from the starting pool. Lets an agent put
+    # points-denominated VORP and dollar-denominated market price on one scale.
+    # 0.0 means no conversion is available; fall back to the market anchor.
+    points_per_dollar: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -121,7 +125,13 @@ def run_draft(
     }
     available: List[Player] = list(players)
     replacement = replacement_points(list(players), config)
-    state = DraftState(config, managers, available, replacement)
+    state = DraftState(
+        config,
+        managers,
+        available,
+        replacement,
+        points_per_dollar(list(players), replacement, config),
+    )
 
     picks: List[Pick] = []
     nom_ptr = 0

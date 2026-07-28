@@ -3,8 +3,8 @@
 Stage 3 ships exactly one, `HeuristicAgent` — a need-aware value bidder with no
 archetype personality yet (those arrive in Stage 4, as parameter presets of this
 same class). It anchors its valuations on Sleeper's market price ($PROJ) with a
-small deterministic per-player jitter so different seeds and seats diverge, and
-it stays inside two hard rails:
+small deterministic per-player jitter so different seeds and seats diverge, bids
+under that value (see `bid` on shading), and stays inside two hard rails:
 
   * the budget reserve (`max_bid` / `can_bid` from auction.py), and
   * a slot rail: never spend a roster spot on depth while every remaining slot
@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Dict, Optional, Protocol, runtime_checkable
 
 from .auction import MIN_BID, can_bid, max_bid
 from .roster import open_slots, positional_need
-from .valuation import Player, market_value
+from .valuation import Player, market_value, vorp_value
 
 if TYPE_CHECKING:  # pragma: no cover
     from .engine import DraftState
@@ -70,6 +70,16 @@ class HeuristicAgent:
       * `depth_value_mult` — multiplier applied to value for non-need depth. It
         is a multiplier, not a discount: 0.4 means "pay 40% of value", not
         "take 40% off".
+      * `shade`            — fraction of private value held back when bidding.
+        0.15 offers 85% of value. See `bid` for why a first-price auction needs
+        this; 0.0 restores full-value bidding.
+      * `max_pick_share`   — cap on how much of a seat's legal ceiling one buy
+        may consume. 0.5 means no single player takes more than half of what
+        this seat could commit; 1.0 disables the cap. A concentration guardrail
+        against one blowout buy, not the fix for the winner's curse — that's
+        `shade`.
+      * `vorp_weight`      — how much to blend points-above-replacement into the
+        market anchor, 0.0 (market only, the default) to 1.0 (VORP only).
     """
 
     def __init__(
@@ -78,29 +88,46 @@ class HeuristicAgent:
         seed: str = "0",
         jitter_frac: float = 0.15,
         depth_value_mult: float = 0.4,
+        shade: float = 0.15,
+        max_pick_share: float = 0.5,
+        vorp_weight: float = 0.0,
     ) -> None:
         self.name = name
         self.seed = str(seed)
         self.jitter_frac = jitter_frac
         self.depth_value_mult = depth_value_mult
+        self.shade = shade
+        self.max_pick_share = max_pick_share
+        self.vorp_weight = vorp_weight
         self._val_cache: Dict[str, float] = {}
 
     # -- valuation ---------------------------------------------------------
 
-    def _valuation(self, player: Player) -> float:
-        """Market price nudged by a deterministic per-(seed,player) jitter.
+    def _valuation(self, state: "DraftState", player: Player) -> float:
+        """What this agent privately thinks `player` is worth, in dollars.
 
-        Uses a string-seeded Random so the jitter is stable across processes
-        (unlike hash()) and independent of call order — the same player is worth
-        the same to this agent no matter when it's evaluated."""
+        Market price (optionally blended with VORP) nudged by a deterministic
+        per-(seed, player) jitter. Uses a string-seeded Random so the jitter is
+        stable across processes (unlike hash()) and independent of call order —
+        the same player is worth the same to this agent no matter when it's
+        evaluated. Cached per player, which is safe because every input
+        (market price, replacement level, exchange rate) is fixed for a draft.
+        """
         cached = self._val_cache.get(player.id)
         if cached is not None:
             return cached
-        base = market_value(player)
+
+        anchor = market_value(player)
+        # VORP is in points and the anchor is in dollars, so convert before
+        # blending. A 0.0 rate means the pool offers no conversion; stay on market.
+        if self.vorp_weight > 0.0 and state.points_per_dollar > 0.0:
+            vorp_dollars = vorp_value(player, state.replacement) / state.points_per_dollar
+            anchor = (1.0 - self.vorp_weight) * anchor + self.vorp_weight * vorp_dollars
+
         jitter = random.Random(f"{self.seed}:{player.id}").uniform(
             1.0 - self.jitter_frac, 1.0 + self.jitter_frac
         )
-        value = base * jitter
+        value = anchor * jitter
         self._val_cache[player.id] = value
         return value
 
@@ -115,9 +142,24 @@ class HeuristicAgent:
         # Nominate the most valuable player at a position we still need; if no
         # need remains (or the pool has none), throw up the best body available.
         candidates = needed if needed else pool
-        return max(candidates, key=self._valuation)
+        return max(candidates, key=lambda p: self._valuation(state, p))
 
     def bid(self, state: "DraftState", player: Player, my_id: str) -> int:
+        """Sealed offer for `player`, in dollars. `SIT_OUT` to decline.
+
+        Value passes through four filters, narrowest last:
+          1. depth       — non-need players are worth `depth_value_mult` of value
+          2. shade       — hold back `shade` of it (see below)
+          3. pick cap    — no single buy eats more than `max_pick_share` of the
+                           ceiling
+          4. reserve     — the hard `max_bid` ceiling, which keeps $1 per slot
+
+        On shading: this is a first-price sealed auction, so a seat that offers
+        its full private value wins only when its own jitter ran highest, and
+        pays exactly what it thought the player was worth. That is the winner's
+        curse — it makes final rosters a function of the RNG rather than of the
+        parameters. Bidding under value means winning implies surplus.
+        """
         me = state.managers[my_id]
         slots = me.open_slots(state.config)
         if not can_bid(me.budget, slots):
@@ -130,11 +172,20 @@ class HeuristicAgent:
         if not is_need and slots <= sum(need.values()):
             return SIT_OUT
 
-        value = self._valuation(player)
+        value = self._valuation(state, player)
         if not is_need:
             value *= self.depth_value_mult
+        value *= 1.0 - self.shade
+
+        # `ceiling` is every dollar this seat may legally commit to one player.
+        # The cap takes a fraction of it, floored at MIN_BID so a seat down to
+        # its reserve can still buy its remaining slots at $1 rather than sit
+        # out and finish short. max_pick_share=1.0 makes the cap a no-op.
         ceiling = max_bid(me.budget, slots)
-        return max(SIT_OUT, min(int(round(value)), ceiling))
+        pick_cap = max(float(MIN_BID), ceiling * self.max_pick_share)
+
+        offer = int(round(min(value, pick_cap)))
+        return max(SIT_OUT, min(offer, ceiling))
 
 
 def build_field(

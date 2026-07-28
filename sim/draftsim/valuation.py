@@ -123,3 +123,26 @@ def vorp_value(player: Player, replacement: Dict[str, float]) -> float:
     """Projected points above the position's replacement level (floored at 0)."""
     base = replacement.get(player.pos, 0.0)
     return max(0.0, player.points - base)
+
+
+def points_per_dollar(
+    players: List[Player], replacement: Dict[str, float], config: DraftConfig
+) -> float:
+    """Exchange rate between the two value models: VORP points per auction dollar.
+
+    The models are in different units — `market_value` is dollars, `vorp_value`
+    is points — so blending them needs a conversion. The league spends its whole
+    budget on the players it drafts, so total draftable VORP divided by total
+    league budget is the rate at which points are actually bought.
+
+    Returns 0.0 when there is nothing to buy or no money, which callers should
+    read as "no conversion available" and fall back to the market anchor.
+    """
+    league_budget = config.teams * config.budget
+    draftable = config.teams * config.roster_size
+    if league_budget <= 0 or draftable <= 0:
+        return 0.0
+    top_vorp = sorted(
+        (vorp_value(p, replacement) for p in players), reverse=True
+    )[:draftable]
+    return sum(top_vorp) / league_budget

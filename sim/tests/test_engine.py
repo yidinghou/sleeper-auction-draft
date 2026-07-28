@@ -2,7 +2,7 @@ from draftsim.agents import build_field
 from draftsim.auction import MIN_BID
 from draftsim.config import DraftConfig
 from draftsim.engine import invariant_violations, run_draft
-from draftsim.roster import is_lineup_legal
+from draftsim.roster import is_lineup_legal, starters
 from draftsim.valuation import Player, load_players
 
 # Load the real pool once; every test drafts from it.
@@ -71,6 +71,30 @@ def test_pool_shrinks_by_exactly_one_per_pick():
     assert len(result.picks) == total_slots
     drafted = [pk.player.id for pk in result.picks]
     assert len(set(drafted)) == len(drafted)  # no player drafted twice
+
+
+# --- outcome quality --------------------------------------------------------
+
+
+def test_rosters_are_close_enough_in_strength():
+    """No seat should end up far weaker than the rest just from RNG.
+
+    Before bid shading, agents offered their full jittered value in a
+    first-price auction, so the winner was whoever's jitter ran highest and
+    overpaid by construction. At seed 1 that spread starter points from 1198.2
+    to 1949.3 -- a gap of ~751, larger than any archetype difference Stage 4
+    would introduce, which would have made archetype tests measure the RNG.
+    Shading cuts it to ~300. The bound is deliberately loose: it is here to
+    catch a return of the winner's curse, not to pin an exact number.
+    """
+    config = DraftConfig()
+    for seed in (1, 2, 3, 7):
+        result = run_draft(build_field(12, seed=seed), config, PLAYERS)
+        points = [
+            sum(s.points for s in starters(m.roster, config) if s is not None)
+            for m in result.managers.values()
+        ]
+        assert max(points) - min(points) < 500, f"seed {seed} spread too wide"
 
 
 # --- passing on a nomination ------------------------------------------------
