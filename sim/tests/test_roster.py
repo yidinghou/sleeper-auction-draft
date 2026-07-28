@@ -1,16 +1,11 @@
-from dataclasses import dataclass
-
 from draftsim.config import DraftConfig
 from draftsim.roster import is_lineup_legal, open_slots, starters
+from draftsim.valuation import Player
 
 
-@dataclass(frozen=True)
-class P:
-    """Minimal player stub: .pos for slotting, .points for lineup weighting."""
-
-    name: str
-    pos: str
-    points: float = 0.0
+def P(name: str, pos: str, points: float = 0.0) -> Player:
+    """A real Player with only the fields roster logic reads spelled out."""
+    return Player(id=name, name=name, pos=pos, team="FA", points=points)
 
 
 def test_full_legal_roster_fills_every_starter():

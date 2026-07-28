@@ -13,21 +13,13 @@ report layer actually needs the bench/overflow shape.)
 
 from __future__ import annotations
 
-from typing import Callable, List, Optional, Protocol, Sequence, TypeVar
+from typing import Callable, List, Optional, Sequence
 
 from .config import FLEX_ELIGIBILITY, DraftConfig
+from .valuation import Player
 
 
-class SlotPlayer(Protocol):
-    """What roster functions require of a player object."""
-
-    pos: str
-
-
-T = TypeVar("T", bound=SlotPlayer)
-
-
-def _slot_accepts(slot: str, player: SlotPlayer) -> bool:
+def _slot_accepts(slot: str, player: Player) -> bool:
     eligible = FLEX_ELIGIBILITY.get(slot)
     if eligible is not None:
         return bool(player.pos) and player.pos in eligible
@@ -35,9 +27,9 @@ def _slot_accepts(slot: str, player: SlotPlayer) -> bool:
 
 
 def _match_starters(
-    players: Sequence[T],
+    players: Sequence[Player],
     config: DraftConfig,
-    weight: Callable[[T], float],
+    weight: Callable[[Player], float],
 ) -> List[Optional[int]]:
     """Assign players to starting slots to maximise total `weight`.
 
@@ -68,18 +60,13 @@ def _match_starters(
     return player_of_slot
 
 
-def starters(players: Sequence[T], config: DraftConfig) -> List[Optional[T]]:
-    """Optimal starting lineup (max projected points), slot-aligned.
-
-    Reads `.points` directly — a player object missing it raises rather than
-    silently weighting everything to zero.
-    """
-    weight: Callable[[T], float] = lambda p: float(p.points)  # type: ignore[attr-defined]
-    assigned = _match_starters(players, config, weight)
+def starters(players: Sequence[Player], config: DraftConfig) -> List[Optional[Player]]:
+    """Optimal starting lineup (max projected points), slot-aligned."""
+    assigned = _match_starters(players, config, weight=lambda p: p.points)
     return [players[pi] if pi is not None else None for pi in assigned]
 
 
-def is_lineup_legal(players: Sequence[T], config: DraftConfig) -> bool:
+def is_lineup_legal(players: Sequence[Player], config: DraftConfig) -> bool:
     """True when every starting slot can be simultaneously filled by an eligible
     player — a max-cardinality matching that covers all slots. Order-invariant."""
     assigned = _match_starters(players, config, weight=lambda _p: 1.0)
