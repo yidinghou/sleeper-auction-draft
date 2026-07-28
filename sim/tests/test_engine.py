@@ -73,6 +73,53 @@ def test_pool_shrinks_by_exactly_one_per_pick():
     assert len(set(drafted)) == len(drafted)  # no player drafted twice
 
 
+# --- passing on a nomination ------------------------------------------------
+
+
+class _PassingAgent:
+    """Wraps a real agent but declines its first `passes` nominations."""
+
+    def __init__(self, inner, passes):
+        self.name = inner.name
+        self._inner = inner
+        self._passes_left = passes
+
+    def nominate(self, state, my_id):
+        if self._passes_left > 0:
+            self._passes_left -= 1
+            return None
+        return self._inner.nominate(state, my_id)
+
+    def bid(self, state, player, my_id):
+        return self._inner.bid(state, player, my_id)
+
+
+def test_one_seat_passing_does_not_end_the_draft():
+    # M00 passes once, then drafts normally. Everyone still fills a legal roster.
+    config = DraftConfig(teams=4)
+    agents = build_field(4, seed=11)
+    agents["M00"] = _PassingAgent(agents["M00"], passes=1)
+    result = run_draft(agents, config, PLAYERS)
+    assert invariant_violations(result) == []
+    for manager in result.managers.values():
+        assert len(manager.roster) == config.roster_size
+
+
+def test_draft_ends_when_every_seat_passes():
+    # Nobody will ever nominate -> the draft ends cleanly with no picks, rather
+    # than spinning forever.
+    config = DraftConfig(teams=4)
+    agents = {
+        manager_id: _PassingAgent(agent, passes=10_000)
+        for manager_id, agent in build_field(4, seed=11).items()
+    }
+    result = run_draft(agents, config, PLAYERS)
+    assert result.picks == ()
+    for manager in result.managers.values():
+        assert manager.roster == []
+        assert manager.budget == config.budget
+
+
 def test_seat_that_cannot_cover_the_reserve_is_excluded_from_bidding():
     # One seat starts broke enough that max_bid falls below MIN_BID; it must be
     # skipped entirely rather than submitting a $0 bid the resolver could pick.

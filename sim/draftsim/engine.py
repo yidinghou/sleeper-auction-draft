@@ -4,13 +4,18 @@ Runs a full nomination-style auction to completion. Each round one manager (in
 fixed seat rotation, skipping full rosters) nominates a player; every manager
 with room submits a sealed bid; the highest bid wins and pays it (first-price,
 per `domain/auction.ts`). The nominator is forced to open at `MIN_BID`, so every
-round removes exactly one player from the pool and the draft always terminates.
+sale removes exactly one player from the pool and the draft always terminates —
+either when every roster is full, or when every seat passes in a row.
 
 Everything here is a pure function of (agents, config, players): seat order is
 fixed (sorted manager ids), bids are gathered in seat order, and agents are
 themselves deterministic. Same inputs -> identical `DraftResult`, byte for byte.
-The public `DraftState` an agent sees carries only what any manager could
-observe (budgets, rosters, the pool) — never the other agents' internals.
+
+The `DraftState` an agent sees carries only what any manager could observe
+(budgets, rosters, the pool) — never the other agents' internals. Note it hands
+over the *live* objects, not copies: an agent could write another manager's
+budget or clear the pool. Tolerated because the sim only runs first-party
+agents; this is not a sandbox.
 """
 
 from __future__ import annotations
@@ -93,6 +98,16 @@ def _next_nominator(
     return None
 
 
+def _take_from_pool(pool: List[Player], player: Player) -> None:
+    """Remove `player` from the pool by identity.
+
+    Identity, not equality: `Player` is a frozen `eq=True` dataclass, so
+    `pool.remove(player)` would drop the first value-equal twin (same
+    name/pos/team) rather than this exact one.
+    """
+    pool[:] = [p for p in pool if p is not player]
+
+
 def run_draft(
     agents: Mapping[str, "DraftAgent"],
     config: DraftConfig,
@@ -111,6 +126,9 @@ def run_draft(
     picks: List[Pick] = []
     nom_ptr = 0
     pick_no = 0
+    # Consecutive seats that passed. Reset by any successful nomination, so the
+    # draft only ends once every seat has declined in a row.
+    declines = 0
 
     while available:
         nomination = _next_nominator(manager_ids, managers, config, nom_ptr)
@@ -120,9 +138,14 @@ def run_draft(
 
         player = agents[nominator_id].nominate(state, nominator_id)
         if player is None:
-            # Nominator has room but declines everything in the pool; nothing can
-            # progress this seat, so end the draft rather than spin.
-            break
+            # This seat passes; the nomination moves on to the next one. Counting
+            # all seats rather than only eligible ones is a safe over-estimate --
+            # it can only cost one extra rotation before we stop.
+            declines += 1
+            if declines >= len(manager_ids):
+                break  # nobody will nominate anything; the draft is over
+            continue
+        declines = 0
 
         bids: List[Bid] = []
         for manager_id in manager_ids:
@@ -140,10 +163,13 @@ def run_draft(
 
         outcome = resolve_auction_round(bids)
         if outcome is None:
-            # Only reachable if the nominator itself couldn't bid, which the
-            # reserve rule forbids while it has an open slot; guard anyway.
-            available[:] = [p for p in available if p is not player]
-            continue
+            # Unreachable: the nominator is forced to open at MIN_BID, and it
+            # always clears the can_bid gate while it has an open slot. Raise
+            # instead of dropping the player, so a regression surfaces here
+            # rather than as a mysteriously short roster later.
+            raise AssertionError(
+                f"no bids for {player.id} nominated by {nominator_id}"
+            )
 
         winner_id, price = outcome
         winner = managers[winner_id]
@@ -151,7 +177,7 @@ def run_draft(
         winner.roster.append(player)
         picks.append(Pick(pick_no, nominator_id, player, winner_id, price))
         pick_no += 1
-        available[:] = [p for p in available if p is not player]
+        _take_from_pool(available, player)
 
     return DraftResult(picks=tuple(picks), managers=managers, config=config)
 

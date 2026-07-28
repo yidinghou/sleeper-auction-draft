@@ -10,8 +10,12 @@ it stays inside two hard rails:
   * a slot rail: never spend a roster spot on depth while every remaining slot
     is still spoken for by an unmet starter need.
 
-Those two rails are what make the engine's "every roster legal" invariant hold:
-the agent always keeps room and money to complete a legal starting lineup.
+What the rails actually guarantee: the agent always keeps enough *room* and
+*money* to complete a legal starting lineup. They do NOT guarantee it wins the
+positions it needs — outbid on every TE, a seat still ends up without one. Roster
+legality is therefore checked after the fact by `engine.invariant_violations`,
+not proven by these rails. It holds in practice because the pool is thousands of
+players deep, so a $1 body at any position is always available.
 """
 
 from __future__ import annotations
@@ -39,7 +43,12 @@ class DraftAgent(Protocol):
     name: str
 
     def nominate(self, state: "DraftState", my_id: str) -> Optional[Player]:
-        """Pick a player from the pool to put up for auction (or None to pass)."""
+        """Pick a player from the pool to put up for auction.
+
+        Return None to pass: the nomination moves to the next seat, and this
+        seat keeps its open slots. The draft ends only once every seat has
+        passed in a row (or every roster is full).
+        """
         ...
 
     def bid(self, state: "DraftState", player: Player, my_id: str) -> int:
