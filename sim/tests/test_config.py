@@ -1,3 +1,5 @@
+import pytest
+
 from draftsim.config import DEFAULT_ROSTER_SLOTS, DraftConfig
 
 
@@ -25,3 +27,17 @@ def test_custom_roster_slots():
     c = DraftConfig(teams=10, budget=300, roster_slots=("QB", "RB", "WR", "BN"))
     assert c.roster_size == 4
     assert c.starter_slots == ("QB", "RB", "WR")
+
+
+def test_budget_below_roster_size_is_rejected():
+    # $10 across 16 slots would freeze every manager out under the reserve rule;
+    # that must be a construction error, not a silent dead draft.
+    with pytest.raises(ValueError, match="budget"):
+        DraftConfig(budget=10)  # default 16 slots
+
+
+def test_other_invalid_configs_rejected():
+    with pytest.raises(ValueError, match="teams"):
+        DraftConfig(teams=0)
+    with pytest.raises(ValueError, match="roster_slots"):
+        DraftConfig(roster_slots=())

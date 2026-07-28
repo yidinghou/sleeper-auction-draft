@@ -59,6 +59,19 @@ class DraftConfig:
     budget: int = 200
     roster_slots: Tuple[str, ...] = DEFAULT_ROSTER_SLOTS
 
+    def __post_init__(self) -> None:
+        if self.teams < 1:
+            raise ValueError(f"teams must be >= 1, got {self.teams}")
+        if not self.roster_slots:
+            raise ValueError("roster_slots must not be empty")
+        # Every team must afford at least $1 per slot, else managers are frozen
+        # out of auctions under the reserve rule (see auction.max_bid).
+        if self.budget < len(self.roster_slots):
+            raise ValueError(
+                f"budget ({self.budget}) must be >= roster size "
+                f"({len(self.roster_slots)}) so every slot is affordable"
+            )
+
     @property
     def roster_size(self) -> int:
         return len(self.roster_slots)
