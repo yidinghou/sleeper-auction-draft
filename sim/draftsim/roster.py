@@ -13,7 +13,7 @@ report layer actually needs the bench/overflow shape.)
 
 from __future__ import annotations
 
-from typing import Callable, List, Optional, Sequence
+from typing import Callable, Dict, List, Optional, Sequence
 
 from .config import FLEX_ELIGIBILITY, DraftConfig
 from .valuation import Player
@@ -76,3 +76,20 @@ def is_lineup_legal(players: Sequence[Player], config: DraftConfig) -> bool:
 def open_slots(filled_count: int, config: DraftConfig) -> int:
     """How many roster slots remain empty, given how many are already filled."""
     return max(0, config.roster_size - filled_count)
+
+
+def positional_need(roster: Sequence[Player], config: DraftConfig) -> Dict[str, int]:
+    """How many more players of each concrete position are still needed to reach
+    a legal starting lineup, given what's on the roster.
+
+    Uses `starter_counts()` (flex slots attributed to a representative position)
+    as the target, so hitting every count guarantees a legal lineup: e.g. the
+    default target 2 QB / 3 RB / 3 WR / 1 TE / 1 DEF fills exactly the ten
+    starter slots. Extra bodies beyond the counts are depth (bench), never a
+    need. Never negative.
+    """
+    target = config.starter_counts()
+    have: Dict[str, int] = {}
+    for p in roster:
+        have[p.pos] = have.get(p.pos, 0) + 1
+    return {pos: max(0, want - have.get(pos, 0)) for pos, want in target.items()}

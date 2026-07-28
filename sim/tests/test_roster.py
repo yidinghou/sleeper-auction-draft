@@ -1,5 +1,5 @@
 from draftsim.config import DraftConfig
-from draftsim.roster import is_lineup_legal, open_slots, starters
+from draftsim.roster import is_lineup_legal, open_slots, positional_need, starters
 from draftsim.valuation import Player
 
 
@@ -101,3 +101,30 @@ def test_legality_agrees_with_starters_fill():
     for roster in (legal, illegal, list(reversed(legal))):
         filled = all(s is not None for s in starters(roster, config))
         assert is_lineup_legal(roster, config) == filled
+
+
+# --- positional need -------------------------------------------------------
+
+
+def test_empty_roster_needs_the_full_starter_target():
+    config = DraftConfig()
+    # Target = starter_counts(): 2 QB, 3 RB, 3 WR, 1 TE, 1 DEF (K unused).
+    assert positional_need([], config) == {"QB": 2, "RB": 3, "WR": 3, "TE": 1, "K": 0, "DEF": 1}
+
+
+def test_need_drops_as_positions_are_filled_and_never_goes_negative():
+    config = DraftConfig()
+    roster = [P("qb1", "QB"), P("qb2", "QB"), P("qb3", "QB")]  # 3 QBs, target 2
+    need = positional_need(roster, config)
+    assert need["QB"] == 0            # over-filled clamps to 0, not -1
+    assert need["RB"] == 3            # untouched positions unchanged
+
+
+def test_meeting_every_need_yields_a_legal_lineup():
+    # Acquire exactly the target counts -> lineup must be legal.
+    config = DraftConfig()
+    target = positional_need([], config)
+    roster = []
+    for pos, count in target.items():
+        roster += [P(f"{pos}{i}", pos) for i in range(count)]
+    assert is_lineup_legal(roster, config)
