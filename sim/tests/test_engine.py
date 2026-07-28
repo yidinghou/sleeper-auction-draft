@@ -1,7 +1,7 @@
 from draftsim.agents import build_field
 from draftsim.auction import MIN_BID
 from draftsim.config import DraftConfig
-from draftsim.engine import result_invariants_ok, run_draft
+from draftsim.engine import invariant_violations, run_draft
 from draftsim.roster import is_lineup_legal
 from draftsim.valuation import load_players
 
@@ -30,7 +30,7 @@ def test_same_seed_is_byte_identical():
 def test_different_seeds_diverge():
     a, _ = _run(seed=1)
     b, _ = _run(seed=2)
-    # Overwhelmingly likely to differ; if they matched, the seed noise is dead.
+    # Overwhelmingly likely to differ; if they matched, the seed jitter is dead.
     assert a.picks != b.picks
 
 
@@ -61,7 +61,7 @@ def test_every_price_is_at_least_min_bid():
 
 def test_invariant_checker_reports_clean():
     result, _ = _run(seed=9)
-    assert result_invariants_ok(result) == []
+    assert invariant_violations(result) == []
 
 
 def test_pool_shrinks_by_exactly_one_per_pick():

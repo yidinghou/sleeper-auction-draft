@@ -40,7 +40,7 @@ def test_valuation_is_stable_and_order_independent():
     assert agent._valuation(p) == first
     assert HeuristicAgent("a", seed="1")._valuation(p) == first
     # Jitter stays within the configured band.
-    assert 50 * (1 - agent.noise) <= first <= 50 * (1 + agent.noise)
+    assert 50 * (1 - agent.jitter_frac) <= first <= 50 * (1 + agent.jitter_frac)
 
 
 # --- bidding rails ---------------------------------------------------------
@@ -56,7 +56,7 @@ def test_full_roster_cannot_bid():
 def test_bid_never_exceeds_reserve_ceiling():
     config = DraftConfig()
     state = _state(config, {"me": []}, {"me": 200}, [])
-    agent = HeuristicAgent("me", noise=0.0)
+    agent = HeuristicAgent("me", jitter_frac=0.0)
     # A wildly over-priced player: bid must still clamp to the reserve ceiling.
     got = agent.bid(state, P("Whale", "QB", dollar=10_000), "me")
     assert got == max_bid(200, config.roster_size)
@@ -68,7 +68,7 @@ def test_depth_is_discounted_below_a_need_of_equal_price():
     # need. Equal market price, but depth should be bid lower.
     roster = [P("qb1", "QB"), P("qb2", "QB")]
     state = _state(config, {"me": roster}, {"me": 200}, [])
-    agent = HeuristicAgent("me", noise=0.0, depth_discount=0.4)
+    agent = HeuristicAgent("me", jitter_frac=0.0, depth_value_mult=0.4)
     need_bid = agent.bid(state, P("wrN", "WR", dollar=30), "me")
     depth_bid = agent.bid(state, P("qbN", "QB", dollar=30), "me")
     assert depth_bid < need_bid
@@ -78,7 +78,7 @@ def test_depth_refused_when_all_slots_claimed_by_needs():
     # roster_size == number of hard needs -> no room for depth at all.
     config = DraftConfig(teams=1, budget=50, roster_slots=("QB", "WR"))
     state = _state(config, {"me": []}, {"me": 50}, [])
-    agent = HeuristicAgent("me", noise=0.0)
+    agent = HeuristicAgent("me", jitter_frac=0.0)
     # QB and WR are both needs and both get bids...
     assert agent.bid(state, P("qb", "QB", dollar=10), "me") >= MIN_BID
     assert agent.bid(state, P("wr", "WR", dollar=10), "me") >= MIN_BID
@@ -94,5 +94,5 @@ def test_nominates_a_needed_position_over_a_pricier_non_need():
     roster = [P("qb1", "QB"), P("qb2", "QB")]  # QB quota met
     pool = [P("cheapWR", "WR", dollar=5), P("richQB", "QB", dollar=99)]
     state = _state(config, {"me": roster}, {"me": 200}, pool)
-    nom = HeuristicAgent("me", noise=0.0).nominate(state, "me")
+    nom = HeuristicAgent("me", jitter_frac=0.0).nominate(state, "me")
     assert nom.pos == "WR"  # a need beats the richer non-need

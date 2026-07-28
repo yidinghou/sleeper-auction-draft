@@ -12,7 +12,7 @@ import argparse
 
 from draftsim.agents import build_field
 from draftsim.config import DraftConfig
-from draftsim.engine import result_invariants_ok, run_draft
+from draftsim.engine import invariant_violations, run_draft
 from draftsim.roster import starters
 from draftsim.valuation import load_players
 
@@ -47,7 +47,7 @@ def main() -> None:
             f"start_pts {start_pts:>6.1f}  | {line} ..."
         )
 
-    problems = result_invariants_ok(result)
+    problems = invariant_violations(result)
     print("\nInvariants:", "OK" if not problems else f"{len(problems)} VIOLATIONS")
     for p in problems:
         print("  !", p)

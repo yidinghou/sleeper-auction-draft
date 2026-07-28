@@ -46,21 +46,25 @@ class HeuristicAgent:
     """Need-aware value bidder anchored on market price.
 
     Parameters (Stage 4 will vary these to make archetypes):
-      * `noise`          — half-width of the multiplicative price jitter.
-      * `depth_discount` — fraction of value it will pay for non-need depth.
+      * `jitter_frac`      — symmetric +/- half-width of the multiplicative price
+        jitter, as a fraction of market price. 0.15 means prices land uniformly
+        in [0.85x, 1.15x]; 0.0 disables jitter entirely.
+      * `depth_value_mult` — multiplier applied to value for non-need depth. It
+        is a multiplier, not a discount: 0.4 means "pay 40% of value", not
+        "take 40% off".
     """
 
     def __init__(
         self,
         name: str,
         seed: str = "0",
-        noise: float = 0.15,
-        depth_discount: float = 0.4,
+        jitter_frac: float = 0.15,
+        depth_value_mult: float = 0.4,
     ) -> None:
         self.name = name
         self.seed = str(seed)
-        self.noise = noise
-        self.depth_discount = depth_discount
+        self.jitter_frac = jitter_frac
+        self.depth_value_mult = depth_value_mult
         self._val_cache: Dict[str, float] = {}
 
     # -- valuation ---------------------------------------------------------
@@ -76,7 +80,7 @@ class HeuristicAgent:
             return cached
         base = market_value(player)
         jitter = random.Random(f"{self.seed}:{player.id}").uniform(
-            1.0 - self.noise, 1.0 + self.noise
+            1.0 - self.jitter_frac, 1.0 + self.jitter_frac
         )
         value = base * jitter
         self._val_cache[player.id] = value
@@ -110,7 +114,7 @@ class HeuristicAgent:
 
         value = self._valuation(player)
         if not is_need:
-            value *= self.depth_discount
+            value *= self.depth_value_mult
         ceiling = max_bid(me.budget, slots)
         return max(0, min(int(round(value)), ceiling))
 
