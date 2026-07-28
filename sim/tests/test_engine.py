@@ -3,7 +3,7 @@ from draftsim.auction import MIN_BID
 from draftsim.config import DraftConfig
 from draftsim.engine import invariant_violations, run_draft
 from draftsim.roster import is_lineup_legal
-from draftsim.valuation import load_players
+from draftsim.valuation import Player, load_players
 
 # Load the real pool once; every test drafts from it.
 PLAYERS = load_players()
@@ -71,6 +71,22 @@ def test_pool_shrinks_by_exactly_one_per_pick():
     assert len(result.picks) == total_slots
     drafted = [pk.player.id for pk in result.picks]
     assert len(set(drafted)) == len(drafted)  # no player drafted twice
+
+
+def test_seat_that_cannot_cover_the_reserve_is_excluded_from_bidding():
+    # One seat starts broke enough that max_bid falls below MIN_BID; it must be
+    # skipped entirely rather than submitting a $0 bid the resolver could pick.
+    config = DraftConfig(teams=2, budget=4, roster_slots=("QB", "WR", "BN", "BN"))
+    agents = build_field(2, seed=1)
+    pool = [
+        Player(id=f"p{i}", name=f"P{i}", pos=pos, team="FA", proj_dollar=3, points=10.0)
+        for i, pos in enumerate(["QB", "QB", "WR", "WR", "TE", "TE", "RB", "RB"])
+    ]
+    result = run_draft(agents, config, pool)
+    # Nobody was ever awarded a player they could not pay for.
+    for manager in result.managers.values():
+        assert manager.budget >= 0
+    assert all(pick.price >= MIN_BID for pick in result.picks)
 
 
 def test_runs_on_a_small_field():

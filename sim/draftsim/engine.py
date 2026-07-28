@@ -18,7 +18,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
-from .auction import MIN_BID, Bid, max_bid, resolve_auction_round
+from .auction import MIN_BID, Bid, can_bid, max_bid, resolve_auction_round
 from .config import DraftConfig
 from .roster import is_lineup_legal, open_slots
 from .valuation import Player, replacement_points
@@ -127,9 +127,10 @@ def run_draft(
         bids: List[Bid] = []
         for manager_id in manager_ids:
             manager = managers[manager_id]
-            ceiling = max_bid(manager.budget, manager.open_slots(config))
-            if ceiling < MIN_BID:
-                continue  # roster full or can't afford the reserve
+            slots = manager.open_slots(config)
+            if not can_bid(manager.budget, slots):
+                continue  # roster full, or budget can't cover the reserve
+            ceiling = max_bid(manager.budget, slots)
             amount = agents[manager_id].bid(state, player, manager_id)
             amount = min(amount, ceiling)
             if manager_id == nominator_id:

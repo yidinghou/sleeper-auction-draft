@@ -19,12 +19,17 @@ from __future__ import annotations
 import random
 from typing import TYPE_CHECKING, Dict, Optional, Protocol, runtime_checkable
 
-from .auction import can_bid, max_bid
+from .auction import MIN_BID, can_bid, max_bid
 from .roster import open_slots, positional_need
 from .valuation import Player, market_value
 
 if TYPE_CHECKING:  # pragma: no cover
     from .engine import DraftState
+
+# What an agent returns to sit a nomination out. Any amount below MIN_BID means
+# the same thing to the engine; this is the one spelling agents use, so a 0 in
+# a bid method is never mistaken for a real $0 offer.
+SIT_OUT = 0
 
 
 @runtime_checkable
@@ -38,7 +43,11 @@ class DraftAgent(Protocol):
         ...
 
     def bid(self, state: "DraftState", player: Player, my_id: str) -> int:
-        """Sealed max bid for `player`; anything below MIN_BID means sit out."""
+        """Sealed max bid for `player`; anything below MIN_BID means sit out.
+
+        Return `SIT_OUT` to decline rather than a bare 0, so the intent is
+        readable at the return site.
+        """
         ...
 
 
@@ -103,20 +112,20 @@ class HeuristicAgent:
         me = state.managers[my_id]
         slots = me.open_slots(state.config)
         if not can_bid(me.budget, slots):
-            return 0
+            return SIT_OUT
 
         need = positional_need(me.roster, state.config)
         is_need = need.get(player.pos, 0) > 0
         # Slot rail: if every remaining slot is claimed by an unmet need, refuse
-        # to burn one on depth. Guarantees room to finish a legal lineup.
+        # to burn one on depth. Keeps room to finish a legal lineup.
         if not is_need and slots <= sum(need.values()):
-            return 0
+            return SIT_OUT
 
         value = self._valuation(player)
         if not is_need:
             value *= self.depth_value_mult
         ceiling = max_bid(me.budget, slots)
-        return max(0, min(int(round(value)), ceiling))
+        return max(SIT_OUT, min(int(round(value)), ceiling))
 
 
 def build_field(
