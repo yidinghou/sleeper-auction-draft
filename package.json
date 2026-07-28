@@ -13,7 +13,8 @@
     "db:seed:test": "tsx scripts/seed-test-league.ts",
     "mock:generate": "tsx scripts/generate-mock-results.ts",
     "mock:push": "tsx scripts/push-mock-results.ts",
-    "mock:clear": "tsx scripts/clear-board.ts"
+    "mock:clear": "tsx scripts/clear-board.ts",
+    "export:projections": "tsx scripts/export-projections.ts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",

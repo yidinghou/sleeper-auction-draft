@@ -16,6 +16,7 @@ export interface SleeperLeague {
   season: string;
   status: string;
   roster_positions: string[];
+  settings?: { num_teams?: number };
 }
 
 export interface SleeperUser {
@@ -141,12 +142,20 @@ export function sleeperPlayerFullName(p: SleeperPlayerRaw): string {
 
 export interface SleeperProjection {
   pts_ppr?: number;
+  pts_half_ppr?: number;
+  pts_std?: number;
   adp_2qb?: number;
 }
 
 export function fetchSleeperProjections(season: number) {
   return sleeperFetch<Record<string, SleeperProjection>>(
     `/projections/nfl/regular/${season}`,
+  );
+}
+
+export function fetchSleeperWeeklyProjections(season: number, week: number) {
+  return sleeperFetch<Record<string, SleeperProjection>>(
+    `/projections/nfl/regular/${season}/${week}`,
   );
 }
 
