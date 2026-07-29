@@ -79,3 +79,29 @@ def test_vorp_is_points_over_replacement_floored_at_zero(players):
     # A replacement-level scrub never yields negative value.
     scrub = Player("z", "Z", "WR", "FA", points=0.0)
     assert vorp_value(scrub, repl) == 0.0
+
+
+def test_replacement_is_the_first_player_past_the_starters():
+    # Replacement level is what you can have for free, so it's the best player
+    # NOT starting -- index n, not the last starter at n-1. Off by one here
+    # overstates the bar every player must clear and deflates all VORP.
+    config = DraftConfig(teams=2, roster_slots=("QB", "BN"))
+    pool = [
+        Player(id=f"qb{i}", name=f"qb{i}", pos="QB", team="NE", points=100.0 - i * 10)
+        for i in range(5)
+    ]  # 100, 90, 80, 70, 60 -- 2 teams x 1 QB slot => 2 starters
+    replacement = replacement_points(pool, config)
+    assert replacement["QB"] == 80.0  # the 3rd QB, first one left over
+    # And VORP is measured against it.
+    assert vorp_value(pool[0], replacement) == 20.0
+
+
+def test_replacement_falls_back_when_every_player_starts():
+    # Fewer players than starting spots: nothing is freely available, so the
+    # worst rostered player is the closest thing to replacement.
+    config = DraftConfig(teams=4, roster_slots=("QB", "BN"))
+    pool = [
+        Player(id=f"qb{i}", name=f"qb{i}", pos="QB", team="NE", points=100.0 - i * 10)
+        for i in range(3)
+    ]
+    assert replacement_points(pool, config)["QB"] == 80.0

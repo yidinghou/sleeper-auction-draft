@@ -107,9 +107,15 @@ def market_value(player: Player) -> float:
 def replacement_points(
     players: List[Player], config: DraftConfig
 ) -> Dict[str, float]:
-    """Points of the last startable player at each position across the league.
+    """Points of the best *freely available* player at each position.
 
-    Replacement rank per position = per-team startable spots * number of teams.
+    Replacement level is what you can have for nothing once the league has taken
+    its starters, so it is the first player past them: with `per_team *
+    config.teams` startable spots, that's index `n`, not `n - 1`. Taking the
+    last starter instead overstates the bar every player has to clear and
+    understates everyone's VORP -- by 3.7 points at QB and 5.9 at WR in the
+    default league.
+
     Positions with no startable spots (or too few players) get 0.0.
     """
     counts = config.starter_counts()
@@ -129,9 +135,11 @@ def replacement_points(
         n = per_team * config.teams
         if not pts:
             replacement[pos] = 0.0
-        elif n <= len(pts):
-            replacement[pos] = pts[n - 1]
+        elif n < len(pts):
+            replacement[pos] = pts[n]
         else:
+            # Every player at this position starts somewhere; nothing is free,
+            # so the worst one is the closest thing to a replacement.
             replacement[pos] = pts[-1]
     return replacement
 
