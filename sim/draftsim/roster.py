@@ -183,7 +183,7 @@ def positional_need(roster: Sequence[Player], config: DraftConfig) -> Dict[str, 
     """How many more players of each concrete position are still needed to reach
     a legal starting lineup, given what's on the roster.
 
-    Uses `starter_counts()` (flex slots attributed to a representative position)
+    Uses `starter_counts()` (whole players, flex slots split then rounded)
     as the target, so hitting every count guarantees a legal lineup: e.g. the
     default target 2 QB / 3 RB / 3 WR / 1 TE / 1 DEF fills exactly the ten
     starter slots. Extra bodies beyond the counts are depth (bench), never a

@@ -118,7 +118,10 @@ def replacement_points(
 
     Positions with no startable spots (or too few players) get 0.0.
     """
-    counts = config.starter_counts()
+    # Shares, not counts: a flex slot that goes to a running back 77% of the time
+    # moves the bar by a fifth of a slot, and rounding that away is exactly the
+    # error this is measuring.
+    counts = config.starter_shares()
     by_pos: Dict[str, List[float]] = {}
     for p in players:
         by_pos.setdefault(p.pos, []).append(p.points)
@@ -132,7 +135,7 @@ def replacement_points(
             replacement[pos] = float("inf")
             continue
         pts = sorted(by_pos.get(pos, []), reverse=True)
-        n = per_team * config.teams
+        n = round(per_team * config.teams)  # fractional shares, whole players
         if not pts:
             replacement[pos] = 0.0
         elif n < len(pts):

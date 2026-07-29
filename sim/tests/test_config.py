@@ -16,8 +16,34 @@ def test_starter_slots_exclude_bench():
     assert "BN" not in c.starter_slots
 
 
-def test_starter_counts_attribute_flex_to_a_position():
-    # QB(1)+SUPER_FLEX, RB(2)+FLEX, WR(2)+REC_FLEX, TE(1), DEF(1) => 10 starters.
+def test_starter_shares_split_the_contested_flex():
+    # FLEX is the only genuinely contested slot: measured 77% RB / 23% WR.
+    # SUPER_FLEX goes to a QB 97.9% of the time and REC_FLEX to a WR 100%, so
+    # those stay whole.
+    shares = DraftConfig().starter_shares()
+    assert shares["QB"] == pytest.approx(2.0)   # QB + SUPER_FLEX
+    assert shares["RB"] == pytest.approx(2.77)  # RB + RB + 0.77 of FLEX
+    assert shares["WR"] == pytest.approx(3.23)  # WR + WR + REC_FLEX + 0.23 FLEX
+    assert shares["TE"] == pytest.approx(1.0)
+    assert shares["DEF"] == pytest.approx(1.0)
+    assert shares["K"] == 0.0
+
+
+def test_starter_shares_always_sum_to_the_starting_lineup():
+    # However the flex splits, no spot may be invented or lost.
+    for config in (
+        DraftConfig(),
+        DraftConfig(roster_slots=("QB", "WRRB_FLEX", "FLEX", "BN")),
+        DraftConfig(roster_slots=("QB", "RB", "WR", "TE", "BN")),
+    ):
+        assert sum(config.starter_shares().values()) == pytest.approx(
+            len(config.starter_slots)
+        )
+
+
+def test_starter_counts_round_shares_to_whole_players():
+    # positional_need targets a countable roster, so it gets whole numbers --
+    # and they must match what the old all-or-nothing attribution produced.
     counts = DraftConfig().starter_counts()
     assert counts == {"QB": 2, "RB": 3, "WR": 3, "TE": 1, "K": 0, "DEF": 1}
     assert sum(counts.values()) == 10
