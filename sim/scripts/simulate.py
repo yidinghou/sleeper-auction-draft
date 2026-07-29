@@ -82,6 +82,16 @@ def _print_summary(result) -> None:
         f"({min_bid_picks / max(1, len(result.picks)):.0%} of the draft)"
     )
 
+    # A seat that ends far from $0 never found anything worth bidding on -- its
+    # slots ran out before its money did. Paired with the $1 share above, that's
+    # the signature of the market anchor losing signal late in the draft.
+    unspent = [m.budget for m in result.managers.values()]
+    worst = max(result.managers.values(), key=lambda m: m.budget)
+    print(
+        f"Unspent: {sum(unspent) / len(unspent):.1f} avg, "
+        f"${worst.budget} max ({worst.manager_id})"
+    )
+
     # A full-budget spend with a long $1 tail is the expected shape for a
     # 12-team $200 auction, not a defect -- aggregate $PROJ across the drafted
     # players is about the same as the league's total budget.
