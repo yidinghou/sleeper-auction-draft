@@ -1,4 +1,4 @@
-from draftsim.agents import DraftAgent, HeuristicAgent, build_field
+from draftsim.agents import SIT_OUT, DraftAgent, HeuristicAgent, build_field
 from draftsim.auction import MIN_BID, max_bid
 from draftsim.config import DraftConfig
 from draftsim.engine import DraftState, ManagerState
@@ -183,3 +183,61 @@ def test_quantization_does_not_invert_the_top_of_the_board():
     pool = [P("pricey", "WR", dollar=50, points=10.0), P("cheap", "WR", dollar=5, points=300.0)]
     state = _state(config, {"me": []}, {"me": 200}, pool)
     assert HeuristicAgent("me", jitter_frac=0.0).nominate(state, "me").name == "pricey"
+
+
+# --- positional depth ceilings ---------------------------------------------
+
+
+def test_startable_slots_counts_concrete_and_flex_routes():
+    from draftsim.roster import startable_slots
+
+    config = DraftConfig()
+    # Default 2QB lineup: QB+SFLX, RB+RB+FLEX+SFLX, WR+WR+FLEX+RFLX+SFLX,
+    # TE+FLEX+RFLX+SFLX, DEF, and no K slot at all.
+    assert startable_slots("QB", config) == 2
+    assert startable_slots("RB", config) == 4
+    assert startable_slots("WR", config) == 5
+    assert startable_slots("TE", config) == 4
+    assert startable_slots("DEF", config) == 1
+    assert startable_slots("K", config) == 0
+
+
+def test_a_second_defense_is_worth_nothing():
+    # No rule names DEF anywhere: it has one slot and no flex accepts it, so a
+    # seat that owns a defense has zero DEF exposure left.
+    config = DraftConfig()
+    roster = [P(f"p{i}", "WR") for i in range(9)] + [P("def1", "DEF", dollar=2)]
+    state = _state(config, {"me": roster}, {"me": 200}, [P("def2", "DEF", dollar=2)])
+    agent = HeuristicAgent("me", jitter_frac=0.0)
+    assert agent._depth_exposure(roster, "DEF", config) == 0.0
+    assert agent.bid(state, P("def2", "DEF", dollar=2), "me") == SIT_OUT
+
+
+def test_a_second_defense_is_never_nominated():
+    # The engine forces a nominator to open at MIN_BID, so nominating a body you
+    # would not bid on is how you end up owning it.
+    config = DraftConfig()
+    roster = [P(f"p{i}", "WR") for i in range(3)] + [P("def1", "DEF", dollar=2)]
+    # The spare DEF projects far more points than the spare RB, so a
+    # points-ordered nomination would take it if exposure were ignored.
+    pool = [P("def2", "DEF", dollar=1, points=90.0), P("rb", "RB", dollar=1, points=40.0)]
+    state = _state(config, {"me": roster}, {"me": 200}, pool)
+    assert HeuristicAgent("me", jitter_frac=0.0).nominate(state, "me").pos == "RB"
+
+
+def test_depth_keeps_a_residual_where_a_position_starts_several():
+    # A 5th WR is covered to the ceiling but still insurable; a 2nd DEF is not.
+    config = DraftConfig()
+    agent = HeuristicAgent("me", jitter_frac=0.0, bench_insurance=0.10)
+    wrs = [P(f"wr{i}", "WR") for i in range(5)]
+    assert agent._depth_exposure(wrs, "WR", config) == 0.10
+    assert agent._depth_exposure([P("d", "DEF")], "DEF", config) == 0.0
+    # Turning the knob off makes the slot ceiling a hard cap.
+    hard = HeuristicAgent("me", jitter_frac=0.0, bench_insurance=0.0)
+    assert hard._depth_exposure(wrs, "WR", config) == 0.0
+
+
+def test_kickers_are_never_worth_anything_without_a_k_slot():
+    config = DraftConfig()
+    agent = HeuristicAgent("me", jitter_frac=0.0)
+    assert agent._depth_exposure([], "K", config) == 0.0

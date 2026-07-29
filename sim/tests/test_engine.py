@@ -181,3 +181,32 @@ def test_picks_record_the_sealed_bids():
         # Only real offers are logged; a seat sitting out leaves no Bid behind.
         assert all(amount >= MIN_BID for amount in amounts)
         assert len({bid.manager_id for bid in pick.bids}) == len(pick.bids)
+
+
+def test_no_seat_drafts_a_second_defense():
+    # Structural, not a rule: DEF has one lineup slot and no flex accepts it, so
+    # a seat that owns one has no reason to want another. Guards the whole path
+    # -- a seat used to nominate a spare DEF (the only cheap position still
+    # carrying a $PROJ) and the forced MIN_BID open then made it buy it.
+    from collections import Counter
+
+    for seed in (1, 2, 3):
+        result, _ = _run(seed=seed)
+        for manager in result.managers.values():
+            counts = Counter(p.pos for p in manager.roster)
+            assert counts["DEF"] <= 1, f"seed {seed} {manager.manager_id}: {counts}"
+            assert counts["K"] == 0, f"seed {seed} drafted a kicker: {counts}"
+
+
+def test_seats_do_not_all_build_the_identical_roster_shape():
+    # The startable slots sum to exactly the roster size, so a hard positional
+    # ceiling would force every seat into the same 2/4/5/4/1 shape and leave
+    # Stage 4 archetypes nothing to vary. bench_insurance keeps that open.
+    from collections import Counter
+
+    result, _ = _run(seed=1)
+    shapes = {
+        tuple(sorted(Counter(p.pos for p in m.roster).items()))
+        for m in result.managers.values()
+    }
+    assert len(shapes) > 1

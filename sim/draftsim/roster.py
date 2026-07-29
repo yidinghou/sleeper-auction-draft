@@ -13,6 +13,7 @@ report layer actually needs the bench/overflow shape.)
 
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Callable, Dict, List, Optional, Sequence
 
 from .config import FLEX_ELIGIBILITY, DraftConfig
@@ -24,6 +25,26 @@ def _slot_accepts(slot: str, player: Player) -> bool:
     if eligible is not None:
         return bool(player.pos) and player.pos in eligible
     return player.pos == slot
+
+
+@lru_cache(maxsize=None)
+def startable_slots(pos: str, config: DraftConfig) -> int:
+    """How many starting slots this position could *ever* occupy.
+
+    Counts the concrete slot plus every flex that accepts the position, which is
+    the structural measure of how much a league actually plays a position. In
+    the default 2QB lineup: WR 5, RB 4, TE 4, QB 2, DEF 1, K 0. Note this is a
+    ceiling on useful bodies, not a starter count — you start one DEF, and since
+    no flex accepts DEF, a second one can never enter the lineup.
+
+    Cached: `DraftConfig` is a frozen dataclass, so it hashes, and the answer is
+    fixed for a league. Callers hit this once per candidate per bid.
+    """
+    return sum(
+        1
+        for slot in config.starter_slots
+        if pos in FLEX_ELIGIBILITY.get(slot, (slot,))
+    )
 
 
 def _match_starters(

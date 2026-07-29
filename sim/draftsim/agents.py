@@ -22,10 +22,11 @@ players deep, so a $1 body at any position is always available.
 from __future__ import annotations
 
 import random
-from typing import TYPE_CHECKING, Dict, Optional, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Dict, Optional, Protocol, Sequence, runtime_checkable
 
 from .auction import MIN_BID, can_bid, max_bid
-from .roster import open_slots, positional_need
+from .config import DraftConfig
+from .roster import open_slots, positional_need, startable_slots
 from .valuation import Player, market_value, vorp_value
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -82,6 +83,11 @@ class HeuristicAgent:
         spread ~764 across seeds; capped, ~251.
       * `vorp_weight`      — how much to blend points-above-replacement into the
         market anchor, 0.0 (market only, the default) to 1.0 (VORP only).
+      * `bench_insurance`  — residual worth of a body at a position already
+        covered to its slot ceiling, as a fraction of depth value. Stands in for
+        bye and injury coverage, which season-total scoring doesn't model. Only
+        granted where the lineup starts a position more than once, so it never
+        resurrects a second defense. 0.0 makes the slot ceiling a hard cap.
     """
 
     def __init__(
@@ -92,6 +98,7 @@ class HeuristicAgent:
         depth_value_mult: float = 0.4,
         max_pick_share: float = 0.5,
         vorp_weight: float = 0.0,
+        bench_insurance: float = 0.10,
     ) -> None:
         self.name = name
         self.seed = str(seed)
@@ -99,6 +106,7 @@ class HeuristicAgent:
         self.depth_value_mult = depth_value_mult
         self.max_pick_share = max_pick_share
         self.vorp_weight = vorp_weight
+        self.bench_insurance = bench_insurance
         self._val_cache: Dict[str, float] = {}
 
     # -- valuation ---------------------------------------------------------
@@ -133,6 +141,36 @@ class HeuristicAgent:
 
     # -- policy ------------------------------------------------------------
 
+    def _depth_exposure(
+        self, roster: Sequence[Player], pos: str, config: DraftConfig
+    ) -> float:
+        """Share of this position's startable slots this roster hasn't covered.
+
+        1.0 when it owns none, falling to `bench_insurance` once it owns as many
+        as the lineup could ever start. This is what makes "don't roster two
+        defenses" fall out of the league structure rather than being written
+        down as a rule: DEF has exactly one slot and no flex accepts it, so a
+        seat that owns a defense drops to zero exposure and a second one is
+        worth nothing — the position is never named anywhere in the code.
+
+        Kickers are zero from the start, for the same structural reason: the
+        default lineup has no K slot at all.
+
+        Positions the lineup starts several of keep a residual instead of
+        dropping to zero, because a spare body there has several routes back
+        into the lineup. Without it every seat drafts the identical positional
+        shape — the startable slots sum to exactly the roster size (2 QB, 4 RB,
+        5 WR, 4 TE, 1 DEF = 16), so a hard ceiling leaves no room to build a
+        roster differently, and Stage 4 archetypes would have nothing to vary.
+        """
+        slots = startable_slots(pos, config)
+        if slots == 0:
+            return 0.0
+        owned = sum(1 for p in roster if p.pos == pos)
+        if owned < slots:
+            return (slots - owned) / slots
+        return self.bench_insurance if slots > 1 else 0.0
+
     def _nomination_key(self, state: "DraftState", player: Player) -> tuple:
         """Rank a nomination candidate: whole dollars, then points, then rank.
 
@@ -154,10 +192,22 @@ class HeuristicAgent:
         pool = state.available
         if not pool:
             return None
-        need = positional_need(state.managers[my_id].roster, state.config)
+        roster = state.managers[my_id].roster
+        need = positional_need(roster, state.config)
         needed = [p for p in pool if need.get(p.pos, 0) > 0]
-        # Nominate the most valuable player at a position we still need; if no
-        # need remains (or the pool has none), throw up the best body available.
+        if not needed:
+            # No starter need left, so this is a depth pick. Only put up players
+            # this seat could still start -- the engine forces a nominator to
+            # open at MIN_BID, so nominating a body you'd never bid on is how
+            # you end up buying it. Falls back to the pool if nothing has
+            # exposure left, which keeps rosters fillable under a lineup whose
+            # bench outnumbers its startable slots.
+            live = [
+                p
+                for p in pool
+                if self._depth_exposure(roster, p.pos, state.config) > 0
+            ]
+            needed = live
         candidates = needed if needed else pool
         return max(candidates, key=lambda p: self._nomination_key(state, p))
 
@@ -203,7 +253,12 @@ class HeuristicAgent:
 
         value = self._valuation(state, player)
         if not is_need:
-            value *= self.depth_value_mult
+            # Depth is discounted, then scaled by how much of this position the
+            # lineup could still start. A body at a position already covered to
+            # its slot ceiling scores 0 and this seat sits out.
+            value *= self.depth_value_mult * self._depth_exposure(
+                me.roster, player.pos, state.config
+            )
 
         # `ceiling` is every dollar this seat may legally commit to one player.
         # The cap takes a fraction of it, floored at MIN_BID so a seat down to

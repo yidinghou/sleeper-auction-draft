@@ -51,6 +51,7 @@ into archetypes:
 | `depth_value_mult` | 0.4 | multiplier on non-need depth (pays 40%, not 40% off) |
 | `max_pick_share` | 0.5 | most of the legal ceiling one buy may consume |
 | `vorp_weight` | 0.0 | blend points-above-replacement into the market anchor |
+| `bench_insurance` | 0.10 | residual worth of depth past a position's slot ceiling |
 
 `max_pick_share` matters most. Uncapped, one seat can sink half its budget into a
 single blowout buy whenever its jitter runs hot, and final rosters become a
@@ -114,6 +115,28 @@ With the free-agent filter, this cleared the dead weight completely: at seed 2,
 picks spent on a free agent or a 0-point player went **46 → 0**, and the median
 `$1` buy went from **0 to 109 projected points**. The worst player drafted now
 projects 13.6.
+
+## Why nobody drafts two defenses
+
+No rule says so. `startable_slots(pos, config)` counts how many starting slots a
+position could *ever* occupy — its concrete slot plus every flex that accepts it.
+In the default lineup that's WR 5, RB 4, TE 4, QB 2, DEF 1, K 0. Depth value is
+then scaled by the share of those slots a roster hasn't covered, so a seat owning
+one defense has zero DEF exposure and a second is worth nothing to it. Kickers
+are worth nothing from the start. Neither position is named anywhere in the agent.
+
+This matters on the **nomination** side more than the bidding side. The engine
+forces a nominator to open at `MIN_BID`, so a seat that nominates something it
+would never bid on ends up buying it — which is exactly how spare defenses were
+landing on rosters, DEF being the only cheap position still carrying a `$PROJ`
+(kickers carry none). Seats now only nominate depth they could still start.
+
+`bench_insurance` (0.10) keeps a residual for positions the lineup starts several
+of. Without it the ceilings bind exactly: startable slots sum to 16, the same as
+the roster size, so every seat is forced into an identical 2 QB / 4 RB / 5 WR /
+4 TE / 1 DEF roster and Stage 4 archetypes would have nothing to vary. With it,
+9–11 of 12 seats build distinct positional shapes and the starter-point spread is
+unchanged (125–172 across seeds 1/2/3/7).
 
 **One intended side effect:** the pure-`$1` tail is now identical across seeds,
 since jitter no longer influences it. Early and mid draft still diverge normally.
