@@ -100,7 +100,27 @@ Nothing draftable is lost — the highest `$PROJ` among free agents is `$1`. VOR
 replacement levels are unchanged too, since replacement is the Nth-best at a
 position (36th WR, and so on) and the top N everywhere are all rostered.
 
+## How nominations are ordered
+
+By **whole dollars → points → Sleeper rank** (`HeuristicAgent._nomination_key`).
+The quantization to whole dollars is the load-bearing part. Only ~126 draftable
+players are priced above `$1`; the rest all anchor at exactly `$1`, so ordering
+by raw valuation let the per-player jitter pick every nomination once the priced
+board sold out — the back half of the draft was an RNG lottery among
+interchangeable bodies, and a 0-point player could outrank a 150-point starter.
+Rounding collapses that tail into one tie, which points then breaks.
+
+With the free-agent filter, this cleared the dead weight completely: at seed 2,
+picks spent on a free agent or a 0-point player went **46 → 0**, and the median
+`$1` buy went from **0 to 109 projected points**. The worst player drafted now
+projects 13.6.
+
+**One intended side effect:** the pure-`$1` tail is now identical across seeds,
+since jitter no longer influences it. Early and mid draft still diverge normally.
+Less RNG in the bench is the point — it's noise Stage 5 would have to average out.
+
 **Not a bug:** managers spending nearly their whole budget, with ~40% of picks at
 `$1`. Aggregate `$PROJ` across the drafted players is about the same as the
 league's total budget, so a full spend with a long `$1` tail is the correct shape
-for a 12-team `$200` auction. Stage 5 metrics should not chase it.
+for a 12-team `$200` auction. Stage 5 metrics should not chase it. What the tail
+should *not* contain is 0-point players; that's the defect above, now fixed.

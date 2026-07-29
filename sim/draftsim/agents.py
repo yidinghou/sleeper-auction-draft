@@ -36,6 +36,10 @@ if TYPE_CHECKING:  # pragma: no cover
 # a bid method is never mistaken for a real $0 offer.
 SIT_OUT = 0
 
+# Sort key for a player Sleeper never ranked. Larger than any real rank, so an
+# unranked player falls behind every ranked one instead of ahead of them.
+_WORST_RANK = 10**9
+
 
 @runtime_checkable
 class DraftAgent(Protocol):
@@ -129,6 +133,23 @@ class HeuristicAgent:
 
     # -- policy ------------------------------------------------------------
 
+    def _nomination_key(self, state: "DraftState", player: Player) -> tuple:
+        """Rank a nomination candidate: whole dollars, then points, then rank.
+
+        Price leads, but it is quantized to whole dollars — partly because an
+        auction cannot resolve finer, and mainly because below the $1 floor it
+        carries no information at all. Only 126 of the ~1000 draftable players
+        have a $PROJ over $1; the rest all anchor at exactly $1, so a raw
+        valuation would order them purely by their jitter draw and hand the
+        entire back half of the draft to the RNG. Rounding collapses that tail
+        to a single tie, which points then breaks.
+
+        Points before Sleeper rank because points is what the sim scores, and
+        rank is missing for most of the sheet. Rank negated: lower is better.
+        """
+        rank = player.rank if player.rank is not None else _WORST_RANK
+        return (round(self._valuation(state, player)), player.points, -rank)
+
     def nominate(self, state: "DraftState", my_id: str) -> Optional[Player]:
         pool = state.available
         if not pool:
@@ -138,7 +159,7 @@ class HeuristicAgent:
         # Nominate the most valuable player at a position we still need; if no
         # need remains (or the pool has none), throw up the best body available.
         candidates = needed if needed else pool
-        return max(candidates, key=lambda p: self._valuation(state, p))
+        return max(candidates, key=lambda p: self._nomination_key(state, p))
 
     def bid(self, state: "DraftState", player: Player, my_id: str) -> int:
         """Sealed offer for `player`, in dollars. `SIT_OUT` to decline.

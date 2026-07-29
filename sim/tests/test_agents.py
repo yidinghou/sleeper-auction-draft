@@ -148,3 +148,38 @@ def test_nominates_a_needed_position_over_a_pricier_non_need():
     state = _state(config, {"me": roster}, {"me": 200}, pool)
     nom = HeuristicAgent("me", jitter_frac=0.0).nominate(state, "me")
     assert nom.pos == "WR"  # a need beats the richer non-need
+
+def test_dollar_ties_are_broken_by_points_not_jitter():
+    # The defect this guards: only ~126 draftable players are priced above the
+    # $1 floor, so the rest of the pool anchors at exactly $1. With a raw
+    # valuation the jitter draw picked the nomination, handing the back half of
+    # the draft to the RNG -- a 0-point body could outrank a real starter.
+    # Jitter is left ON here; the test would fail without dollar quantization.
+    config = DraftConfig()
+    pool = [P("scrub", "WR", dollar=1, points=0.0), P("starter", "WR", dollar=1, points=120.0)]
+    state = _state(config, {"me": []}, {"me": 200}, pool)
+    for seed in ("1", "2", "3", "17"):
+        agent = HeuristicAgent("me", seed=seed, jitter_frac=0.15)
+        assert agent.nominate(state, "me").name == "starter"
+
+
+def test_sleeper_rank_breaks_a_tie_on_equal_dollars_and_points():
+    config = DraftConfig()
+    ranked = Player(id="ranked", name="ranked", pos="WR", team="BUF",
+                    proj_dollar=1, points=50.0, rank=40)
+    unranked = Player(id="unranked", name="unranked", pos="WR", team="BUF",
+                      proj_dollar=1, points=50.0, rank=None)
+    worse = Player(id="worse", name="worse", pos="WR", team="BUF",
+                   proj_dollar=1, points=50.0, rank=300)
+    state = _state(config, {"me": []}, {"me": 200}, [unranked, worse, ranked])
+    agent = HeuristicAgent("me", jitter_frac=0.0)
+    assert agent.nominate(state, "me").name == "ranked"  # lowest rank wins
+
+
+def test_quantization_does_not_invert_the_top_of_the_board():
+    # Points only breaks ties *within* a dollar. A genuinely pricier player must
+    # still be nominated over a cheaper one that happens to project more points.
+    config = DraftConfig()
+    pool = [P("pricey", "WR", dollar=50, points=10.0), P("cheap", "WR", dollar=5, points=300.0)]
+    state = _state(config, {"me": []}, {"me": 200}, pool)
+    assert HeuristicAgent("me", jitter_frac=0.0).nominate(state, "me").name == "pricey"
