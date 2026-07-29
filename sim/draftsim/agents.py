@@ -4,7 +4,8 @@ Stage 3 ships exactly one, `HeuristicAgent` — a need-aware value bidder with n
 archetype personality yet (those arrive in Stage 4, as parameter presets of this
 same class). It anchors its valuations on Sleeper's market price ($PROJ) with a
 small deterministic per-player jitter so different seeds and seats diverge, bids
-under that value (see `bid` on shading), and stays inside two hard rails:
+that value outright (see `bid` on why it does not shade), and stays inside two
+hard rails:
 
   * the budget reserve (`max_bid` / `can_bid` from auction.py), and
   * a slot rail: never spend a roster spot on depth while every remaining slot
@@ -70,14 +71,11 @@ class HeuristicAgent:
       * `depth_value_mult` — multiplier applied to value for non-need depth. It
         is a multiplier, not a discount: 0.4 means "pay 40% of value", not
         "take 40% off".
-      * `shade`            — fraction of private value held back when bidding.
-        0.15 offers 85% of value. See `bid` for why a first-price auction needs
-        this; 0.0 restores full-value bidding.
       * `max_pick_share`   — cap on how much of a seat's legal ceiling one buy
         may consume. 0.5 means no single player takes more than half of what
-        this seat could commit; 1.0 disables the cap. A concentration guardrail
-        against one blowout buy, not the fix for the winner's curse — that's
-        `shade`.
+        this seat could commit; 1.0 disables the cap. This is the knob that
+        keeps the draft from being decided by the RNG: uncapped, starter points
+        spread ~764 across seeds; capped, ~251.
       * `vorp_weight`      — how much to blend points-above-replacement into the
         market anchor, 0.0 (market only, the default) to 1.0 (VORP only).
     """
@@ -88,7 +86,6 @@ class HeuristicAgent:
         seed: str = "0",
         jitter_frac: float = 0.15,
         depth_value_mult: float = 0.4,
-        shade: float = 0.15,
         max_pick_share: float = 0.5,
         vorp_weight: float = 0.0,
     ) -> None:
@@ -96,7 +93,6 @@ class HeuristicAgent:
         self.seed = str(seed)
         self.jitter_frac = jitter_frac
         self.depth_value_mult = depth_value_mult
-        self.shade = shade
         self.max_pick_share = max_pick_share
         self.vorp_weight = vorp_weight
         self._val_cache: Dict[str, float] = {}
@@ -147,18 +143,30 @@ class HeuristicAgent:
     def bid(self, state: "DraftState", player: Player, my_id: str) -> int:
         """Sealed offer for `player`, in dollars. `SIT_OUT` to decline.
 
-        Value passes through four filters, narrowest last:
+        The agent offers its full private value. Value passes through three
+        filters, narrowest last:
           1. depth       — non-need players are worth `depth_value_mult` of value
-          2. shade       — hold back `shade` of it (see below)
-          3. pick cap    — no single buy eats more than `max_pick_share` of the
+          2. pick cap    — no single buy eats more than `max_pick_share` of the
                            ceiling
-          4. reserve     — the hard `max_bid` ceiling, which keeps $1 per slot
+          3. reserve     — the hard `max_bid` ceiling, which keeps $1 per slot
 
-        On shading: this is a first-price sealed auction, so a seat that offers
-        its full private value wins only when its own jitter ran highest, and
-        pays exactly what it thought the player was worth. That is the winner's
-        curse — it makes final rosters a function of the RNG rather than of the
-        parameters. Bidding under value means winning implies surplus.
+        Why no bid shading: a first-price sealed auction normally invites a seat
+        to offer under its value, since it pays its own bid. It was tried here
+        (a flat 15% holdback) and removed. Two reasons. It did not do what it
+        was credited with — `max_pick_share`, added in the same commit, is what
+        collapsed the RNG-driven spread (764 -> 251); shading on top of the cap
+        made the spread *worse* (251 -> 306). And it stranded money: a uniform
+        discount means the field as a whole under-bids the board, so seats ran
+        out of roster slots with $40-$92 unspent instead of the $3-$4 they end
+        with now.
+
+        The winner's curse it was meant to fix is small in this model. With 12
+        seats drawing +/-15% jitter, the top two valuations are almost always
+        within a dollar, so paying your own bid costs ~$1 over paying the
+        runner-up's — league-wide spend under a second-price rule is 2380 vs
+        2381. Which is also why bidding full value in a first-price auction is
+        an honest stand-in for the ascending open auction Sleeper actually runs,
+        rather than a simplification that distorts prices.
         """
         me = state.managers[my_id]
         slots = me.open_slots(state.config)
@@ -175,7 +183,6 @@ class HeuristicAgent:
         value = self._valuation(state, player)
         if not is_need:
             value *= self.depth_value_mult
-        value *= 1.0 - self.shade
 
         # `ceiling` is every dollar this seat may legally commit to one player.
         # The cap takes a fraction of it, floored at MIN_BID so a seat down to

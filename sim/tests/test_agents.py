@@ -80,27 +80,26 @@ def test_full_roster_cannot_bid():
 def test_bid_never_exceeds_reserve_ceiling():
     config = DraftConfig()
     state = _state(config, {"me": []}, {"me": 200}, [])
-    # Cap and shade off, so the reserve ceiling is the only thing left to clamp.
-    agent = HeuristicAgent("me", jitter_frac=0.0, shade=0.0, max_pick_share=1.0)
+    # Cap off, so the reserve ceiling is the only thing left to clamp.
+    agent = HeuristicAgent("me", jitter_frac=0.0, max_pick_share=1.0)
     got = agent.bid(state, P("Whale", "QB", dollar=10_000), "me")
     assert got == max_bid(200, config.roster_size)
 
 
-def test_shade_holds_back_a_fraction_of_value():
+def test_bid_offers_full_market_value_without_shading():
+    # No holdback: a $40 player draws a $40 offer once jitter and the cap are
+    # out of the way. Bidding under value stranded budget; see HeuristicAgent.bid.
     config = DraftConfig()
     state = _state(config, {"me": []}, {"me": 200}, [])
-    whale = P("Star", "QB", dollar=40)
-    unshaded = HeuristicAgent("me", jitter_frac=0.0, shade=0.0, max_pick_share=1.0)
-    shaded = HeuristicAgent("me", jitter_frac=0.0, shade=0.25, max_pick_share=1.0)
-    assert unshaded.bid(state, whale, "me") == 40
-    assert shaded.bid(state, whale, "me") == 30  # 40 * (1 - 0.25)
+    agent = HeuristicAgent("me", jitter_frac=0.0, max_pick_share=1.0)
+    assert agent.bid(state, P("Star", "QB", dollar=40), "me") == 40
 
 
 def test_pick_cap_limits_one_buy_to_a_share_of_the_ceiling():
     config = DraftConfig()
     state = _state(config, {"me": []}, {"me": 200}, [])
     ceiling = max_bid(200, config.roster_size)
-    agent = HeuristicAgent("me", jitter_frac=0.0, shade=0.0, max_pick_share=0.5)
+    agent = HeuristicAgent("me", jitter_frac=0.0, max_pick_share=0.5)
     # Even for a player worth far more than the whole budget, the cap binds.
     assert agent.bid(state, P("Whale", "QB", dollar=10_000), "me") == round(ceiling * 0.5)
 

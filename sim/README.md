@@ -49,15 +49,37 @@ into archetypes:
 | --- | --- | --- |
 | `jitter_frac` | 0.15 | ± band on market price, so seats disagree |
 | `depth_value_mult` | 0.4 | multiplier on non-need depth (pays 40%, not 40% off) |
-| `shade` | 0.15 | fraction of value held back when bidding |
 | `max_pick_share` | 0.5 | most of the legal ceiling one buy may consume |
 | `vorp_weight` | 0.0 | blend points-above-replacement into the market anchor |
 
-`shade` matters most. In a first-price sealed auction an agent bidding its full
-value wins only when its own jitter ran highest, and pays exactly what it thought
-the player was worth — the winner's curse. Unshaded, that spread starter points
-across seats by ~751 at seed 1 (1198 to 1949), swamping any archetype difference
-Stage 4 would introduce. Shading cuts it to ~300.
+`max_pick_share` matters most. Uncapped, one seat can sink half its budget into a
+single blowout buy whenever its jitter runs hot, and final rosters become a
+function of the RNG rather than of the parameters: starter points spread ~764
+across seeds 1/2/3/7. The cap collapses that to ~251, which is what leaves room
+for a Stage-4 archetype difference to show up at all.
+
+**Agents bid their full value — there is no shading.** A 15% holdback was tried
+and removed. Measured per knob across seeds 1/2/3/7:
+
+| | mean starter-point spread | max unspent |
+| --- | --- | --- |
+| shade 0, cap off | 764 | $0–10 |
+| shade .15, cap off | 517 | $84–92 |
+| **shade 0, cap .5** (today) | **251** | **$3–4** |
+| shade .15, cap .5 | 306 | $40–92 |
+
+Shading was credited with the 764 → ~300 improvement, but it shipped in the same
+commit as the cap and the cap did the work; on top of the cap, shading makes the
+spread *worse*. It also stranded budget — a uniform discount means the field
+under-bids the board, so seats ran out of slots holding $40–$92.
+
+The winner's curse it was meant to fix is small here: with 12 seats drawing ±15%
+jitter the top two valuations are almost always within a dollar, so paying your
+own bid costs about $1 per player over paying the runner-up's (league-wide spend
+under a second-price rule is 2380 vs 2381). That is also why first-price with
+full-value bidding is a fair stand-in for the ascending auction Sleeper really
+runs. If a genuine open-outcry model is wanted later, `resolve_auction_round` is
+the single seam to change.
 
 Two rails bound every bid: the budget **reserve** (`max_bid`/`can_bid`) and a
 **slot rail** (never spend a slot on depth while an unmet starter need still
