@@ -15,9 +15,20 @@ def players():
     return load_players()
 
 
-def test_loads_all_fantasy_players(players):
+def test_loads_only_rostered_players(players):
     # CSV is 3224 lines incl. header -> 3223 data rows, all with a position.
-    assert len(players) == 3223
+    # 2185 of them are free agents and are not draftable.
+    assert len(players) == 1038
+    assert all(p.team for p in players)
+
+
+def test_free_agents_flag_returns_the_whole_sheet():
+    everyone = load_players(free_agents=True)
+    assert len(everyone) == 3223
+    assert any(not p.team for p in everyone)
+    # Nothing draftable is lost by the default filter: no free agent is priced
+    # above the $1 floor.
+    assert max((p.proj_dollar or 0) for p in everyone if not p.team) == 1
 
 
 def test_spot_check_josh_allen(players):

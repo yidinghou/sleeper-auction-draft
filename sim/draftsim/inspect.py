@@ -17,7 +17,10 @@ from .valuation import (
 def main() -> None:
     config = DraftConfig()
     players = load_players()
-    print(f"Loaded {len(players)} players | starter counts: {config.starter_counts()}")
+    print(
+        f"Loaded {len(players)} draftable players (free agents excluded) "
+        f"| starter counts: {config.starter_counts()}"
+    )
 
     repl = replacement_points(players, config)
     print("Replacement points/pos:", {k: round(v, 1) for k, v in repl.items()})

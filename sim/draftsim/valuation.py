@@ -52,9 +52,24 @@ def _float_or_zero(raw: str) -> float:
     return float(raw) if raw else 0.0
 
 
-def load_players(path: Optional[Path] = None) -> List[Player]:
-    """Read the projections CSV into Player rows. Rows missing a position or name
-    are skipped; missing numeric cells become None (dollar/bye/rank) or 0.0 (points)."""
+def load_players(
+    path: Optional[Path] = None, *, free_agents: bool = False
+) -> List[Player]:
+    """Read the projections CSV into draftable Player rows.
+
+    Rows missing a position or name are skipped; missing numeric cells become
+    None (dollar/bye/rank) or 0.0 (points).
+
+    Free agents — an empty `team` cell — are skipped too, unless `free_agents`
+    is set. They are 2185 of the CSV's 3223 rows: retired or unsigned players
+    (Stefon Diggs, Joe Mixon, Najee Harris) who cannot score for anyone this
+    season. Nothing draftable is lost by dropping them — the highest $PROJ among
+    them is $1 — while keeping them makes them the bulk of the pool, where they
+    crowd out real players in any tie broken below the $1 price floor.
+
+    Pass `free_agents=True` for the raw sheet (a waiver-wire model, or eyeballing
+    the whole export).
+    """
     csv_path = Path(path) if path is not None else DEFAULT_CSV
     players: List[Player] = []
     with open(csv_path, newline="", encoding="utf-8") as fh:
@@ -63,6 +78,8 @@ def load_players(path: Optional[Path] = None) -> List[Player]:
             pos = (row.get("position") or "").strip()
             team = (row.get("team") or "").strip()
             if not name or not pos:
+                continue
+            if not team and not free_agents:
                 continue
             players.append(
                 Player(

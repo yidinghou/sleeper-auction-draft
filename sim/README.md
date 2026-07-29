@@ -87,6 +87,19 @@ claims it). They guarantee a seat keeps the *room and money* to finish a legal
 lineup — not that it wins the positions it needs. Legality is checked after the
 fact by `engine.invariant_violations`.
 
+## The player pool
+
+`load_players()` returns **draftable** players only — 1038 of the CSV's 3223
+rows. The other 2185 have an empty `team`: retired or unsigned players (Stefon
+Diggs, Joe Mixon, Najee Harris) who cannot score for anyone this season. Keeping
+them made them two thirds of the pool, where they crowded out real players in
+every tie broken below the `$1` price floor. Pass `free_agents=True` for the raw
+sheet.
+
+Nothing draftable is lost — the highest `$PROJ` among free agents is `$1`. VORP
+replacement levels are unchanged too, since replacement is the Nth-best at a
+position (36th WR, and so on) and the top N everywhere are all rostered.
+
 **Not a bug:** managers spending nearly their whole budget, with ~40% of picks at
 `$1`. Aggregate `$PROJ` across the drafted players is about the same as the
 league's total budget, so a full spend with a long `$1` tail is the correct shape
