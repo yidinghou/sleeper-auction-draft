@@ -166,3 +166,18 @@ def test_runs_on_a_small_field():
     assert len(result.managers) == 4
     for m in result.managers.values():
         assert is_lineup_legal(m.roster, config)
+
+
+def test_picks_record_the_sealed_bids():
+    # The report reads pick.bids to show who lost and by how much, so the log
+    # has to agree with the sale it belongs to.
+    result, _ = _run(seed=3, teams=4)
+    assert result.picks
+    for pick in result.picks:
+        assert pick.bids, f"pick {pick.pick_no} has no bid log"
+        amounts = [bid.amount for bid in pick.bids]
+        assert pick.price == max(amounts)
+        assert pick.winner_id in {bid.manager_id for bid in pick.bids}
+        # Only real offers are logged; a seat sitting out leaves no Bid behind.
+        assert all(amount >= MIN_BID for amount in amounts)
+        assert len({bid.manager_id for bid in pick.bids}) == len(pick.bids)

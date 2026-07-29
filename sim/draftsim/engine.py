@@ -71,6 +71,12 @@ class Pick:
     player: Player
     winner_id: str
     price: int
+    # Every sealed bid this round, in seat order. Only *offers* land here: a seat
+    # gated out by `can_bid` (roster full, or budget down to its reserve) and a
+    # seat that bid under MIN_BID both produce no Bid at all. So a manager
+    # missing from this tuple sat the round out — it did not bid $0. Defaults to
+    # empty so a Pick can be built without a bid log (tests, fixtures).
+    bids: Tuple[Bid, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -185,7 +191,9 @@ def run_draft(
         winner = managers[winner_id]
         winner.budget -= price
         winner.roster.append(player)
-        picks.append(Pick(pick_no, nominator_id, player, winner_id, price))
+        picks.append(
+            Pick(pick_no, nominator_id, player, winner_id, price, tuple(bids))
+        )
         pick_no += 1
         _take_from_pool(available, player)
 
