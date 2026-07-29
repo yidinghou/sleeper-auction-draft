@@ -55,3 +55,4 @@ __pycache__/
 sim/.venv/
 sim/*.egg-info/
 sim/draftsim.egg-info/
+sim/out/

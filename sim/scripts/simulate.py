@@ -9,13 +9,18 @@ Stage 5 grows this into the batch/metrics CLI.
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 from draftsim.agents import build_field
 from draftsim.auction import MIN_BID
 from draftsim.config import DraftConfig
 from draftsim.engine import invariant_violations, run_draft
+from draftsim.report import render_html
 from draftsim.roster import starters
 from draftsim.valuation import load_players
+
+# Generated HTML boards land here (gitignored).
+OUT_DIR = Path(__file__).resolve().parents[1] / "out"
 
 # How many of each manager's most expensive buys to show per line.
 TOP_BUYS_SHOWN = 6
@@ -62,6 +67,11 @@ def main() -> None:
         )
 
     _print_summary(result)
+
+    OUT_DIR.mkdir(exist_ok=True)
+    html_path = OUT_DIR / f"draft-seed{args.seed}.html"
+    html_path.write_text(render_html(result, seed=args.seed), encoding="utf-8")
+    print(f"\nHTML board: {html_path}")
 
 
 def _print_summary(result) -> None:
