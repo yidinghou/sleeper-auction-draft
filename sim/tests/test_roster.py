@@ -1,6 +1,15 @@
+import pytest
+
 from draftsim.config import DraftConfig
-from draftsim.roster import is_lineup_legal, open_slots, positional_need, starters
-from draftsim.valuation import Player
+from draftsim.roster import (
+    is_lineup_legal,
+    marginal_points,
+    marginal_thresholds,
+    open_slots,
+    positional_need,
+    starters,
+)
+from draftsim.valuation import Player, replacement_points, vorp_value
 
 
 def P(name: str, pos: str, points: float = 0.0) -> Player:
@@ -128,3 +137,65 @@ def test_meeting_every_need_yields_a_legal_lineup():
     for pos, count in target.items():
         roster += [P(f"{pos}{i}", pos) for i in range(count)]
     assert is_lineup_legal(roster, config)
+
+
+# --- marginal lineup value -------------------------------------------------
+
+
+def _pool():
+    """A pool deep enough that every position has a real replacement level."""
+    pool = []
+    for pos, n, top in (("QB", 30, 300.0), ("RB", 40, 280.0), ("WR", 50, 260.0),
+                        ("TE", 30, 190.0), ("DEF", 16, 105.0), ("K", 14, 120.0)):
+        pool += [
+            Player(id=f"{pos}{i}", name=f"{pos}{i}", pos=pos, team="NE",
+                   points=top - i * 4.0)
+            for i in range(n)
+        ]
+    return pool
+
+
+def test_marginal_thresholds_match_a_direct_lineup_recomputation():
+    # The whole point of thresholds is to avoid recomputing the lineup per
+    # candidate. That shortcut is only valid if it agrees exactly with doing it
+    # the slow way, across arbitrary rosters -- so check it does.
+    import random
+
+    from draftsim.roster import _lineup_points, _replacement_bench
+
+    config = DraftConfig()
+    pool = _pool()
+    replacement = replacement_points(pool, config)
+    bench = _replacement_bench(config, replacement)
+    rng = random.Random(0)
+
+    for _ in range(12):
+        roster = rng.sample(pool, rng.randint(0, 14))
+        thresholds = marginal_thresholds(roster, config, replacement)
+        base = _lineup_points(roster + bench, config)
+        for cand in rng.sample(pool, 20):
+            direct = _lineup_points(roster + bench + [cand], config) - base
+            assert marginal_points(cand, thresholds) == pytest.approx(direct)
+
+
+def test_marginal_on_an_empty_roster_is_classic_vorp():
+    # Marginal value is a generalization of VORP, not a replacement for it: with
+    # nothing rostered, every slot is empty and the two must agree exactly.
+    config = DraftConfig()
+    pool = _pool()
+    replacement = replacement_points(pool, config)
+    thresholds = marginal_thresholds([], config, replacement)
+    for pos in ("QB", "RB", "WR", "TE", "DEF"):
+        best = max((p for p in pool if p.pos == pos), key=lambda p: p.points)
+        assert marginal_points(best, thresholds) == pytest.approx(
+            vorp_value(best, replacement)
+        )
+
+
+def test_an_unstartable_position_is_always_worth_zero():
+    # No K slot in the default lineup, so no kicker can ever add anything.
+    config = DraftConfig()
+    pool = _pool()
+    thresholds = marginal_thresholds([], config, replacement_points(pool, config))
+    best_k = max((p for p in pool if p.pos == "K"), key=lambda p: p.points)
+    assert marginal_points(best_k, thresholds) == 0.0

@@ -47,6 +47,86 @@ def startable_slots(pos: str, config: DraftConfig) -> int:
     )
 
 
+# Points for the sentinel used to probe a position's marginal threshold. Any
+# value that always wins its slot works; this one is far past a real season.
+_SENTINEL_POINTS = 1e6
+
+
+def _replacement_bench(
+    config: DraftConfig, replacement: Dict[str, float]
+) -> List[Player]:
+    """Phantom replacement-level bodies, enough to fill every startable slot.
+
+    An empty roster slot isn't worth the full points of whoever fills it — you
+    could always have had a replacement-level player there for ~$1. Padding the
+    lineup with these makes "what does this player add" measure the real gain
+    over the waiver wire rather than over nothing.
+
+    One phantom per slot the position can occupy is exactly enough to saturate
+    the lineup, and no more: `startable_slots` is by definition the most of that
+    position any lineup can start.
+    """
+    bench: List[Player] = []
+    for pos, points in replacement.items():
+        if points == float("inf"):  # position this lineup can't start at all
+            continue
+        for i in range(startable_slots(pos, config)):
+            bench.append(
+                Player(id=f"~repl:{pos}:{i}", name=f"replacement {pos}",
+                       pos=pos, team="~", points=points)
+            )
+    return bench
+
+
+def _lineup_points(players: Sequence[Player], config: DraftConfig) -> float:
+    return sum(p.points for p in starters(players, config) if p is not None)
+
+
+def marginal_thresholds(
+    roster: Sequence[Player], config: DraftConfig, replacement: Dict[str, float]
+) -> Dict[str, float]:
+    """Points a player must clear, per position, to improve this lineup at all.
+
+    The marginal value of any candidate is then a subtraction:
+
+        max(0.0, player.points - thresholds[player.pos])
+
+    which is what makes this affordable — scoring a 1000-player pool costs one
+    matching per position here instead of one per candidate. The identity holds
+    because the lineup is a matching over a transversal matroid: for a fixed
+    position the gain is linear in the incoming player's points above whatever
+    they displace, and flat at zero below it. `tests/test_roster.py` checks it
+    against directly recomputing the lineup.
+
+    Each threshold is read off by probing with a sentinel that always wins its
+    slot: it gains `SENTINEL - threshold`, so the threshold falls out.
+
+    This is what makes a second defense worthless without naming defenses
+    anywhere. One DEF slot and no DEF flex means the incumbent is what a second
+    one would have to displace, so the threshold is the incumbent's own points.
+    """
+    padded = list(roster) + _replacement_bench(config, replacement)
+    base = _lineup_points(padded, config)
+
+    thresholds: Dict[str, float] = {}
+    for pos, points in replacement.items():
+        if points == float("inf"):
+            # Unstartable: nothing at this position can ever help, so no score
+            # clears the bar.
+            thresholds[pos] = _SENTINEL_POINTS
+            continue
+        sentinel = Player(id="~probe", name="probe", pos=pos, team="~",
+                          points=_SENTINEL_POINTS)
+        gain = _lineup_points(padded + [sentinel], config) - base
+        thresholds[pos] = _SENTINEL_POINTS - gain
+    return thresholds
+
+
+def marginal_points(player: Player, thresholds: Dict[str, float]) -> float:
+    """Points this player would add to the lineup `thresholds` was built from."""
+    return max(0.0, player.points - thresholds.get(player.pos, _SENTINEL_POINTS))
+
+
 def _match_starters(
     players: Sequence[Player],
     config: DraftConfig,

@@ -50,8 +50,7 @@ into archetypes:
 | `jitter_frac` | 0.15 | ± band on market price, so seats disagree |
 | `depth_value_mult` | 0.4 | multiplier on non-need depth (pays 40%, not 40% off) |
 | `max_pick_share` | 0.5 | most of the legal ceiling one buy may consume |
-| `vorp_weight` | 0.0 | blend points-above-replacement into the market anchor |
-| `bench_insurance` | 0.10 | residual worth of depth past a position's slot ceiling |
+| `vorp_weight` | 0.5 | blend marginal VORP into the market anchor |
 
 `max_pick_share` matters most. Uncapped, one seat can sink half its budget into a
 single blowout buy whenever its jitter runs hot, and final rosters become a
@@ -118,25 +117,47 @@ projects 13.6.
 
 ## Why nobody drafts two defenses
 
-No rule says so. `startable_slots(pos, config)` counts how many starting slots a
-position could *ever* occupy — its concrete slot plus every flex that accepts it.
-In the default lineup that's WR 5, RB 4, TE 4, QB 2, DEF 1, K 0. Depth value is
-then scaled by the share of those slots a roster hasn't covered, so a seat owning
-one defense has zero DEF exposure and a second is worth nothing to it. Kickers
-are worth nothing from the start. Neither position is named anywhere in the agent.
+No rule says so, and no position is named anywhere in the agent. Value is a blend
+(`vorp_weight`, 0.5) of Sleeper's `$PROJ` and **marginal VORP** — the points a
+player would add to *this seat's* optimal starting lineup, over a
+replacement-level body in the same slot.
 
-This matters on the **nomination** side more than the bidding side. The engine
-forces a nominator to open at `MIN_BID`, so a seat that nominates something it
-would never bid on ends up buying it — which is exactly how spare defenses were
-landing on rosters, DEF being the only cheap position still carrying a `$PROJ`
-(kickers carry none). Seats now only nominate depth they could still start.
+Marginal VORP is roster-relative, which is the whole trick. On an empty roster it
+equals classic `vorp_value` exactly (RB Bijan 164.1, QB Allen 130.0, WR Nacua
+113.4, TE McBride 65.8, **DEF LA Rams 19.0**, K 0.0). But there is one DEF slot
+and no flex accepts DEF, so a seat that owns a defense gets **0** for another —
+it cannot enter the lineup. Own a *weak* defense and a good one is still worth
++19, which a structural slot cap gets wrong.
 
-`bench_insurance` (0.10) keeps a residual for positions the lineup starts several
-of. Without it the ceilings bind exactly: startable slots sum to 16, the same as
-the roster size, so every seat is forced into an identical 2 QB / 4 RB / 5 WR /
-4 TE / 1 DEF roster and Stage 4 archetypes would have nothing to vary. With it,
-9–11 of 12 seats build distinct positional shapes and the starter-point spread is
-unchanged (125–172 across seeds 1/2/3/7).
+`roster.marginal_thresholds()` computes, per position, the points a player must
+clear to improve the lineup; marginal value is then a subtraction. That is what
+makes it affordable — scoring a 1000-player pool costs one matching per position
+rather than one per candidate. `tests/test_roster.py` checks the shortcut against
+recomputing the lineup directly.
+
+**Bench ordering.** Past roughly pick 120 nothing improves anyone's lineup — at a
+realistic 10-starter roster only ~60 players league-wide still have positive
+marginal — so something else has to choose. `_insurance` ranks by how much use a
+body could ever be: startable slots × points as a share of replacement.
+
+```
+WR  Chris Bell       5 slots × (74.7/145.6) = 2.57
+DEF Green Bay        1 slot  × (86.0/ 87.0) = 0.99
+K   Brandon Aubrey   0 slots                = 0.00
+```
+
+Note it uses points *relative to* replacement, not VORP: VORP floors at zero,
+which is exactly where every bench candidate sits, so it would tie them all at
+0.0. Nothing is filtered out — defenses and kickers lose on merit.
+
+This matters most on the **nomination** side. The engine forces a nominator to
+open at `MIN_BID`, so a seat that nominates something it would never bid on ends
+up buying it — which is exactly how spare defenses were landing on rosters, DEF
+being the only cheap position still carrying a `$PROJ` (kickers carry none).
+
+Across seeds 1/2/3/7: no seat holds more than one defense or any kicker, 7–10 of
+12 seats build distinct positional shapes, starter-point spread is 67–105, and
+seats finish within $1–2 of broke.
 
 **One intended side effect:** the pure-`$1` tail is now identical across seeds,
 since jitter no longer influences it. Early and mid draft still diverge normally.

@@ -20,6 +20,14 @@ def _state(config, rosters, budgets, pool):
     )
 
 
+def _thresholds(config, roster, pool):
+    """Marginal thresholds for a roster, as _valuation now expects."""
+    from draftsim.roster import marginal_thresholds
+    from draftsim.valuation import replacement_points
+
+    return marginal_thresholds(roster, config, replacement_points(list(pool), config))
+
+
 def P(name, pos, dollar=0, points=0.0):
     return Player(id=name, name=name, pos=pos, team="FA", proj_dollar=dollar, points=points)
 
@@ -44,12 +52,14 @@ def test_valuation_is_stable_and_order_independent():
     agent = HeuristicAgent("a", seed="1")
     p = P("Star", "WR", dollar=50)
     state = _state(config, {"me": []}, {"me": 200}, [p])
-    first = agent._valuation(state, p)
+    th = _thresholds(config, [], [p])
+    first = agent._valuation(state, p, th)
     # Same object, and a fresh agent with the same seed, both agree.
-    assert agent._valuation(state, p) == first
-    assert HeuristicAgent("a", seed="1")._valuation(state, p) == first
+    assert agent._valuation(state, p, th) == first
+    assert HeuristicAgent("a", seed="1")._valuation(state, p, th) == first
     # Jitter stays within the configured band.
-    assert 50 * (1 - agent.jitter_frac) <= first <= 50 * (1 + agent.jitter_frac)
+    band = 50 * (1 + agent.jitter_frac)
+    assert 0 < first <= band
 
 
 def test_vorp_weight_zero_is_the_market_anchor():
@@ -58,13 +68,16 @@ def test_vorp_weight_zero_is_the_market_anchor():
     pool = [P(f"wr{i}", "WR", dollar=20, points=200.0 - i) for i in range(40)]
     state = _state(config, {"me": []}, {"me": 200}, pool)
     target = pool[0]
+    th = _thresholds(config, [], pool)
     market_only = HeuristicAgent("a", seed="1", vorp_weight=0.0)
-    assert market_only._valuation(state, target) == HeuristicAgent(
-        "a", seed="1", jitter_frac=market_only.jitter_frac
-    )._valuation(state, target)
+    # Market-only ignores points entirely: every $20 player is worth the same
+    # up to its own jitter, however far apart they project.
+    assert market_only._valuation(state, target, th) == market_only._valuation(
+        state, P("wr0", "WR", dollar=20, points=1.0), th
+    )
     # And turning it on actually moves the number.
     blended = HeuristicAgent("a", seed="1", vorp_weight=1.0)
-    assert blended._valuation(state, target) != market_only._valuation(state, target)
+    assert blended._valuation(state, target, th) != market_only._valuation(state, target, th)
 
 
 # --- bidding rails ---------------------------------------------------------
@@ -179,10 +192,13 @@ def test_sleeper_rank_breaks_a_tie_on_equal_dollars_and_points():
 def test_quantization_does_not_invert_the_top_of_the_board():
     # Points only breaks ties *within* a dollar. A genuinely pricier player must
     # still be nominated over a cheaper one that happens to project more points.
+    # vorp_weight is off so this tests the tiebreak alone -- with the blend on,
+    # the 300-point player really is worth more and correctly wins.
     config = DraftConfig()
     pool = [P("pricey", "WR", dollar=50, points=10.0), P("cheap", "WR", dollar=5, points=300.0)]
     state = _state(config, {"me": []}, {"me": 200}, pool)
-    assert HeuristicAgent("me", jitter_frac=0.0).nominate(state, "me").name == "pricey"
+    agent = HeuristicAgent("me", jitter_frac=0.0, vorp_weight=0.0)
+    assert agent.nominate(state, "me").name == "pricey"
 
 
 # --- positional depth ceilings ---------------------------------------------
@@ -202,42 +218,56 @@ def test_startable_slots_counts_concrete_and_flex_routes():
     assert startable_slots("K", config) == 0
 
 
-def test_a_second_defense_is_worth_nothing():
-    # No rule names DEF anywhere: it has one slot and no flex accepts it, so a
-    # seat that owns a defense has zero DEF exposure left.
+def test_a_second_defense_adds_nothing_to_the_lineup():
+    # No rule names DEF anywhere. It has one lineup slot and no flex accepts it,
+    # so once a seat owns one, another cannot enter the lineup and its marginal
+    # value is 0 -- which is the whole mechanism, tested at its source.
+    from draftsim.roster import marginal_points
+
     config = DraftConfig()
-    roster = [P(f"p{i}", "WR") for i in range(9)] + [P("def1", "DEF", dollar=2)]
-    state = _state(config, {"me": roster}, {"me": 200}, [P("def2", "DEF", dollar=2)])
-    agent = HeuristicAgent("me", jitter_frac=0.0)
-    assert agent._depth_exposure(roster, "DEF", config) == 0.0
-    assert agent.bid(state, P("def2", "DEF", dollar=2), "me") == SIT_OUT
+    incumbent = P("def1", "DEF", dollar=2, points=100.0)
+    spare = P("def2", "DEF", dollar=2, points=90.0)
+    roster = [P(f"p{i}", "WR", points=150.0) for i in range(9)] + [incumbent]
+    th = _thresholds(config, roster, [incumbent, spare])
+    assert marginal_points(spare, th) == 0.0
+
+
+def test_a_better_defense_is_still_an_upgrade():
+    # The flip side, which a structural slot cap gets wrong: owning a weak
+    # defense must not make a good one worthless.
+    from draftsim.roster import marginal_points
+
+    config = DraftConfig()
+    weak = P("weak", "DEF", dollar=1, points=40.0)
+    strong = P("strong", "DEF", dollar=2, points=100.0)
+    roster = [P(f"p{i}", "WR", points=150.0) for i in range(9)] + [weak]
+    th = _thresholds(config, roster, [weak, strong])
+    assert marginal_points(strong, th) > 0.0
 
 
 def test_a_second_defense_is_never_nominated():
     # The engine forces a nominator to open at MIN_BID, so nominating a body you
     # would not bid on is how you end up owning it.
     config = DraftConfig()
-    roster = [P(f"p{i}", "WR") for i in range(3)] + [P("def1", "DEF", dollar=2)]
-    # The spare DEF projects far more points than the spare RB, so a
-    # points-ordered nomination would take it if exposure were ignored.
+    roster = [P(f"p{i}", "WR") for i in range(3)] + [P("def1", "DEF", dollar=2, points=100.0)]
+    # The spare DEF projects more points than the spare RB, so a points-ordered
+    # nomination would take it if insurance didn't rank it below.
     pool = [P("def2", "DEF", dollar=1, points=90.0), P("rb", "RB", dollar=1, points=40.0)]
     state = _state(config, {"me": roster}, {"me": 200}, pool)
     assert HeuristicAgent("me", jitter_frac=0.0).nominate(state, "me").pos == "RB"
 
 
-def test_depth_keeps_a_residual_where_a_position_starts_several():
-    # A 5th WR is covered to the ceiling but still insurable; a 2nd DEF is not.
+def test_insurance_ranks_a_spare_receiver_over_a_defense_over_a_kicker():
+    # What orders the bench once nothing improves the lineup: how many slots the
+    # position could ever fill, times quality against replacement.
     config = DraftConfig()
-    agent = HeuristicAgent("me", jitter_frac=0.0, bench_insurance=0.10)
-    wrs = [P(f"wr{i}", "WR") for i in range(5)]
-    assert agent._depth_exposure(wrs, "WR", config) == 0.10
-    assert agent._depth_exposure([P("d", "DEF")], "DEF", config) == 0.0
-    # Turning the knob off makes the slot ceiling a hard cap.
-    hard = HeuristicAgent("me", jitter_frac=0.0, bench_insurance=0.0)
-    assert hard._depth_exposure(wrs, "WR", config) == 0.0
-
-
-def test_kickers_are_never_worth_anything_without_a_k_slot():
-    config = DraftConfig()
+    pool = [P(f"wr{i}", "WR", points=200.0 - i) for i in range(40)]
+    pool += [P(f"d{i}", "DEF", points=100.0 - i) for i in range(14)]
+    pool += [P(f"k{i}", "K", points=150.0 - i) for i in range(14)]
+    state = _state(config, {"me": []}, {"me": 200}, pool)
     agent = HeuristicAgent("me", jitter_frac=0.0)
-    assert agent._depth_exposure([], "K", config) == 0.0
+    wr = agent._insurance(state, pool[39])
+    de = agent._insurance(state, pool[40 + 13])
+    ki = agent._insurance(state, pool[40 + 14 + 13])
+    assert wr > de > ki
+    assert ki == 0.0  # no K slot in the lineup at all

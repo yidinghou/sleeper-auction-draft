@@ -22,12 +22,17 @@ players deep, so a $1 body at any position is always available.
 from __future__ import annotations
 
 import random
-from typing import TYPE_CHECKING, Dict, Optional, Protocol, Sequence, runtime_checkable
+from typing import TYPE_CHECKING, Dict, Optional, Protocol, Tuple, runtime_checkable
 
 from .auction import MIN_BID, can_bid, max_bid
-from .config import DraftConfig
-from .roster import open_slots, positional_need, startable_slots
-from .valuation import Player, market_value, vorp_value
+from .roster import (
+    marginal_points,
+    marginal_thresholds,
+    open_slots,
+    positional_need,
+    startable_slots,
+)
+from .valuation import Player, market_value
 
 if TYPE_CHECKING:  # pragma: no cover
     from .engine import DraftState
@@ -81,13 +86,10 @@ class HeuristicAgent:
         this seat could commit; 1.0 disables the cap. This is the knob that
         keeps the draft from being decided by the RNG: uncapped, starter points
         spread ~764 across seeds; capped, ~251.
-      * `vorp_weight`      — how much to blend points-above-replacement into the
-        market anchor, 0.0 (market only, the default) to 1.0 (VORP only).
-      * `bench_insurance`  — residual worth of a body at a position already
-        covered to its slot ceiling, as a fraction of depth value. Stands in for
-        bye and injury coverage, which season-total scoring doesn't model. Only
-        granted where the lineup starts a position more than once, so it never
-        resurrects a second defense. 0.0 makes the slot ceiling a hard cap.
+      * `vorp_weight`      — how much to blend marginal VORP into the market
+        anchor, 0.0 (market only) to 1.0 (VORP only). Defaults to 0.5: prices
+        stay recognisable against Sleeper's board while roster context decides
+        what a seat actually wants.
     """
 
     def __init__(
@@ -97,8 +99,7 @@ class HeuristicAgent:
         jitter_frac: float = 0.15,
         depth_value_mult: float = 0.4,
         max_pick_share: float = 0.5,
-        vorp_weight: float = 0.0,
-        bench_insurance: float = 0.10,
+        vorp_weight: float = 0.5,
     ) -> None:
         self.name = name
         self.seed = str(seed)
@@ -106,73 +107,93 @@ class HeuristicAgent:
         self.depth_value_mult = depth_value_mult
         self.max_pick_share = max_pick_share
         self.vorp_weight = vorp_weight
-        self.bench_insurance = bench_insurance
-        self._val_cache: Dict[str, float] = {}
+        # Thresholds are a function of this seat's roster, which only changes
+        # when it wins a player -- but bid() is called for every seat on every
+        # nomination. Cached against the roster length, which is exactly the
+        # thing that changes (a roster is only ever appended to).
+        self._threshold_cache: Optional[Tuple[int, Dict[str, float]]] = None
+        # Jitter is per (seat, player) and never moves; only the anchor it
+        # multiplies is roster-dependent. Cached because seeding a Random from a
+        # string is expensive and nomination scores the whole pool every round.
+        self._jitter_cache: Dict[str, float] = {}
 
     # -- valuation ---------------------------------------------------------
 
-    def _valuation(self, state: "DraftState", player: Player) -> float:
+    def _thresholds(self, state: "DraftState", my_id: str) -> Dict[str, float]:
+        """This seat's per-position marginal thresholds, cached per roster."""
+        roster = state.managers[my_id].roster
+        if self._threshold_cache is not None and self._threshold_cache[0] == len(roster):
+            return self._threshold_cache[1]
+        thresholds = marginal_thresholds(roster, state.config, state.replacement)
+        self._threshold_cache = (len(roster), thresholds)
+        return thresholds
+
+    def _valuation(
+        self, state: "DraftState", player: Player, thresholds: Dict[str, float]
+    ) -> float:
         """What this agent privately thinks `player` is worth, in dollars.
 
-        Market price (optionally blended with VORP) nudged by a deterministic
-        per-(seed, player) jitter. Uses a string-seeded Random so the jitter is
-        stable across processes (unlike hash()) and independent of call order —
-        the same player is worth the same to this agent no matter when it's
-        evaluated. Cached per player, which is safe because every input
-        (market price, replacement level, exchange rate) is fixed for a draft.
-        """
-        cached = self._val_cache.get(player.id)
-        if cached is not None:
-            return cached
+        Two anchors, blended by `vorp_weight`:
 
+          * the market — Sleeper's $PROJ, what the crowd will pay;
+          * marginal VORP — points this player would actually add to *this*
+            seat's optimal lineup, over a replacement-level body in the same
+            slot. Roster-relative, so the same player is worth different amounts
+            to different seats, and worth nothing to a seat whose lineup he
+            couldn't crack.
+
+        The second is what makes positional sanity fall out of the valuation
+        rather than being enforced beside it: a seat holding a defense gets 0
+        from the VORP half for another one, because there is no second DEF slot
+        for it to occupy. Nothing here names a position.
+
+        Jitter is a string-seeded Random so it's stable across processes (unlike
+        hash()) and independent of call order. Not cached: unlike the old
+        market-only value, this changes as the roster fills.
+        """
         anchor = market_value(player)
-        # VORP is in points and the anchor is in dollars, so convert before
-        # blending. A 0.0 rate means the pool offers no conversion; stay on market.
+        # Marginal VORP is in points and the anchor is in dollars, so convert
+        # before blending. A 0.0 rate means the pool offers no conversion; stay
+        # on the market.
         if self.vorp_weight > 0.0 and state.points_per_dollar > 0.0:
-            vorp_dollars = vorp_value(player, state.replacement) / state.points_per_dollar
+            vorp_dollars = marginal_points(player, thresholds) / state.points_per_dollar
             anchor = (1.0 - self.vorp_weight) * anchor + self.vorp_weight * vorp_dollars
 
-        jitter = random.Random(f"{self.seed}:{player.id}").uniform(
-            1.0 - self.jitter_frac, 1.0 + self.jitter_frac
-        )
-        value = anchor * jitter
-        self._val_cache[player.id] = value
-        return value
+        jitter = self._jitter_cache.get(player.id)
+        if jitter is None:
+            jitter = random.Random(f"{self.seed}:{player.id}").uniform(
+                1.0 - self.jitter_frac, 1.0 + self.jitter_frac
+            )
+            self._jitter_cache[player.id] = jitter
+        return anchor * jitter
+
+    def _insurance(self, state: "DraftState", player: Player) -> float:
+        """Backup value, for ordering candidates the lineup gains nothing from.
+
+        Past a certain point every remaining player has zero marginal value —
+        the bench genuinely doesn't score under season-total projections — and
+        something still has to choose. This ranks by how much use a body could
+        ever be: the number of lineup slots the position can fill, times the
+        player's points as a share of what replacement there costs.
+
+        The slot count is what carries it. A spare receiver has five routes into
+        the lineup, a spare defense one, a kicker none, so defenses and kickers
+        sink to the bottom of the bench on their own merits rather than being
+        filtered out. Note this deliberately uses points *relative to*
+        replacement, not VORP: VORP floors at zero, which is precisely where
+        every bench candidate sits, so it would tie them all at 0.0.
+        """
+        floor = state.replacement.get(player.pos, 0.0)
+        if floor <= 0.0 or floor == float("inf"):
+            return 0.0
+        return startable_slots(player.pos, state.config) * (player.points / floor)
 
     # -- policy ------------------------------------------------------------
 
-    def _depth_exposure(
-        self, roster: Sequence[Player], pos: str, config: DraftConfig
-    ) -> float:
-        """Share of this position's startable slots this roster hasn't covered.
-
-        1.0 when it owns none, falling to `bench_insurance` once it owns as many
-        as the lineup could ever start. This is what makes "don't roster two
-        defenses" fall out of the league structure rather than being written
-        down as a rule: DEF has exactly one slot and no flex accepts it, so a
-        seat that owns a defense drops to zero exposure and a second one is
-        worth nothing — the position is never named anywhere in the code.
-
-        Kickers are zero from the start, for the same structural reason: the
-        default lineup has no K slot at all.
-
-        Positions the lineup starts several of keep a residual instead of
-        dropping to zero, because a spare body there has several routes back
-        into the lineup. Without it every seat drafts the identical positional
-        shape — the startable slots sum to exactly the roster size (2 QB, 4 RB,
-        5 WR, 4 TE, 1 DEF = 16), so a hard ceiling leaves no room to build a
-        roster differently, and Stage 4 archetypes would have nothing to vary.
-        """
-        slots = startable_slots(pos, config)
-        if slots == 0:
-            return 0.0
-        owned = sum(1 for p in roster if p.pos == pos)
-        if owned < slots:
-            return (slots - owned) / slots
-        return self.bench_insurance if slots > 1 else 0.0
-
-    def _nomination_key(self, state: "DraftState", player: Player) -> tuple:
-        """Rank a nomination candidate: whole dollars, then points, then rank.
+    def _nomination_key(
+        self, state: "DraftState", player: Player, thresholds: Dict[str, float]
+    ) -> tuple:
+        """Rank a nomination candidate: dollars, insurance, points, then rank.
 
         Price leads, but it is quantized to whole dollars — partly because an
         auction cannot resolve finer, and mainly because below the $1 floor it
@@ -182,34 +203,36 @@ class HeuristicAgent:
         entire back half of the draft to the RNG. Rounding collapses that tail
         to a single tie, which points then breaks.
 
+        Insurance breaks the tie the dollars leave behind. Late on, every
+        candidate is worth $1 and adds nothing to the lineup, so without it the
+        points tiebreak alone would take a spare defense (86 projected) over a
+        spare receiver (60) -- and since the engine forces a nominator to open
+        at MIN_BID, nominating it means buying it.
+
         Points before Sleeper rank because points is what the sim scores, and
         rank is missing for most of the sheet. Rank negated: lower is better.
         """
         rank = player.rank if player.rank is not None else _WORST_RANK
-        return (round(self._valuation(state, player)), player.points, -rank)
+        return (
+            round(self._valuation(state, player, thresholds)),
+            self._insurance(state, player),
+            player.points,
+            -rank,
+        )
 
     def nominate(self, state: "DraftState", my_id: str) -> Optional[Player]:
         pool = state.available
         if not pool:
             return None
-        roster = state.managers[my_id].roster
-        need = positional_need(roster, state.config)
+        need = positional_need(state.managers[my_id].roster, state.config)
         needed = [p for p in pool if need.get(p.pos, 0) > 0]
-        if not needed:
-            # No starter need left, so this is a depth pick. Only put up players
-            # this seat could still start -- the engine forces a nominator to
-            # open at MIN_BID, so nominating a body you'd never bid on is how
-            # you end up buying it. Falls back to the pool if nothing has
-            # exposure left, which keeps rosters fillable under a lineup whose
-            # bench outnumbers its startable slots.
-            live = [
-                p
-                for p in pool
-                if self._depth_exposure(roster, p.pos, state.config) > 0
-            ]
-            needed = live
+        # Nominate the most valuable player at a position we still need; if no
+        # need remains (or the pool has none), throw up the best body available.
         candidates = needed if needed else pool
-        return max(candidates, key=lambda p: self._nomination_key(state, p))
+        thresholds = self._thresholds(state, my_id)
+        return max(
+            candidates, key=lambda p: self._nomination_key(state, p, thresholds)
+        )
 
     def bid(self, state: "DraftState", player: Player, my_id: str) -> int:
         """Sealed offer for `player`, in dollars. `SIT_OUT` to decline.
@@ -251,14 +274,9 @@ class HeuristicAgent:
         if not is_need and slots <= sum(need.values()):
             return SIT_OUT
 
-        value = self._valuation(state, player)
+        value = self._valuation(state, player, self._thresholds(state, my_id))
         if not is_need:
-            # Depth is discounted, then scaled by how much of this position the
-            # lineup could still start. A body at a position already covered to
-            # its slot ceiling scores 0 and this seat sits out.
-            value *= self.depth_value_mult * self._depth_exposure(
-                me.roster, player.pos, state.config
-            )
+            value *= self.depth_value_mult
 
         # `ceiling` is every dollar this seat may legally commit to one player.
         # The cap takes a fraction of it, floored at MIN_BID so a seat down to
