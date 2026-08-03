@@ -28,7 +28,57 @@ pip install -e ".[dev]"
 python -m pytest                    # tests
 python -m draftsim.inspect          # Stage 1 sanity: top players by each value model
 python scripts/simulate.py --seed 1 # Stage 3: run one draft; rerun -> byte-identical
+python -m draftsim.live --draft-id <id>   # live board for a real Sleeper draft
 ```
+
+## Live draft board
+
+Points the same valuation at a **real Sleeper draft** and answers the one
+question that matters at the table: *who can still outbid me, and on what?*
+
+```bash
+python -m draftsim.live --draft-id 1387809050569240576            # a mock
+python -m draftsim.live --draft-id 1387809050569240576 --replay 60  # rehearse mid-draft
+python -m draftsim.live --draft-id 1387810431371853824            # the real thing
+```
+
+Then open <http://127.0.0.1:8765> and pick your seat from the dropdown.
+
+The board is one row per seat, sorted by **reach** — `auction.max_bid`, the most
+a seat can legally spend on one player once it reserves $1 for every other open
+slot. That is what actually settles an auction: a seat with $80 and one open
+slot can outbid you; a seat with $80 and eight open slots tops out at $73.
+**Value of nominee** is the points that player would add to that seat's starting
+lineup, so a seat reading "no fit" has money but nowhere to play them.
+
+Everything comes from two unauthenticated endpoints — no scraping, no websocket,
+no session token:
+
+| Endpoint | Carries |
+| --- | --- |
+| `GET /draft/{id}` | League settings, and in `metadata` the *in-flight* auction: `nominated_player_id`, `nominating_slot`, `highest_offer`, `offering_slot`. |
+| `GET /draft/{id}/picks` | Settled picks, each with `metadata.amount` (price paid), `player_id`, `draft_slot`. |
+
+Notes:
+
+- **The config comes from the draft**, not from `DraftConfig`'s defaults, so a
+  mock is valued exactly as the real draft is. An unmodelled roster slot is a
+  hard error — silently dropping one would understate every roster and so
+  inflate every max bid.
+- **Seats are keyed by `draft_slot`**, not by user. Mock drafts return an empty
+  `picked_by`, and `draft_order` is `null` until a draft starts, so the slot
+  number is the only identifier that works in both.
+- **Polling is cheap.** Only the small `/draft` endpoint is hit each tick
+  (default 3s, ~20 requests/min); the much larger pick feed is refetched only
+  when `draft_pulse` changes. A failed poll leaves the last good board up with a
+  visible warning rather than blanking.
+- **`--replay N` rewinds a finished mock** to N picks. A completed draft shows
+  every seat broke and every need met, which is the one state the board is
+  useless in.
+- Picks resolve against the *full* sheet while the pool stays filtered, so a $1
+  dart at an unsigned free agent keeps its name and projection. Requires the
+  `player_id` column — re-run `npm run export:projections` if the board warns
+  about players missing from the CSV.
 
 ## How a draft runs (Stage 3)
 
