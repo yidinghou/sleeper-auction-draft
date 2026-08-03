@@ -15,11 +15,11 @@ from __future__ import annotations
 import html
 from typing import List, Optional
 
-from .config import CONCRETE_POSITIONS
+from .config import BENCH, CONCRETE_POSITIONS
 from .live_state import LeagueState, Seat, seat_value_of
-from .roster import startable_slots
+from .roster import display_slots, startable_slots, starters
 from .sleeper import Nomination
-from .theme import BASE_CSS, badge
+from .theme import BASE_CSS, SLOT_LABEL, badge
 from .valuation import Player, market_value
 
 
@@ -90,6 +90,81 @@ def render_table(state: LeagueState, player: Optional[Player]) -> str:
         "</tr></thead>"
         f"<tbody>{rows}</tbody></table>"
     )
+
+
+def _empty_row(label: str, text: str) -> str:
+    """A slot with nobody in it. The blank second cell is the badge column —
+    without it the text lands there and gets clipped to the badge's width."""
+    return (
+        f'<div class="prow empty"><span class="slot">{_esc(label)}</span>'
+        f'<span></span><span class="pname">{_esc(text)}</span></div>'
+    )
+
+
+def _roster_row(slot: str, player: Optional[Player], price: int) -> str:
+    label = SLOT_LABEL.get(slot, slot)
+    if player is None:
+        return _empty_row(label, "—")
+    bye = str(player.bye) if player.bye else "—"
+    return (
+        '<div class="prow">'
+        f'<span class="slot">{label}</span>'
+        f"{badge(player.pos)}"
+        f'<span class="pname" title="{_esc(player.team or "FA")}">'
+        f"{_esc(player.name)}</span>"
+        f'<span class="bye">{bye}</span>'
+        f'<span class="pts">{player.points:.0f}</span>'
+        f'<span class="price">${price}</span>'
+        "</div>"
+    )
+
+
+def _roster_card(state: LeagueState, seat: Seat) -> str:
+    """One seat's roster, laid out in the slots they would actually start in."""
+    price_of = {pick.player.id: pick.price for pick in seat.picks}
+    lineup = [p for p in starters(seat.roster, state.config) if p is not None]
+    start_pts = sum(p.points for p in lineup)
+    # Empty starter slots are shown -- a hole at RB is the whole point of the
+    # card. Empty bench slots are not: bench seats are fungible, and six rows of
+    # dashes early on make every card tall and unreadable at exactly the moment
+    # you need to scan twelve of them.
+    layout = [
+        (slot, player)
+        for slot, player in display_slots(seat.roster, state.config)
+        if player is not None or slot != BENCH
+    ]
+    rows = "".join(
+        _roster_row(slot, player, price_of.get(player.id, 0) if player else 0)
+        for slot, player in layout
+    )
+    bench_open = state.config.roster_slots.count(BENCH) - sum(
+        1 for slot, _ in layout if slot == BENCH
+    )
+    if bench_open:
+        rows += _empty_row(BENCH, f"+{bench_open} open")
+    return (
+        f'<section class="card" data-roster="{seat.slot}">'
+        f'<header><span class="team">Seat {seat.slot}</span>'
+        f'<span class="totals">${seat.budget_left} left · '
+        f"{start_pts:.0f} pts</span></header>"
+        f'<div class="prow head"><span class="slot"></span><span></span>'
+        f'<span class="pname"></span><span class="bye">BYE</span>'
+        f'<span class="pts">PTS</span><span class="price">$</span></div>'
+        f"{rows}</section>"
+    )
+
+
+def render_rosters(state: LeagueState) -> str:
+    """Every seat's roster as a card, in seat order.
+
+    Seat order, not the table's reach order: these are read to look something
+    up ("what does seat 4 still need at receiver?"), and a grid that reshuffles
+    itself every time someone bids is unusable for that.
+    """
+    cards = "".join(
+        _roster_card(state, state.seats[slot]) for slot in sorted(state.seats)
+    )
+    return f'<div class="grid">{cards}</div>'
 
 
 def render_nomination(
@@ -170,6 +245,27 @@ def render_page(draft_id: str) -> str:
     background: #ff648233; color: #ff6482; }}
   .need.done {{ background: #252942; color: #4a5170; }}
 
+  .grid {{ display: grid; gap: 14px;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }}
+  .card {{ background: #131b38; border: 1px solid #414566; border-radius: 10px;
+    padding: 10px 12px; }}
+  .card header {{ display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid #252942; }}
+  .card.me {{ border-color: #00d7ff; }}
+  .card.me .team::after {{ content: " (you)"; color: #00d7ff; font-weight: 400; }}
+  .team {{ font-weight: 700; }}
+  .totals {{ color: #98b3d6; font-size: 11px; }}
+  .prow {{ display: grid; grid-template-columns: 38px 34px 1fr 26px 34px 36px;
+    align-items: center; gap: 6px; padding: 2px 0; }}
+  .prow.empty {{ color: #4a5170; }}
+  .prow.head {{ color: #4a5170; font-size: 9px; text-transform: uppercase;
+    padding-bottom: 2px; }}
+  .slot {{ color: #98b3d6; font-size: 10px; text-transform: uppercase; }}
+  .pname {{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    cursor: default; }}
+  .bye, .pts {{ color: #98b3d6; font-size: 11px; text-align: right; }}
+  .price {{ color: #ffab0e; font-weight: 700; font-size: 12px; text-align: right; }}
+
   .bar {{ display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
     margin: 0 0 16px; font-size: 13px; color: #98b3d6; }}
   select {{ background: #131b38; color: #fafafa; border: 1px solid #414566;
@@ -199,6 +295,12 @@ def render_page(draft_id: str) -> str:
     starting lineup — a seat showing “no fit” has money but nowhere to play them.
   </p>
 
+  <h2>Rosters</h2>
+  <p class="sub">Each player sits in the slot they would actually start in, not
+    the one they were bought for. PTS is the season projection; the card total is
+    the starting lineup only.</p>
+  <div id="rosters"></div>
+
 <script>
 const seatSel = document.getElementById("seat");
 // Seat options are built once, from the league size the server reports.
@@ -220,6 +322,9 @@ function highlight() {{
   document.querySelectorAll("tr.seat").forEach((tr) => {{
     tr.classList.toggle("me", mine !== "" && tr.dataset.slot === mine);
   }});
+  document.querySelectorAll("section.card").forEach((card) => {{
+    card.classList.toggle("me", mine !== "" && card.dataset.roster === mine);
+  }});
 }}
 
 async function tick() {{
@@ -231,6 +336,7 @@ async function tick() {{
     document.getElementById("sub").textContent = s.subtitle;
     document.getElementById("block").innerHTML = s.nomination_html;
     document.getElementById("table").innerHTML = s.table_html;
+    document.getElementById("rosters").innerHTML = s.rosters_html;
     document.getElementById("pulse").textContent = s.polled_at;
     document.getElementById("warn").textContent = s.warning || "";
     dot.classList.remove("stale");

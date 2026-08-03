@@ -6,13 +6,19 @@ from pathlib import Path
 import pytest
 
 from draftsim.config import DraftConfig
-from draftsim.live_render import render_nomination, render_page, render_table
+from draftsim.live_render import (
+    render_nomination,
+    render_page,
+    render_rosters,
+    render_table,
+)
 from draftsim.live_state import (
     contenders,
     reconstruct,
     seat_value_of,
     spend_by_position,
 )
+from draftsim.roster import starters
 from draftsim.sleeper import Nomination, config_from_draft
 from draftsim.valuation import Player, load_players
 
@@ -268,3 +274,65 @@ def test_page_shell_is_a_full_html_document():
     assert page.startswith("<!doctype html>")
     assert "/api/state" in page
     assert "123" in page
+
+
+# -- roster cards ------------------------------------------------------------
+
+
+def test_every_seat_gets_a_roster_card(midway):
+    html = render_rosters(midway)
+    for slot in midway.seats:
+        assert f'data-roster="{slot}"' in html
+
+
+def test_cards_are_in_seat_order_not_reach_order(midway):
+    # The table sorts by reach; these are read to look a seat up, and a grid
+    # that reshuffles on every bid is useless for that.
+    html = render_rosters(midway)
+    order = [int(c.split('"')[0]) for c in html.split('data-roster="')[1:]]
+    assert order == sorted(midway.seats)
+
+
+def test_a_card_shows_each_player_with_price_points_and_bye(midway):
+    seat = next(s for s in midway.seats.values() if s.roster)
+    card = render_rosters(midway).split('data-roster="%d"' % seat.slot)[1]
+    card = card.split("</section>")[0]
+    for pick in seat.picks:
+        assert pick.player.name.replace("'", "&#x27;") in card
+        assert f"${pick.price}" in card
+        if pick.player.bye:
+            assert f">{pick.player.bye}<" in card
+
+
+def test_a_card_totals_only_the_starting_lineup(midway):
+    seat = next(s for s in midway.seats.values() if s.roster)
+    card = render_rosters(midway).split('data-roster="%d"' % seat.slot)[1]
+    lineup = [p for p in starters(seat.roster, midway.config) if p is not None]
+    assert f"{sum(p.points for p in lineup):.0f} pts" in card
+    # Not the whole roster: a bench body must not inflate the headline.
+    assert sum(p.points for p in lineup) <= sum(p.points for p in seat.roster)
+
+
+def test_unfilled_starter_slots_are_shown_but_empty_bench_is_collapsed(midway):
+    seat = next(s for s in midway.seats.values() if s.open_slots > 6)
+    card = render_rosters(midway).split('data-roster="%d"' % seat.slot)[1]
+    card = card.split("</section>")[0]
+    # A hole at a starting slot is the point of the card, so it stays visible.
+    assert card.count("—") >= 1
+    # Six rows of empty bench are not, and would make twelve cards unscannable.
+    assert "open</span>" in card
+    assert card.count(">BN<") == 1
+
+
+def test_a_full_roster_has_no_open_bench_note(finished):
+    card = render_rosters(finished).split('data-roster="1"')[1]
+    card = card.split("</section>")[0]
+    assert "open</span>" not in card
+    assert "—" not in card
+
+
+def test_empty_rosters_still_render_their_shape(mock_config, pool):
+    state = reconstruct([], mock_config, pool)
+    html = render_rosters(state)
+    assert html.count("data-roster=") == mock_config.teams
+    assert "0 pts" in html

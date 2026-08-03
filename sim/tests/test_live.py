@@ -56,6 +56,9 @@ def test_a_poll_produces_a_renderable_snapshot(poller):
     assert "192 picks" in snap["subtitle"]
     assert "complete" in snap["subtitle"]
     assert 'data-slot="1"' in snap["table_html"]
+    # Rosters ride along in the same snapshot, so the board and the cards can
+    # never show two different moments of the draft.
+    assert snap["rosters_html"].count("data-roster=") == 12
     assert "Kansas City Chiefs" in snap["nomination_html"]
     assert snap["warning"] == ""
     # The whole snapshot crosses the wire as JSON on every tick.
