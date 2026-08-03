@@ -29,7 +29,7 @@ from typing import Dict, List, Optional, Sequence, Tuple
 from .auction import MIN_BID, Bid
 from .config import BENCH, CONCRETE_POSITIONS, DraftConfig
 from .engine import DraftResult, Pick
-from .roster import starters
+from .roster import display_slots, starters
 from .theme import BASE_CSS, SLOT_LABEL, badge as _badge
 from .valuation import Player
 
@@ -44,28 +44,6 @@ def _is_dead_weight(player: Player) -> bool:
     or projected for nothing. A roster full of these is the symptom that the
     valuation ran out of signal, not a real drafting decision."""
     return not player.team or player.points <= 0.0
-
-
-def _slot_rows(
-    roster: List[Player], config: DraftConfig
-) -> List[Tuple[str, Optional[Player]]]:
-    """Assign the roster to display slots: starter slots take the optimal lineup
-    (slot-aligned), bench slots take the leftovers in order."""
-    lineup = starters(roster, config)  # aligned to config.starter_slots
-    used = {id(p) for p in lineup if p is not None}
-    bench = [p for p in roster if id(p) not in used]
-
-    rows: List[Tuple[str, Optional[Player]]] = []
-    si = bi = 0
-    for slot in config.roster_slots:
-        if slot == BENCH:
-            rows.append((slot, bench[bi] if bi < len(bench) else None))
-            bi += 1
-        else:
-            rows.append((slot, lineup[si] if si < len(lineup) else None))
-            si += 1
-    rows.extend((BENCH, p) for p in bench[bi:])  # overflow, if any
-    return rows
 
 
 # -- section 1: roster cards -------------------------------------------------
@@ -109,7 +87,7 @@ def _team_card(result: DraftResult, manager_id: str) -> str:
     )
     rows = "".join(
         _player_row(slot, player, price_of.get(player.id, 0) if player else 0)
-        for slot, player in _slot_rows(manager.roster, config)
+        for slot, player in display_slots(manager.roster, config)
     )
     return (
         f'<section class="card">'
@@ -139,7 +117,7 @@ def _points_by_pos(
     """(starter points, total points) per position for one roster.
 
     A player counts as a starter iff the optimal lineup uses it. Compared by
-    identity, matching `_slot_rows` — `Player` is a value-equal frozen dataclass,
+    identity, matching `display_slots` — `Player` is a value-equal frozen dataclass,
     so two twins with the same name/pos/team would otherwise be indistinguishable.
     """
     lineup_ids = {id(p) for p in starters(roster, config) if p is not None}

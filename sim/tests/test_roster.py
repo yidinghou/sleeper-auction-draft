@@ -2,6 +2,7 @@ import pytest
 
 from draftsim.config import DraftConfig
 from draftsim.roster import (
+    display_slots,
     is_lineup_legal,
     marginal_points,
     marginal_thresholds,
@@ -199,3 +200,50 @@ def test_an_unstartable_position_is_always_worth_zero():
     thresholds = marginal_thresholds([], config, replacement_points(pool, config))
     best_k = max((p for p in pool if p.pos == "K"), key=lambda p: p.points)
     assert marginal_points(best_k, thresholds) == 0.0
+
+
+# -- display_slots: the shared board layout ----------------------------------
+
+
+def test_display_slots_gives_one_row_per_roster_slot():
+    config = DraftConfig()
+    rows = display_slots([], config)
+    assert [slot for slot, _ in rows] == list(config.roster_slots)
+    assert all(player is None for _, player in rows)
+
+
+def test_display_slots_seats_players_where_they_start_not_where_bought():
+    config = DraftConfig(teams=2, budget=50, roster_slots=("QB", "RB", "FLEX", "BN"))
+    rows = display_slots([P("rb2", "RB", 100.0), P("qb", "QB", 90.0),
+                          P("rb1", "RB", 200.0)], config)
+    # A second RB starts only by taking the flex. Which of the two lands in RB
+    # and which in FLEX is not asserted: both start either way and the lineup
+    # scores the same, so pinning it would test the matching's tie-break rather
+    # than anything a reader of the card cares about.
+    seated = {slot: player.pos for slot, player in rows if player}
+    assert seated == {"QB": "QB", "RB": "RB", "FLEX": "RB"}
+    assert rows[-1] == ("BN", None)
+
+
+def test_display_slots_is_independent_of_acquisition_order():
+    config = DraftConfig()
+    roster = [P("qb", "QB", 300.0), P("rb", "RB", 200.0), P("wr", "WR", 100.0)]
+    assert display_slots(roster, config) == display_slots(roster[::-1], config)
+
+
+def test_display_slots_benches_the_leftovers():
+    config = DraftConfig(teams=2, budget=50, roster_slots=("QB", "BN", "BN"))
+    rows = display_slots([P("qb1", "QB", 200.0), P("qb2", "QB", 100.0)], config)
+    assert [(slot, p.name if p else None) for slot, p in rows] == [
+        ("QB", "qb1"), ("BN", "qb2"), ("BN", None),
+    ]
+
+
+def test_display_slots_never_silently_drops_a_player():
+    # More bodies than seats: the extras spill past the bench rather than
+    # vanishing, so a card can never under-report what a team owns.
+    config = DraftConfig(teams=2, budget=50, roster_slots=("QB", "BN"))
+    roster = [P(f"qb{i}", "QB", float(i)) for i in range(5)]
+    rows = display_slots(roster, config)
+    assert len(rows) == len(roster)
+    assert {p.name for _, p in rows if p} == {p.name for p in roster}

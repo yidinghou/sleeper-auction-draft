@@ -7,16 +7,16 @@ bipartite matching (`_match_starters`), not a greedy first-fit.
 
 (The TS `domain/roster.ts` `fillRosterSlots` greedy is deliberately NOT ported:
 it feeds a UI table there, but here it would feed scoring, where its
-order-sensitivity is a bug. Re-add a matching-seeded display helper if/when a
-report layer actually needs the bench/overflow shape.)
+order-sensitivity is a bug. `display_slots` is the matching-seeded display
+helper that replaces it, shared by the post-mortem and live boards.)
 """
 
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import Callable, Dict, List, Optional, Sequence
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
-from .config import FLEX_ELIGIBILITY, DraftConfig
+from .config import BENCH, FLEX_ELIGIBILITY, DraftConfig
 from .valuation import Player
 
 
@@ -172,6 +172,37 @@ def is_lineup_legal(players: Sequence[Player], config: DraftConfig) -> bool:
     player — a max-cardinality matching that covers all slots. Order-invariant."""
     assigned = _match_starters(players, config, weight=lambda _p: 1.0)
     return all(pi is not None for pi in assigned)
+
+
+def display_slots(
+    roster: Sequence[Player], config: DraftConfig
+) -> List[Tuple[str, Optional[Player]]]:
+    """Lay a roster out for display: one row per roster slot, in template order.
+
+    Starter slots take the optimal lineup, slot-aligned, so a player appears in
+    the slot they would actually start in rather than the one they happened to
+    be bought for. Bench slots take the leftovers in acquisition order. Unfilled
+    slots come back as None so a half-built roster still shows its shape, and
+    any overflow past the bench is appended rather than dropped.
+
+    Seeded by the same `starters()` matching the simulator scores on, so what a
+    board shows and what the engine believes cannot drift apart.
+    """
+    lineup = starters(roster, config)  # aligned to config.starter_slots
+    used = {id(p) for p in lineup if p is not None}
+    bench = [p for p in roster if id(p) not in used]
+
+    rows: List[Tuple[str, Optional[Player]]] = []
+    si = bi = 0
+    for slot in config.roster_slots:
+        if slot == BENCH:
+            rows.append((slot, bench[bi] if bi < len(bench) else None))
+            bi += 1
+        else:
+            rows.append((slot, lineup[si] if si < len(lineup) else None))
+            si += 1
+    rows.extend((BENCH, p) for p in bench[bi:])  # overflow, if any
+    return rows
 
 
 def open_slots(filled_count: int, config: DraftConfig) -> int:
