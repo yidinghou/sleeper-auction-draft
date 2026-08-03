@@ -1,8 +1,8 @@
 """Load projected players from the exported CSV and expose value models.
 
 Source: `data/projections-2026.csv` (produced by `npm run export:projections`).
-Columns: player, position, team, sleeper_rank, bye_week, sleeper_proj_dollar,
-season_pts_half_ppr, week1..N_pts_half_ppr.
+Columns: player_id, player, position, team, sleeper_rank, bye_week,
+sleeper_proj_dollar, season_pts_half_ppr, week1..N_pts_half_ppr.
 
 Two value models:
 - `market`  -> Sleeper's projected auction dollar (`$PROJ`), the crowd's price.
@@ -32,12 +32,25 @@ class Player:
     proj_dollar: Optional[int] = None
     bye: Optional[int] = None
     rank: Optional[int] = None
+    sleeper_id: Optional[str] = None
+    """Sleeper's own player_id, the join key for live draft picks. None when
+    reading a CSV exported before the column existed -- see `by_sleeper_id`."""
 
 
 def _make_id(name: str, pos: str, team: str) -> str:
-    """The projections CSV has no player_id, so synthesize a stable one. Name +
-    position + team is unique in practice for fantasy-relevant players."""
+    """The simulator's own player key. Name + position + team is unique in
+    practice for fantasy-relevant players, and unlike Sleeper's `player_id` it
+    survives a CSV that predates the `player_id` column."""
     return f"{name}|{pos}|{team}".lower().replace(" ", "-")
+
+
+def by_sleeper_id(players: List[Player]) -> Dict[str, Player]:
+    """Index players by Sleeper's player_id, for matching live draft picks.
+
+    Rows exported before the `player_id` column are simply absent from the
+    index; callers fall back to `_make_id` on the pick's own name/pos/team.
+    """
+    return {p.sleeper_id: p for p in players if p.sleeper_id}
 
 
 def _int_or_none(raw: str) -> Optional[int]:
@@ -91,6 +104,7 @@ def load_players(
                     proj_dollar=_int_or_none(row.get("sleeper_proj_dollar", "")),
                     bye=_int_or_none(row.get("bye_week", "")),
                     rank=_int_or_none(row.get("sleeper_rank", "")),
+                    sleeper_id=(row.get("player_id") or "").strip() or None,
                 )
             )
     return players

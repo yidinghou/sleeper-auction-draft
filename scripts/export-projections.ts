@@ -1,9 +1,13 @@
 /**
  * Export Sleeper player projections to a CSV.
  *
- * Columns: player, position, team, Sleeper rank, bye week, Sleeper projected
- * auction $, half-PPR season total, and half-PPR points for the first N weeks
- * (default 3).
+ * Columns: Sleeper player_id, player, position, team, Sleeper rank, bye week,
+ * Sleeper projected auction $, half-PPR season total, and half-PPR points for
+ * the first N weeks (default 3).
+ *
+ * player_id is the join key back to Sleeper — draft picks arrive keyed by it,
+ * so the live board (sim/draftsim/live.py) needs it to match a pick to a
+ * projection. Team defenses use the team abbreviation as their id ("KC").
  *
  * Rank, bye, and the projected auction dollar come from the live auction draft
  * board (Sleeper computes $PROJ client-side — it is not in any API), captured
@@ -80,6 +84,7 @@ async function main() {
   const board = loadBoard(season);
 
   const header = [
+    "player_id",
     "player",
     "position",
     "team",
@@ -95,6 +100,7 @@ async function main() {
     const weekly = weekProj.map((wp) => round(wp[id]?.[SCORING]));
     const b = board.get(id);
     return {
+      id,
       name: sleeperPlayerFullName(player),
       position: player.position ?? "",
       team: player.team ?? "",
@@ -116,6 +122,7 @@ async function main() {
     header.join(","),
     ...rows.map((r) =>
       [
+        r.id,
         r.name,
         r.position,
         r.team,
