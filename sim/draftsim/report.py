@@ -30,19 +30,8 @@ from .auction import MIN_BID, Bid
 from .config import BENCH, CONCRETE_POSITIONS, DraftConfig
 from .engine import DraftResult, Pick
 from .roster import starters
+from .theme import BASE_CSS, SLOT_LABEL, badge as _badge
 from .valuation import Player
-
-# Position badge colors, mirrored from the app's Sleeper theme.
-_POS_COLOR = {
-    "QB": "#ff6482",
-    "RB": "#28e757",
-    "WR": "#00d7ff",
-    "TE": "#ffab0e",
-}
-_POS_FALLBACK = "#98b3d6"  # K, DEF, anything else
-
-# Compact labels for the long flex slot names (matches `slotShortLabel()`).
-_SLOT_LABEL = {"SUPER_FLEX": "SFLX", "REC_FLEX": "RFLX", "WRRB_FLEX": "W/R"}
 
 # Leftover budget (in dollars) above which a seat is flagged as having failed to
 # spend. A full-budget auction should end every seat within a few dollars of $0;
@@ -79,19 +68,11 @@ def _slot_rows(
     return rows
 
 
-def _badge(pos: str) -> str:
-    color = _POS_COLOR.get(pos, _POS_FALLBACK)
-    return (
-        f'<span class="badge" style="color:{color};background:{color}33">'
-        f"{html.escape(pos)}</span>"
-    )
-
-
 # -- section 1: roster cards -------------------------------------------------
 
 
 def _player_row(slot: str, player: Optional[Player], price: int) -> str:
-    label = _SLOT_LABEL.get(slot, slot)
+    label = SLOT_LABEL.get(slot, slot)
     if player is None:
         return (
             f'<div class="row empty"><span class="slot">{label}</span>'
@@ -364,23 +345,7 @@ def render_html(result: DraftResult, seed: Optional[int] = None) -> str:
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Draft results{seed_txt}</title>
-<style>
-  * {{ box-sizing: border-box; }}
-  body {{
-    margin: 0; padding: 24px;
-    background: #05091d; color: #fafafa;
-    font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
-  }}
-  h1 {{ font-size: 18px; margin: 0 0 4px; }}
-  h2 {{ font-size: 15px; margin: 28px 0 10px; padding-top: 6px; }}
-  .sub {{ color: #98b3d6; margin: 0 0 12px; font-size: 13px; }}
-  .nav {{ margin: 0 0 20px; font-size: 13px; }}
-  .nav a {{ color: #00d7ff; text-decoration: none; margin-right: 14px; }}
-  .nav a:hover {{ text-decoration: underline; }}
-  .legend {{ color: #98b3d6; font-size: 12px; margin: 8px 0 0; }}
-  .muted {{ color: #4a5170; }}
-  .warn {{ color: #ff6482; font-weight: 700; }}
-  .flag {{ color: #ff6482; }}
+<style>{BASE_CSS}
   .grid {{
     display: grid; gap: 14px;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
@@ -395,14 +360,11 @@ def render_html(result: DraftResult, seed: Optional[int] = None) -> str:
   .row.empty {{ color: #4a5170; }}
   .row.dead .name {{ color: #6b7395; text-decoration: line-through; }}
   .slot {{ color: #98b3d6; font-size: 10px; text-transform: uppercase; }}
-  .badge {{ font-size: 10px; font-weight: 700; text-align: center;
-    padding: 2px 0; border-radius: 5px; min-width: 30px; }}
   .name {{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     cursor: default; }}
   .meta {{ color: #98b3d6; font-size: 11px; }}
   .price {{ color: #ffab0e; font-weight: 700; min-width: 34px; text-align: right; }}
 
-  .tablewrap {{ overflow-x: auto; }}
   .matrix {{ border-collapse: collapse; font-size: 12px; }}
   .matrix th, .matrix td {{ border: 1px solid #252942; padding: 4px 10px; text-align: right; }}
   .matrix thead th {{ color: #98b3d6; font-weight: 600; background: #131b38; }}
