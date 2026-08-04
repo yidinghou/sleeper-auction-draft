@@ -46,7 +46,7 @@ def poller(monkeypatch):
 def test_snapshot_before_the_first_poll_says_so(poller):
     snap = poller.snapshot()
     assert "waiting" in snap["subtitle"]
-    assert snap["table_html"] == ""
+    assert snap["rosters_html"] == ""
 
 
 def test_a_poll_produces_a_renderable_snapshot(poller):
@@ -55,9 +55,8 @@ def test_a_poll_produces_a_renderable_snapshot(poller):
     assert snap["teams"] == 12
     assert "192 picks" in snap["subtitle"]
     assert "complete" in snap["subtitle"]
-    assert 'data-slot="1"' in snap["table_html"]
-    # Rosters ride along in the same snapshot, so the board and the cards can
-    # never show two different moments of the draft.
+    # One card per seat, all from the same snapshot, so no two parts of the
+    # page can show different moments of the draft.
     assert snap["rosters_html"].count("data-roster=") == 12
     assert "Kansas City Chiefs" in snap["nomination_html"]
     assert snap["warning"] == ""
@@ -86,7 +85,7 @@ def test_a_moved_bid_refetches(poller):
 
 def test_a_failed_poll_keeps_the_last_good_board(poller, monkeypatch):
     poller.refresh()
-    good = poller.snapshot()["table_html"]
+    good = poller.snapshot()["rosters_html"]
 
     def boom(draft_id):
         raise SleeperError("connection reset")
@@ -94,7 +93,7 @@ def test_a_failed_poll_keeps_the_last_good_board(poller, monkeypatch):
     monkeypatch.setattr(live_mod, "fetch_draft", boom)
     poller.refresh()
     snap = poller.snapshot()
-    assert snap["table_html"] == good  # still readable
+    assert snap["rosters_html"] == good  # still readable
     assert "connection reset" in snap["warning"]
     assert "last good data" in snap["warning"]
 
@@ -106,7 +105,7 @@ def test_a_failure_before_any_success_reports_the_reason(poller, monkeypatch):
     poller.refresh()
     snap = poller.snapshot()
     assert "nope" in snap["subtitle"]
-    assert snap["table_html"] == ""
+    assert snap["rosters_html"] == ""
 
 
 def test_recovery_clears_the_warning(poller, monkeypatch):

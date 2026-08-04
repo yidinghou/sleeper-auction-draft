@@ -33,8 +33,8 @@ python -m draftsim.live --draft-id <id>   # live board for a real Sleeper draft
 
 ## Live draft board
 
-Points the same valuation at a **real Sleeper draft** and answers the one
-question that matters at the table: *who can still outbid me, and on what?*
+Points the same valuation at a **real Sleeper draft**: what's on the block right
+now, and where all twelve rosters stand.
 
 ```bash
 python -m draftsim.live --draft-id 1387809050569240576            # a mock
@@ -44,12 +44,15 @@ python -m draftsim.live --draft-id 1387810431371853824            # the real thi
 
 Then open <http://127.0.0.1:8765> and pick your seat from the dropdown.
 
-The board is one row per seat, sorted by **reach** — `auction.max_bid`, the most
-a seat can legally spend on one player once it reserves $1 for every other open
-slot. That is what actually settles an auction: a seat with $80 and one open
-slot can outbid you; a seat with $80 and eight open slots tops out at $73.
-**Value of nominee** is the points that player would add to that seat's starting
-lineup, so a seat reading "no fit" has money but nowhere to play them.
+A header strip names whoever is nominated, with their `$PROJ` against the room's
+current high bid. Under it, every seat's roster as a card — 3 rows of 4 for a
+12-team league, in fixed seat order so a card stays where you last saw it.
+
+Each player sits in the slot they'd **actually start in**, via the same
+`roster.display_slots` matching the engine scores on — so a second RB shows up
+in FLEX, not at RB. Rows carry bye, season projection and price paid; the card
+header totals the starting lineup only. Empty starter slots stay visible (a hole
+at RB is the point); empty bench rows collapse to `+N open`.
 
 Everything comes from two unauthenticated endpoints — no scraping, no websocket,
 no session token:

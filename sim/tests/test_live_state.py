@@ -6,12 +6,7 @@ from pathlib import Path
 import pytest
 
 from draftsim.config import DraftConfig
-from draftsim.live_render import (
-    render_nomination,
-    render_page,
-    render_rosters,
-    render_table,
-)
+from draftsim.live_render import render_nomination, render_page, render_rosters
 from draftsim.live_state import (
     contenders,
     reconstruct,
@@ -206,35 +201,6 @@ def test_a_pick_with_no_price_is_free_not_a_crash(mock_config, pool):
 
 
 # -- rendering ---------------------------------------------------------------
-
-
-def test_table_lists_every_seat_richest_reach_first(midway):
-    html = render_table(midway, None)
-    for slot in midway.seats:
-        assert f'data-slot="{slot}"' in html
-    order = [
-        int(chunk.split('"')[0])
-        for chunk in html.split('data-slot="')[1:]
-    ]
-    reaches = [midway.seats[s].max_bid for s in order]
-    assert reaches == sorted(reaches, reverse=True)
-
-
-def test_table_marks_seats_that_cannot_use_the_nominee(midway):
-    kicker = Player(id="k", name="Kicker", pos="K", team="KC", points=200.0)
-    assert "no fit" in render_table(midway, kicker)
-
-
-def test_table_shows_lineup_gain_for_a_usable_nominee(midway):
-    star = Player(id="star", name="Star", pos="WR", team="KC", points=400.0)
-    assert "pts" in render_table(midway, star)
-    assert "no fit" not in render_table(midway, star)
-
-
-def test_finished_seats_read_as_out_of_the_bidding(finished):
-    star = Player(id="star", name="Star", pos="WR", team="KC", points=400.0)
-    html = render_table(finished, star)
-    assert html.count("out") >= finished.config.teams
 
 
 def test_nomination_strip_names_the_player_and_the_bid(midway):

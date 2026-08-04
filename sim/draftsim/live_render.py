@@ -1,9 +1,8 @@
-"""Render the live draft board: who can still outbid you, and on what.
+"""Render the live draft board.
 
-One table, one row per seat, sorted by reach (max bid) so the seats that can
-actually take the current player off you sit at the top. A header strip names
-whatever is on the block, because the table is unreadable without knowing what
-the room is bidding on.
+A header strip naming whatever is on the block, then every seat's roster as a
+card -- each player in the slot they would actually start in, with what they
+cost.
 
 The page is served by `live.py` and refreshes itself by refetching `/api/state`
 and swapping in the fragments below — so everything here renders from a
@@ -15,81 +14,16 @@ from __future__ import annotations
 import html
 from typing import List, Optional
 
-from .config import BENCH, CONCRETE_POSITIONS
-from .live_state import LeagueState, Seat, seat_value_of
-from .roster import display_slots, startable_slots, starters
+from .config import BENCH
+from .live_state import LeagueState, Seat
+from .roster import display_slots, starters
 from .sleeper import Nomination
 from .theme import BASE_CSS, SLOT_LABEL, badge
 from .valuation import Player, market_value
 
 
-def _need_positions(state: LeagueState) -> List[str]:
-    """Positions worth a needs column. A position with no startable slot (K in
-    the default lineup) is dropped: you can never be *short* one."""
-    return [
-        pos
-        for pos in CONCRETE_POSITIONS
-        if startable_slots(pos, state.config) > 0
-    ]
-
-
 def _esc(text: object) -> str:
     return html.escape(str(text))
-
-
-def _needs_cell(seat: Seat, positions: List[str]) -> str:
-    """The seat's unfilled starting positions, dimmed once satisfied."""
-    parts = []
-    for pos in positions:
-        want = seat.needs.get(pos, 0)
-        cls = "need" if want else "need done"
-        parts.append(f'<span class="{cls}">{_esc(pos)}{want if want else ""}</span>')
-    return f'<span class="needs">{"".join(parts)}</span>'
-
-
-def _seat_row(
-    state: LeagueState, seat: Seat, player: Optional[Player], positions: List[str]
-) -> str:
-    """One seat's money, room and reach — plus what the nominee is worth to it."""
-    value = seat_value_of(state, seat, player)
-    if player is None:
-        threat, threat_cls = "—", "muted"
-    elif seat.max_bid <= 0:
-        threat, threat_cls = "out", "muted"
-    elif value <= 0.0:
-        # Can afford them but cannot start them: not a real bidder.
-        threat, threat_cls = "no fit", "muted"
-    else:
-        threat, threat_cls = f"+{value:.0f} pts", "fit"
-
-    broke = " broke" if seat.budget_left <= 0 and seat.open_slots > 0 else ""
-    return (
-        f'<tr data-slot="{seat.slot}" class="seat{broke}">'
-        f'<td class="rowhead">Seat {seat.slot}</td>'
-        f'<td class="num money">${seat.budget_left}</td>'
-        f'<td class="num reach">${seat.max_bid}</td>'
-        f'<td class="num">{seat.filled}/{state.config.roster_size}</td>'
-        f'<td class="num muted">${seat.spent}</td>'
-        f"<td>{_needs_cell(seat, positions)}</td>"
-        f'<td class="num {threat_cls}">{threat}</td>'
-        "</tr>"
-    )
-
-
-def render_table(state: LeagueState, player: Optional[Player]) -> str:
-    """The 12-seat board, richest reach first."""
-    positions = _need_positions(state)
-    seats = sorted(
-        state.seats.values(), key=lambda s: (-s.max_bid, -s.budget_left, s.slot)
-    )
-    rows = "".join(_seat_row(state, seat, player, positions) for seat in seats)
-    return (
-        '<table class="board"><thead><tr>'
-        "<th>Seat</th><th>Left</th><th>Max bid</th><th>Filled</th>"
-        "<th>Spent</th><th>Needs</th><th>Value of nominee</th>"
-        "</tr></thead>"
-        f"<tbody>{rows}</tbody></table>"
-    )
 
 
 def _empty_row(label: str, text: str) -> str:
@@ -157,9 +91,9 @@ def _roster_card(state: LeagueState, seat: Seat) -> str:
 def render_rosters(state: LeagueState) -> str:
     """Every seat's roster as a card, in seat order.
 
-    Seat order, not the table's reach order: these are read to look something
-    up ("what does seat 4 still need at receiver?"), and a grid that reshuffles
-    itself every time someone bids is unusable for that.
+    Seat order, and never sorted by anything that moves: these are read to look
+    something up ("what does seat 4 still need at receiver?"), so a card has to
+    stay where you last saw it rather than jumping every time someone bids.
     """
     cards = "".join(
         _roster_card(state, state.seats[slot]) for slot in sorted(state.seats)
@@ -222,31 +156,18 @@ def render_page(draft_id: str) -> str:
   .bidamt {{ color: #ffab0e; font-weight: 700; font-size: 17px; }}
   .proj {{ color: #ffab0e; font-weight: 700; }}
 
-  /* Capped, not full-bleed: seven short columns stretched across a wide
-     monitor put the money and the needs an eye-movement apart. */
-  .board {{ border-collapse: collapse; font-size: 13px;
-    width: 100%; max-width: 900px; }}
-  .block {{ max-width: 900px; }}
-  .board th, .board td {{ border: 1px solid #252942; padding: 5px 10px;
-    text-align: left; white-space: nowrap; }}
-  .board thead th {{ color: #98b3d6; font-weight: 600; background: #131b38;
-    font-size: 11px; text-transform: uppercase; }}
-  .board .num {{ text-align: right; }}
-  .rowhead {{ font-weight: 700; }}
-  .money {{ color: #28e757; font-weight: 700; }}
-  .reach {{ color: #ffab0e; font-weight: 700; }}
-  .fit {{ color: #00d7ff; font-weight: 700; }}
-  tr.seat.broke .money {{ color: #ff6482; }}
-  tr.seat.me {{ outline: 2px solid #00d7ff; outline-offset: -2px; }}
-  tr.seat.me .rowhead::after {{ content: " (you)"; color: #00d7ff; font-weight: 400; }}
-
-  .needs {{ display: inline-flex; gap: 4px; }}
-  .need {{ font-size: 10px; font-weight: 700; padding: 2px 5px; border-radius: 5px;
-    background: #ff648233; color: #ff6482; }}
-  .need.done {{ background: #252942; color: #4a5170; }}
-
+  /* Fixed four across, so a 12-seat league lays out as 3 rows of 4 and every
+     card keeps the same place on screen between refreshes -- an auto-fill grid
+     reflows as the window changes and you lose track of which card is whose.
+     Narrower viewports still step down rather than crushing the rows. */
   .grid {{ display: grid; gap: 14px;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }}
+    grid-template-columns: repeat(4, minmax(0, 1fr)); }}
+  @media (max-width: 1100px) {{
+    .grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+  }}
+  @media (max-width: 620px) {{
+    .grid {{ grid-template-columns: minmax(0, 1fr); }}
+  }}
   .card {{ background: #131b38; border: 1px solid #414566; border-radius: 10px;
     padding: 10px 12px; }}
   .card header {{ display: flex; justify-content: space-between; align-items: baseline;
@@ -287,13 +208,6 @@ def render_page(draft_id: str) -> str:
   </div>
 
   <div id="block"></div>
-  <div class="tablewrap" id="table"></div>
-  <p class="legend">
-    <strong>Max bid</strong> reserves $1 for every other open slot, so it is the
-    most a seat can legally spend on one player.
-    <strong>Value of nominee</strong> is the points they would add to that seat's
-    starting lineup — a seat showing “no fit” has money but nowhere to play them.
-  </p>
 
   <h2>Rosters</h2>
   <p class="sub">Each player sits in the slot they would actually start in, not
@@ -319,9 +233,6 @@ seatSel.addEventListener("change", () => {{
 
 function highlight() {{
   const mine = seatSel.value;
-  document.querySelectorAll("tr.seat").forEach((tr) => {{
-    tr.classList.toggle("me", mine !== "" && tr.dataset.slot === mine);
-  }});
   document.querySelectorAll("section.card").forEach((card) => {{
     card.classList.toggle("me", mine !== "" && card.dataset.roster === mine);
   }});
@@ -335,7 +246,6 @@ async function tick() {{
     fillSeats(s.teams);
     document.getElementById("sub").textContent = s.subtitle;
     document.getElementById("block").innerHTML = s.nomination_html;
-    document.getElementById("table").innerHTML = s.table_html;
     document.getElementById("rosters").innerHTML = s.rosters_html;
     document.getElementById("pulse").textContent = s.polled_at;
     document.getElementById("warn").textContent = s.warning || "";
