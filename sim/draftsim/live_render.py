@@ -110,10 +110,9 @@ def _bench_cell(player: Optional[Player], price: int) -> str:
 def _roster_card(state: LeagueState, seat: Seat) -> str:
     """One seat's roster: starters paired two to a row, then the bench.
 
-    Bench rows are always emitted but carry a `bench` class — minimized they are
-    hidden by CSS, maximized they appear. Rendering them once and toggling in
-    CSS means opening the overlay costs nothing and never shows a different
-    moment of the draft than the card behind it.
+    Bench rows carry a `bench` class so CSS can grey them back. They stay
+    visible rather than hidden -- depth is worth seeing, and dimming separates
+    it from the lineup faster than reading the BN label would.
     """
     price_of = {pick.player.id: pick.price for pick in seat.picks}
     lineup = [p for p in starters(seat.roster, state.config) if p is not None]
@@ -229,8 +228,8 @@ def render_page(draft_id: str) -> str:
   /* The board column is a flex stack whose last child (the grid) absorbs the
      leftover height, so the twelve cards always end exactly at the fold. */
   .live {{ display: flex; flex-direction: column; min-width: 0;
-    padding: 10px 12px; gap: 8px; }}
-  .live h1 {{ font-size: 14px; margin: 0; }}
+    padding: 8px 10px; gap: 6px; }}
+  .live h1 {{ font-size: 13px; margin: 0; }}
   .live .sub {{ margin: 0; font-size: 11px; }}
 
   .bar {{ display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
@@ -245,7 +244,7 @@ def render_page(draft_id: str) -> str:
   .dot.stale {{ background: #ff6482; }}
 
   .block {{ background: #131b38; border: 1px solid #414566; border-radius: 8px;
-    padding: 6px 10px; display: flex; gap: 10px;
+    padding: 4px 10px; display: flex; gap: 10px;
     justify-content: space-between; align-items: center; flex-wrap: wrap; }}
   .block.idle {{ color: #98b3d6; font-size: 12px; }}
   .who {{ font-size: 14px; font-weight: 700; margin-right: 4px; }}
@@ -255,22 +254,25 @@ def render_page(draft_id: str) -> str:
   /* Three across, four down: twelve seats, one screen, fixed positions so a
      card stays where you last saw it between refreshes. */
   #rosters {{ flex: 1; min-height: 0; }}
-  .grid {{ display: grid; gap: 6px; height: 100%;
+  .grid {{ display: grid; gap: 5px; height: 100%;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     grid-auto-rows: minmax(0, 1fr); }}
   .card {{ background: #131b38; border: 1px solid #414566; border-radius: 8px;
-    padding: 5px 6px; min-width: 0; overflow: hidden;
+    padding: 4px 6px; min-width: 0; overflow: hidden;
     display: flex; flex-direction: column; }}
   .card header {{ display: flex; justify-content: space-between;
-    align-items: baseline; gap: 6px; margin-bottom: 3px; }}
+    align-items: baseline; gap: 6px; margin-bottom: 2px; }}
   .card.me {{ border-color: #00d7ff; }}
   .card.me .team::after {{ content: " (you)"; color: #00d7ff; font-weight: 400; }}
   .team {{ font-weight: 700; font-size: 11px; }}
   .totals {{ color: #98b3d6; font-size: 10px; white-space: nowrap; }}
 
   .prow {{ display: grid; grid-template-columns: 1fr 1fr; gap: 3px;
-    margin-bottom: 2px; min-width: 0; }}
-  .prow.bench {{ display: none; }}
+    margin-bottom: 1px; min-width: 0; }}
+  /* Bench keeps its position colour but sits back: dimmed and untinted, so a
+     glance separates who a seat starts from who it is merely holding, without
+     having to read the BN label. */
+  .prow.bench .cell {{ opacity: 0.5; background: none; }}
 
   /* One cell = one lineup seat. Position is the cell's own color rather than a
      badge: at this width a badge costs more room than the name it labels. */
@@ -278,7 +280,7 @@ def render_page(draft_id: str) -> str:
     align-items: center; gap: 3px; min-width: 0;
     background: color-mix(in srgb, var(--pos, #414566) 16%, transparent);
     border-left: 2px solid var(--pos, #414566);
-    border-radius: 3px; padding: 1px 3px; font-size: 10px; line-height: 1.35; }}
+    border-radius: 3px; padding: 0 3px; font-size: 10px; line-height: 1.45; }}
   .cell.gone {{ background: none; border-left-color: transparent; }}
   .cell.open {{ background: none; border-left-color: #252942; color: #4a5170; }}
   .ms {{ font-style: normal; color: #98b3d6; font-size: 8px;
@@ -294,12 +296,11 @@ def render_page(draft_id: str) -> str:
      re-rendered -- the bench rows and the hidden columns were always there. */
   body.maxed .live {{ position: fixed; inset: 0; z-index: 10;
     background: #05091d; padding: 14px 16px; }}
-  body.maxed .grid {{ grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }}
-  body.maxed .card {{ padding: 8px 10px; }}
+  body.maxed .grid {{ grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }}
+  body.maxed .card {{ padding: 6px 8px; }}
   body.maxed .team {{ font-size: 13px; }}
   body.maxed .totals {{ font-size: 11px; }}
-  body.maxed .prow.bench {{ display: grid; }}
-  body.maxed .cell {{ font-size: 12px; padding: 2px 5px;
+  body.maxed .cell {{ font-size: 11px; padding: 1px 5px;
     grid-template-columns: auto 1fr auto auto auto; gap: 5px; }}
   body.maxed .ms {{ font-size: 9px; }}
   body.maxed .mb, body.maxed .mp {{ display: inline; }}

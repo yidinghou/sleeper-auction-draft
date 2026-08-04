@@ -47,9 +47,12 @@ Then open <http://127.0.0.1:8765> and pick your seat from the dropdown.
 The board takes the **right half** of the screen and fits all 12 rosters in
 **one viewport height** — nothing to scroll mid-auction. The left half is
 reserved space. **Maximize** (or `Esc` to close) expands the rosters to a
-full-screen overlay with the bench and the bye/points columns revealed; it is a
-CSS toggle over the same markup, so opening it costs no fetch and can never show
-a different moment of the draft than the compact view.
+full-screen overlay with the bye/points columns revealed; it is a CSS toggle
+over the same markup, so opening it costs no fetch and can never show a
+different moment of the draft than the compact view.
+
+Bench players show under the starters, **dimmed** — depth is worth seeing, and
+greying it apart from the lineup reads faster than the `BN` label does.
 
 Each card compresses the 10 starter slots into 5 rows of two:
 

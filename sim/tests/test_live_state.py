@@ -284,9 +284,7 @@ def test_a_card_totals_only_the_starting_lineup(midway):
     assert sum(p.points for p in lineup) <= sum(p.points for p in seat.roster)
 
 
-def test_unfilled_starter_slots_are_shown_but_bench_is_hidden_until_maximized(
-    midway,
-):
+def test_unfilled_starter_slots_are_shown(midway):
     seat = next(s for s in midway.seats.values() if s.open_slots > 6)
     card = render_rosters(midway).split('data-roster="%d"' % seat.slot)[1]
     card = card.split("</section>")[0]
@@ -375,12 +373,21 @@ def test_cells_carry_position_colour_and_price(midway):
         assert f"${pick.price}" in card
 
 
-def test_bench_is_in_the_markup_so_the_overlay_needs_no_refetch(finished):
+def test_bench_is_shown_but_marked_so_it_can_be_dimmed(finished):
     card = render_rosters(finished).split('data-roster="1"')[1]
     card = card.split("</section>")[0]
+    # Bench is visible alongside the starters -- the `bench` class is what lets
+    # CSS grey it back, so a glance still separates starters from depth.
+    assert card.count('class="prow bench"') == 3  # 6 bench slots, two to a row
     assert 'class="prow bench"' in card
-    # 6 bench slots, two to a row.
-    assert card.count('class="prow bench"') == 3
+
+
+def test_bench_players_are_dimmed_not_hidden():
+    page = render_page("123")
+    assert ".prow.bench .cell" in page
+    assert "opacity" in page
+    # The old behaviour -- hidden until maximized -- must not come back.
+    assert ".prow.bench {" not in page.replace("{{", "{")
 
 
 def test_page_offers_a_maximize_toggle_and_reserves_the_left_half():
