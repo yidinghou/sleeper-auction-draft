@@ -23,7 +23,13 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from .auction import max_bid
 from .config import CONCRETE_POSITIONS, DraftConfig
-from .roster import marginal_points, marginal_thresholds, open_slots, positional_need
+from .roster import (
+    marginal_points,
+    marginal_thresholds,
+    open_slots,
+    positional_need,
+    starters,
+)
 from .valuation import Player, _make_id, by_sleeper_id, replacement_points
 
 
@@ -226,6 +232,63 @@ def contenders(state: LeagueState, player: Optional[Player]) -> List[Seat]:
         if seat.max_bid > 0 and seat_value_of(state, seat, player) > 0.0
     ]
     return sorted(live, key=lambda s: (-s.max_bid, s.slot))
+
+
+@dataclass(frozen=True)
+class PositionLine:
+    """One position's worth of a seat, summarized."""
+
+    pos: str
+    have: int
+    """Bodies on the roster at this position, bench included."""
+    want: int
+    """Startable spots, from `config.starter_counts()`."""
+    starter_points: float
+    """What this position contributes to the seat's starting lineup."""
+
+    @property
+    def need(self) -> int:
+        """More bodies wanted before the lineup is legal here. Never negative --
+        a fourth running back is depth, not a need."""
+        return max(0, self.want - self.have)
+
+
+def position_summary(seat: Seat, config: DraftConfig) -> List[PositionLine]:
+    """A seat at a glance: how full each position is and what it's scoring.
+
+    The coarse read the roster card can't give you -- *does seat 7 still need a
+    receiver?* -- without reading sixteen rows to find out.
+
+    `starter_points` is grouped off the same `starters()` matching the simulator
+    scores on, so the summary and the roster behind it cannot disagree. A
+    position nobody starts and nobody owns is dropped, so K stays out of a
+    league that doesn't play one but appears the moment someone drafts a kicker.
+    """
+    want = config.starter_counts()
+    have: Dict[str, int] = {}
+    for player in seat.roster:
+        have[player.pos] = have.get(player.pos, 0) + 1
+
+    points: Dict[str, float] = {}
+    for player in starters(seat.roster, config):
+        if player is not None:
+            points[player.pos] = points.get(player.pos, 0.0) + player.points
+
+    positions = list(CONCRETE_POSITIONS)
+    # Anything the roster holds that the position list doesn't know about (an
+    # odd metadata position on an unmatched pick) still gets a line: a body that
+    # spent money must be visible somewhere.
+    positions += [pos for pos in have if pos not in positions]
+    return [
+        PositionLine(
+            pos=pos,
+            have=have.get(pos, 0),
+            want=want.get(pos, 0),
+            starter_points=points.get(pos, 0.0),
+        )
+        for pos in positions
+        if want.get(pos, 0) or have.get(pos, 0)
+    ]
 
 
 def spend_by_position(state: LeagueState) -> Dict[str, int]:

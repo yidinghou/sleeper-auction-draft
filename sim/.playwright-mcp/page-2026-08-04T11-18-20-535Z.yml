@@ -1,0 +1,324 @@
+- generic [active] [ref=f17e1]:
+  - heading "Roster card — H2 header, three TEAM views" [level=1] [ref=f17e2]
+  - paragraph [ref=f17e3]: "All three cards are POC 2 with the H2 header, at the true compact size (316×232). Points and open-slot count have left the header — it now carries money only: dollars left, max bid, and the burn bar. Both figures reappear, with room to be labeled, in the third pane, which is no longer NEED but TEAM. Click the segments; the three sections below differ only in what TEAM looks like."
+  - heading "T1 — stat tiles over position meters · the direct translation" [level=2] [ref=f17e4]
+  - paragraph [ref=f17e5]: Three labeled tiles — STARTERS points, BENCH points, OPEN slots — then the position meters as they were. Nothing to learn and nothing lost from the old NEED view; it just gained the team totals the header gave up. Densest of the three, and the only one where every position keeps its fill bar.
+  - generic [ref=f17e6]:
+    - generic [ref=f17e7]:
+      - generic [ref=f17e8]:
+        - generic [ref=f17e9]:
+          - generic [ref=f17e10]: S4 (you)
+          - generic [ref=f17e11]:
+            - button "LINEUP" [ref=f17e12] [cursor=pointer]
+            - button "BN" [ref=f17e13] [cursor=pointer]
+            - button "TEAM" [pressed] [ref=f17e14] [cursor=pointer]
+        - generic [ref=f17e15]:
+          - generic [ref=f17e16]: $37
+          - generic [ref=f17e17]: max $35
+      - generic [ref=f17e22]:
+        - generic [ref=f17e23]:
+          - generic [ref=f17e24]:
+            - generic [ref=f17e25]: Starters
+            - generic [ref=f17e26]: "1642"
+          - generic [ref=f17e27]:
+            - generic [ref=f17e28]: Bench
+            - generic [ref=f17e29]: "512"
+          - generic [ref=f17e30]:
+            - generic [ref=f17e31]: Open
+            - generic [ref=f17e32]: "3"
+        - generic [ref=f17e33]:
+          - generic [ref=f17e34]: QB
+          - generic [ref=f17e35]: 2/2
+          - generic [ref=f17e38]: "42"
+        - generic [ref=f17e39]:
+          - generic [ref=f17e40]: RB
+          - generic [ref=f17e41]: 3/5
+          - generic [ref=f17e44]: "77"
+        - generic [ref=f17e45]:
+          - generic [ref=f17e46]: WR
+          - generic [ref=f17e47]: 4/6
+          - generic [ref=f17e50]: "104"
+        - generic [ref=f17e51]:
+          - generic [ref=f17e52]: TE
+          - generic [ref=f17e53]: 2/2
+          - generic [ref=f17e56]: "25"
+        - generic [ref=f17e57]:
+          - generic [ref=f17e58]: K
+          - generic [ref=f17e59]: 0/1
+          - generic [ref=f17e61]: —
+    - generic [ref=f17e62]:
+      - generic [ref=f17e63]:
+        - generic [ref=f17e64]:
+          - generic [ref=f17e65]: S7
+          - generic [ref=f17e66]:
+            - button "LINEUP" [ref=f17e67] [cursor=pointer]
+            - button "BN" [ref=f17e68] [cursor=pointer]
+            - button "TEAM" [pressed] [ref=f17e69] [cursor=pointer]
+        - generic [ref=f17e70]:
+          - generic [ref=f17e71]: $4
+          - generic [ref=f17e72]: max $4
+      - generic [ref=f17e76]:
+        - generic [ref=f17e77]:
+          - generic [ref=f17e78]:
+            - generic [ref=f17e79]: Starters
+            - generic [ref=f17e80]: "1731"
+          - generic [ref=f17e81]:
+            - generic [ref=f17e82]: Bench
+            - generic [ref=f17e83]: "604"
+          - generic [ref=f17e84]:
+            - generic [ref=f17e85]: Open
+            - generic [ref=f17e86]: "1"
+        - generic [ref=f17e87]:
+          - generic [ref=f17e88]: QB
+          - generic [ref=f17e89]: 2/2
+          - generic [ref=f17e92]: "60"
+        - generic [ref=f17e93]:
+          - generic [ref=f17e94]: RB
+          - generic [ref=f17e95]: 4/5
+          - generic [ref=f17e98]: "113"
+        - generic [ref=f17e99]:
+          - generic [ref=f17e100]: WR
+          - generic [ref=f17e101]: 4/6
+          - generic [ref=f17e104]: "118"
+        - generic [ref=f17e105]:
+          - generic [ref=f17e106]: TE
+          - generic [ref=f17e107]: 2/2
+          - generic [ref=f17e110]: "24"
+        - generic [ref=f17e111]:
+          - generic [ref=f17e112]: K
+          - generic [ref=f17e113]: 1/1
+          - generic [ref=f17e116]: "1"
+    - generic [ref=f17e117]:
+      - generic [ref=f17e118]:
+        - generic [ref=f17e119]:
+          - generic [ref=f17e120]: S11
+          - generic [ref=f17e121]:
+            - button "LINEUP" [ref=f17e122] [cursor=pointer]
+            - button "BN" [ref=f17e123] [cursor=pointer]
+            - button "TEAM" [pressed] [ref=f17e124] [cursor=pointer]
+        - generic [ref=f17e125]:
+          - generic [ref=f17e126]: $168
+          - generic [ref=f17e127]: max $157
+      - generic [ref=f17e132]:
+        - generic [ref=f17e133]:
+          - generic [ref=f17e134]:
+            - generic [ref=f17e135]: Starters
+            - generic [ref=f17e136]: "402"
+          - generic [ref=f17e137]:
+            - generic [ref=f17e138]: Bench
+            - generic [ref=f17e139]: "96"
+          - generic [ref=f17e140]:
+            - generic [ref=f17e141]: Open
+            - generic [ref=f17e142]: "12"
+        - generic [ref=f17e143]:
+          - generic [ref=f17e144]: QB
+          - generic [ref=f17e145]: 1/2
+          - generic [ref=f17e148]: "41"
+        - generic [ref=f17e149]:
+          - generic [ref=f17e150]: RB
+          - generic [ref=f17e151]: 1/5
+          - generic [ref=f17e154]: "59"
+        - generic [ref=f17e155]:
+          - generic [ref=f17e156]: WR
+          - generic [ref=f17e157]: 2/6
+          - generic [ref=f17e160]: "47"
+        - generic [ref=f17e161]:
+          - generic [ref=f17e162]: TE
+          - generic [ref=f17e163]: 0/2
+          - generic [ref=f17e165]: —
+        - generic [ref=f17e166]:
+          - generic [ref=f17e167]: K
+          - generic [ref=f17e168]: 0/1
+          - generic [ref=f17e170]: —
+  - heading "T2 — points split, dense position grid · where the points sit" [level=2] [ref=f17e171]
+  - paragraph [ref=f17e172]: "Starters and bench become one proportional bar instead of two figures: a seat carrying a third of its points on the bench has drafted badly, and the proportion says that faster than any pair of numbers. Positions drop their meters and pack two to a row, which buys the space for the bar and keeps the whole pane on one screen."
+  - generic [ref=f17e173]:
+    - generic [ref=f17e174]:
+      - generic [ref=f17e175]:
+        - generic [ref=f17e176]:
+          - generic [ref=f17e177]: S4 (you)
+          - generic [ref=f17e178]:
+            - button "LINEUP" [ref=f17e179] [cursor=pointer]
+            - button "BN" [ref=f17e180] [cursor=pointer]
+            - button "TEAM" [pressed] [ref=f17e181] [cursor=pointer]
+        - generic [ref=f17e182]:
+          - generic [ref=f17e183]: $37
+          - generic [ref=f17e184]: max $35
+      - generic [ref=f17e189]:
+        - generic [ref=f17e190]:
+          - generic [ref=f17e191]: "1642"
+          - generic [ref=f17e192]: starting
+          - generic [ref=f17e193]: "512"
+          - generic [ref=f17e194]: bench
+          - generic [ref=f17e195]: 3 open
+        - generic [ref=f17e199]:
+          - generic [ref=f17e200]:
+            - generic [ref=f17e201]: QB
+            - generic [ref=f17e202]: 2/2
+            - generic [ref=f17e203]: "42"
+          - generic [ref=f17e204]:
+            - generic [ref=f17e205]: RB
+            - generic [ref=f17e206]: 3/5
+            - generic [ref=f17e207]: "77"
+          - generic [ref=f17e208]:
+            - generic [ref=f17e209]: WR
+            - generic [ref=f17e210]: 4/6
+            - generic [ref=f17e211]: "104"
+          - generic [ref=f17e212]:
+            - generic [ref=f17e213]: TE
+            - generic [ref=f17e214]: 2/2
+            - generic [ref=f17e215]: "25"
+          - generic [ref=f17e216]:
+            - generic [ref=f17e217]: K
+            - generic [ref=f17e218]: 0/1
+            - generic [ref=f17e219]: —
+    - generic [ref=f17e220]:
+      - generic [ref=f17e221]:
+        - generic [ref=f17e222]:
+          - generic [ref=f17e223]: S7
+          - generic [ref=f17e224]:
+            - button "LINEUP" [ref=f17e225] [cursor=pointer]
+            - button "BN" [ref=f17e226] [cursor=pointer]
+            - button "TEAM" [pressed] [ref=f17e227] [cursor=pointer]
+        - generic [ref=f17e228]:
+          - generic [ref=f17e229]: $4
+          - generic [ref=f17e230]: max $4
+      - generic [ref=f17e234]:
+        - generic [ref=f17e235]:
+          - generic [ref=f17e236]: "1731"
+          - generic [ref=f17e237]: starting
+          - generic [ref=f17e238]: "604"
+          - generic [ref=f17e239]: bench
+          - generic [ref=f17e240]: 1 open
+        - generic [ref=f17e244]:
+          - generic [ref=f17e245]:
+            - generic [ref=f17e246]: QB
+            - generic [ref=f17e247]: 2/2
+            - generic [ref=f17e248]: "60"
+          - generic [ref=f17e249]:
+            - generic [ref=f17e250]: RB
+            - generic [ref=f17e251]: 4/5
+            - generic [ref=f17e252]: "113"
+          - generic [ref=f17e253]:
+            - generic [ref=f17e254]: WR
+            - generic [ref=f17e255]: 4/6
+            - generic [ref=f17e256]: "118"
+          - generic [ref=f17e257]:
+            - generic [ref=f17e258]: TE
+            - generic [ref=f17e259]: 2/2
+            - generic [ref=f17e260]: "24"
+          - generic [ref=f17e261]:
+            - generic [ref=f17e262]: K
+            - generic [ref=f17e263]: 1/1
+            - generic [ref=f17e264]: "1"
+    - generic [ref=f17e265]:
+      - generic [ref=f17e266]:
+        - generic [ref=f17e267]:
+          - generic [ref=f17e268]: S11
+          - generic [ref=f17e269]:
+            - button "LINEUP" [ref=f17e270] [cursor=pointer]
+            - button "BN" [ref=f17e271] [cursor=pointer]
+            - button "TEAM" [pressed] [ref=f17e272] [cursor=pointer]
+        - generic [ref=f17e273]:
+          - generic [ref=f17e274]: $168
+          - generic [ref=f17e275]: max $157
+      - generic [ref=f17e280]:
+        - generic [ref=f17e281]:
+          - generic [ref=f17e282]: "402"
+          - generic [ref=f17e283]: starting
+          - generic [ref=f17e284]: "96"
+          - generic [ref=f17e285]: bench
+          - generic [ref=f17e286]: 12 open
+        - generic [ref=f17e290]:
+          - generic [ref=f17e291]:
+            - generic [ref=f17e292]: QB
+            - generic [ref=f17e293]: 1/2
+            - generic [ref=f17e294]: "41"
+          - generic [ref=f17e295]:
+            - generic [ref=f17e296]: RB
+            - generic [ref=f17e297]: 1/5
+            - generic [ref=f17e298]: "59"
+          - generic [ref=f17e299]:
+            - generic [ref=f17e300]: WR
+            - generic [ref=f17e301]: 2/6
+            - generic [ref=f17e302]: "47"
+          - generic [ref=f17e303]:
+            - generic [ref=f17e304]: TE
+            - generic [ref=f17e305]: 0/2
+            - generic [ref=f17e306]: —
+          - generic [ref=f17e307]:
+            - generic [ref=f17e308]: K
+            - generic [ref=f17e309]: 0/1
+            - generic [ref=f17e310]: —
+  - heading "T3 — slot ledger · not how many are open, which" [level=2] [ref=f17e311]
+  - paragraph [ref=f17e312]: Totals on one line, then the actual open slots as chips — DEF, K, and however many bench bodies. "12 open" never told you whether a seat can still take the receiver on the block; WR · FLEX · W/T does. Leanest and most legible of the three; it drops the have/want detail, so it answers "can they bid on this player" rather than "how short are they at receiver".
+  - generic [ref=f17e313]:
+    - generic [ref=f17e314]:
+      - generic [ref=f17e315]:
+        - generic [ref=f17e316]:
+          - generic [ref=f17e317]: S4 (you)
+          - generic [ref=f17e318]:
+            - button "LINEUP" [ref=f17e319] [cursor=pointer]
+            - button "BN" [ref=f17e320] [cursor=pointer]
+            - button "TEAM" [pressed] [ref=f17e321] [cursor=pointer]
+        - generic [ref=f17e322]:
+          - generic [ref=f17e323]: $37
+          - generic [ref=f17e324]: max $35
+      - generic [ref=f17e329]:
+        - generic [ref=f17e330]:
+          - generic [ref=f17e331]: 1642 starting
+          - generic [ref=f17e332]: 512 on bench
+        - generic [ref=f17e333]:
+          - generic [ref=f17e334]: roster 13/16 filled
+          - generic [ref=f17e335]: 3 open
+        - generic [ref=f17e336]:
+          - generic [ref=f17e337]: DEF
+          - generic [ref=f17e338]: K
+          - generic [ref=f17e339]: BN ×1
+    - generic [ref=f17e340]:
+      - generic [ref=f17e341]:
+        - generic [ref=f17e342]:
+          - generic [ref=f17e343]: S7
+          - generic [ref=f17e344]:
+            - button "LINEUP" [ref=f17e345] [cursor=pointer]
+            - button "BN" [ref=f17e346] [cursor=pointer]
+            - button "TEAM" [pressed] [ref=f17e347] [cursor=pointer]
+        - generic [ref=f17e348]:
+          - generic [ref=f17e349]: $4
+          - generic [ref=f17e350]: max $4
+      - generic [ref=f17e354]:
+        - generic [ref=f17e355]:
+          - generic [ref=f17e356]: 1731 starting
+          - generic [ref=f17e357]: 604 on bench
+        - generic [ref=f17e358]:
+          - generic [ref=f17e359]: roster 15/16 filled
+          - generic [ref=f17e360]: 1 open
+        - generic [ref=f17e361]: BN ×1
+    - generic [ref=f17e363]:
+      - generic [ref=f17e364]:
+        - generic [ref=f17e365]:
+          - generic [ref=f17e366]: S11
+          - generic [ref=f17e367]:
+            - button "LINEUP" [ref=f17e368] [cursor=pointer]
+            - button "BN" [ref=f17e369] [cursor=pointer]
+            - button "TEAM" [pressed] [ref=f17e370] [cursor=pointer]
+        - generic [ref=f17e371]:
+          - generic [ref=f17e372]: $168
+          - generic [ref=f17e373]: max $157
+      - generic [ref=f17e378]:
+        - generic [ref=f17e379]:
+          - generic [ref=f17e380]: 402 starting
+          - generic [ref=f17e381]: 96 on bench
+        - generic [ref=f17e382]:
+          - generic [ref=f17e383]: roster 4/16 filled
+          - generic [ref=f17e384]: 12 open
+        - generic [ref=f17e385]:
+          - generic [ref=f17e386]: SFLX
+          - generic [ref=f17e387]: WR
+          - generic [ref=f17e388]: RB
+          - generic [ref=f17e389]: FLEX
+          - generic [ref=f17e390]: W/T
+          - generic [ref=f17e391]: TE
+          - generic [ref=f17e392]: DEF
+          - generic [ref=f17e393]: K
+          - generic [ref=f17e394]: BN ×4

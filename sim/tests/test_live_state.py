@@ -5,8 +5,9 @@ from pathlib import Path
 
 import pytest
 
-from draftsim.config import DraftConfig
+from draftsim.config import BENCH, DraftConfig
 from draftsim.live_render import (
+    _SUMMARY_SKIP,
     _pair_starters,
     _short_name,
     render_nomination,
@@ -15,6 +16,7 @@ from draftsim.live_render import (
 )
 from draftsim.live_state import (
     contenders,
+    position_summary,
     reconstruct,
     seat_value_of,
     spend_by_position,
@@ -204,6 +206,54 @@ def test_a_pick_with_no_price_is_free_not_a_crash(mock_config, pool):
     state = reconstruct(picks, mock_config, pool)
     assert state.seats[1].spent == 0
     assert state.seats[1].filled == 1
+
+
+# -- the per-seat summary ----------------------------------------------------
+
+
+def test_summary_need_is_the_same_need_the_seat_already_reports(midway):
+    # Two ways to the same number; if they part company the summary card starts
+    # contradicting the roster card next to it.
+    for seat in midway.seats.values():
+        for line in position_summary(seat, midway.config):
+            assert line.need == seat.needs.get(line.pos, 0)
+
+
+def test_summary_points_add_up_to_the_starting_lineup(midway):
+    for seat in midway.seats.values():
+        lineup = [p for p in starters(seat.roster, midway.config) if p is not None]
+        total = sum(line.starter_points for line in position_summary(seat, midway.config))
+        assert total == pytest.approx(sum(p.points for p in lineup))
+
+
+def test_summary_counts_bench_depth_as_have_but_never_as_need(finished):
+    seat = finished.seats[1]
+    lines = {line.pos: line for line in position_summary(seat, finished.config)}
+    for pos, line in lines.items():
+        assert line.have == sum(1 for p in seat.roster if p.pos == pos)
+    # A finished roster is deeper than its lineup at some position, and depth
+    # must never read as a hole.
+    assert any(line.have > line.want for line in lines.values())
+    assert all(line.need == 0 for line in lines.values())
+
+
+def test_a_position_nobody_starts_or_owns_is_left_out(midway):
+    # The default lineup has no kicker slot, so K is noise until someone drafts
+    # one -- at which point the body has to show up somewhere.
+    for seat in midway.seats.values():
+        positions = {line.pos for line in position_summary(seat, midway.config)}
+        has_kicker = any(p.pos == "K" for p in seat.roster)
+        assert ("K" in positions) == has_kicker
+
+
+def test_an_empty_roster_summarizes_as_all_holes(mock_config, pool):
+    state = reconstruct([], mock_config, pool)
+    lines = position_summary(state.seats[1], mock_config)
+    assert [(l.pos, l.have, l.want) for l in lines] == [
+        ("QB", 0, 2), ("RB", 0, 3), ("WR", 0, 3), ("TE", 0, 1), ("DEF", 0, 1),
+    ]
+    assert all(line.starter_points == 0.0 for line in lines)
+    assert all(line.need == line.want for line in lines)
 
 
 # -- rendering ---------------------------------------------------------------
@@ -400,6 +450,101 @@ def test_page_splits_state_left_from_rosters_right():
     assert 'class="side"' in page
     assert 'class="board"' in page
     assert page.index('class="side"') < page.index('class="board"')
+
+
+# -- the summary view --------------------------------------------------------
+
+
+def _card(state, slot):
+    card = render_rosters(state).split('data-roster="%d"' % slot)[1]
+    return card.split("</section>")[0]
+
+
+def test_every_card_carries_both_views_and_the_arrows_between_them(midway):
+    html = render_rosters(midway)
+    teams = len(midway.seats)
+    assert html.count('class="sum"') == teams
+    assert html.count('class="vnav"') == teams
+    assert html.count('class="vnext"') == teams
+    assert html.count('class="vprev"') == teams
+
+
+def test_the_summary_ships_alongside_the_roster_rows_not_instead_of_them(midway):
+    # Both views in one card is what makes flipping free: no fetch, so the two
+    # views can never show different moments of the draft.
+    seat = next(s for s in midway.seats.values() if s.roster)
+    card = _card(midway, seat.slot)
+    assert 'class="sum"' in card
+    assert 'class="prow"' in card
+    for pick in seat.picks:
+        assert pick.player.name.replace("'", "&#x27;") in card
+
+
+def _summarized(state, seat):
+    """The rows a seat's summary view actually shows."""
+    return [
+        line
+        for line in position_summary(seat, state.config)
+        if line.pos not in _SUMMARY_SKIP
+    ]
+
+
+def test_summary_shows_each_positions_fill_and_points(midway):
+    seat = next(s for s in midway.seats.values() if s.roster)
+    summary = _card(midway, seat.slot).split('class="sum"')[1].split("</div></div>")[0]
+    for line in _summarized(midway, seat):
+        assert f">{line.have}<i>/{line.want}</i>" in summary
+        if line.starter_points:
+            assert f">{line.starter_points:.0f}<" in summary
+
+
+def test_summary_flags_only_the_positions_still_short(midway):
+    for seat in midway.seats.values():
+        summary = _card(midway, seat.slot).split('class="sum"')[1]
+        short = [line for line in _summarized(midway, seat) if line.need]
+        assert summary.count('class="srow short"') == len(short)
+
+
+def test_summary_leaves_out_the_rows_that_are_never_a_decision(midway):
+    # One defense, bought once, and bench depth you don't decide at the podium:
+    # rows that cost space without changing a bid. The full roster still has them.
+    for seat in midway.seats.values():
+        card = _card(midway, seat.slot)
+        summary, rows = card.split('class="sum"')[1].split('<div class="prow')[:2]
+        assert ">DEF</i>" not in summary
+        assert ">BN</i>" not in summary
+        assert summary.count('class="srow') == len(_summarized(midway, seat))
+
+
+def test_the_roster_view_still_shows_what_the_summary_drops(finished):
+    # Dropping them from the summary must not lose them: a full roster's
+    # defense and bench are still there in the view that lists everything.
+    roster_rows = _card(finished, 1).split('<div class="prow', 1)[1]
+    assert ">DEF</i>" in roster_rows
+    assert f">{BENCH}</i>" in roster_rows
+
+
+def test_the_fill_meter_never_overflows_its_track(finished):
+    # A fourth running back is depth; a bar past 100% would read as a fault.
+    for slot in finished.seats:
+        widths = [
+            int(chunk.split("%")[0])
+            for chunk in _card(finished, slot).split("width:")[1:]
+        ]
+        assert widths and all(0 <= w <= 100 for w in widths)
+
+
+def test_view_state_is_client_side_and_survives_a_refresh():
+    page = render_page("123")
+    # Roster view is what the board loads on; summary is behind the arrows.
+    assert ".sum { display: none; }" in page
+    assert '.card.view-summary .sum { display: block; }' in page
+    assert '.card.view-summary .prow { display: none; }' in page
+    # The cards are replaced every tick, so the choice must be re-applied after
+    # each swap and the arrow handler must be delegated, not per-button.
+    assert "applyViews()" in page
+    assert 'getElementById("rosters").addEventListener("click"' in page
+    assert "draftsim.views" in page
 
 
 # -- compact names -----------------------------------------------------------

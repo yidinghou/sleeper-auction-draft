@@ -2,7 +2,8 @@
 
 A header strip naming whatever is on the block, then every seat's roster as a
 card -- each player in the slot they would actually start in, with what they
-cost.
+cost. Each card also carries a summary view of the same roster (how full each
+position is, and what it scores), reached by the arrows in the card header.
 
 The page is served by `live.py` and refreshes itself by refetching `/api/state`
 and swapping in the fragments below — so everything here renders from a
@@ -15,7 +16,7 @@ import html
 from typing import List, Optional, Tuple
 
 from .config import BENCH
-from .live_state import LeagueState, Seat
+from .live_state import LeagueState, PositionLine, Seat, position_summary
 from .roster import display_slots, starters
 from .sleeper import Nomination
 from .theme import BASE_CSS, POS_COLOR, POS_FALLBACK, SLOT_LABEL, badge
@@ -137,12 +138,60 @@ def _column_header() -> str:
     )
 
 
+def _summary_row(pos: str, have: int, want: int, points: float, short: bool) -> str:
+    """One position's line: chip, have/want, a fill meter, starter points.
+
+    The meter is the whole reason this view exists -- it answers "is this seat
+    done at receiver?" without reading a count. It's a ratio against a limit, so
+    the fill is capped at 100%: a fourth running back is depth, and a bar that
+    overflowed its track would read as a problem instead.
+    """
+    color = POS_COLOR.get(pos, POS_FALLBACK)
+    fill = min(100, round(100 * have / want)) if want else 0
+    pts = f"{points:.0f}" if points else "—"  # a dash: nothing starting here yet
+    return (
+        f'<div class="srow{" short" if short else ""}" style="--pos:{color}">'
+        f'<i class="ms">{_esc(pos)}</i>'
+        f'<b class="sct">{have}<i>/{want}</i></b>'
+        f'<span class="sbar"><span style="width:{fill}%"></span></span>'
+        f'<i class="spt">{pts}</i></div>'
+    )
+
+
+# Positions the summary leaves out. Both are settled early and stay settled --
+# you buy one defense, and bench depth is not a decision you make at the podium
+# -- so they cost a row each without ever changing what you'd bid. The full
+# roster view still shows them.
+_SUMMARY_SKIP = ("DEF",)
+
+
+def _summary_block(lines: List[PositionLine]) -> str:
+    """A seat at a glance: one row per position that's still a live decision.
+
+    Emitted into the same card as the full roster and hidden by CSS, so flipping
+    views costs no fetch and cannot show a different moment of the draft than
+    the view it replaced -- the same bargain the short/full name swap makes.
+    """
+    rows = "".join(
+        _summary_row(
+            line.pos, line.have, line.want, line.starter_points, line.need > 0
+        )
+        for line in lines
+        if line.pos not in _SUMMARY_SKIP
+    )
+    return f'<div class="sum">{rows}</div>'
+
+
 def _roster_card(state: LeagueState, seat: Seat) -> str:
     """One seat's roster: starters paired two to a row, then the bench.
 
     Bench rows carry a `bench` class so CSS can grey them back. They stay
     visible rather than hidden -- depth is worth seeing, and dimming separates
     it from the lineup faster than reading the BN label would.
+
+    The card also carries a summary view of the same roster, and the arrows that
+    flip between them. Both views are always in the markup; which one shows is a
+    class the client toggles.
     """
     price_of = {pick.player.id: pick.price for pick in seat.picks}
     lineup = [p for p in starters(seat.roster, state.config) if p is not None]
@@ -170,12 +219,18 @@ def _roster_card(state: LeagueState, seat: Seat) -> str:
 
     bench_open = state.config.roster_slots.count(BENCH) - len(bench)
     open_txt = f" · {bench_open} open" if bench_open else ""
+    summary = _summary_block(position_summary(seat, state.config))
     return (
         f'<section class="card" data-roster="{seat.slot}">'
         f'<header><span class="team">S{seat.slot}</span>'
         f'<span class="totals">${seat.budget_left} · {start_pts:.0f}'
-        f"{open_txt}</span></header>"
-        f"{rows}</section>"
+        f"{open_txt}</span>"
+        '<span class="vnav">'
+        '<button class="vprev" type="button" aria-label="Previous view">'
+        "&lsaquo;</button>"
+        '<button class="vnext" type="button" aria-label="Next view">'
+        "&rsaquo;</button></span></header>"
+        f"{summary}{rows}</section>"
     )
 
 
@@ -239,7 +294,8 @@ def render_page(draft_id: str) -> str:
     inside one viewport height -- twelve seats visible at once, nothing to
     scroll mid-auction. The maximize toggle is pure CSS over the same markup,
     so opening the overlay costs no fetch and cannot show a different moment of
-    the draft than the compact view behind it.
+    the draft than the compact view behind it. Per-card view is the same trick,
+    and for the same reason.
     """
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -299,7 +355,45 @@ def render_page(draft_id: str) -> str:
   .card.me {{ border-color: #00d7ff; }}
   .card.me .team::after {{ content: " (you)"; color: #00d7ff; font-weight: 400; }}
   .team {{ font-weight: 700; font-size: calc(11px * var(--fs)); }}
-  .totals {{ color: #98b3d6; font-size: calc(10px * var(--fs)); white-space: nowrap; }}
+  /* Pushed right so the arrows sit at the card's edge rather than the header
+     spreading three items evenly across it. */
+  .totals {{ color: #98b3d6; font-size: calc(10px * var(--fs)); white-space: nowrap;
+    margin-left: auto; }}
+
+  /* View arrows. Held back to near-invisible until the card is hovered: twelve
+     cards' worth of always-on chrome competes with the data for attention, and
+     these are reached for occasionally, not read. */
+  .vnav {{ display: flex; gap: 1px; flex: none; }}
+  .vnav button {{ padding: 0 3px; font-size: calc(11px * var(--fs)); line-height: 1.2;
+    border-color: transparent; color: #4a5170; background: none; }}
+  .card:hover .vnav button {{ color: #98b3d6; }}
+  .vnav button:hover {{ color: #00d7ff; border-color: #414566; }}
+
+  /* Summary view: one row per position, hidden until the card asks for it.
+     Roster view is what the board loads on, so `.sum` starts off. */
+  .sum {{ display: none; }}
+  .card.view-summary .sum {{ display: block; }}
+  .card.view-summary .prow {{ display: none; }}
+  .srow {{ display: grid; align-items: center; gap: 4px; padding: 0 2px;
+    grid-template-columns:
+      auto calc(26px * var(--fs)) minmax(0, 1fr) calc(26px * var(--fs));
+    line-height: 1.9; }}
+  /* have/want, with the "/want" half sunk: what you own is the number being
+     read, the target is context. Short positions take the accent -- that is the
+     one thing this view exists to surface. */
+  .sct {{ font-size: calc(10px * var(--fs)); font-weight: 700; text-align: right;
+    font-variant-numeric: tabular-nums; color: #98b3d6; }}
+  .sct i {{ font-style: normal; font-weight: 400; color: #4a5170; }}
+  .srow.short .sct {{ color: #fafafa; }}
+  /* Ratio against a limit: fill in the position's own color over a lighter step
+     of it, so the whole bar carries the state rather than only the filled part.
+     Text stays in text colors -- the chip and the bar carry position. */
+  .sbar {{ height: 4px; border-radius: 2px; overflow: hidden;
+    background: color-mix(in srgb, var(--pos, #414566) 14%, transparent); }}
+  .sbar span {{ display: block; height: 100%; border-radius: 2px;
+    background: var(--pos, #98b3d6); }}
+  .spt {{ font-style: normal; font-size: calc(9px * var(--fs)); text-align: right;
+    font-variant-numeric: tabular-nums; color: #98b3d6; }}
 
   .prow {{ display: grid; grid-template-columns: 1fr 1fr; gap: 3px;
     margin-bottom: 1px; min-width: 0; }}
@@ -370,6 +464,16 @@ def render_page(draft_id: str) -> str:
   body.maxed .mb, body.maxed .mp {{ display: block; }}
   body.maxed .mb, body.maxed .mp, body.maxed .mc {{ font-size: calc(10px * var(--fs)); }}
   body.maxed .colhead {{ display: grid; }}
+  /* Column labels belong to the roster rows; in summary view they would head an
+     empty card. More specific than the rule above, so it wins in both views. */
+  .card.view-summary .colhead {{ display: none; }}
+  body.maxed .srow {{ line-height: 2.2; gap: 8px; padding: 0 4px;
+    grid-template-columns:
+      auto calc(34px * var(--fs)) minmax(0, 1fr) calc(32px * var(--fs)); }}
+  body.maxed .sct {{ font-size: calc(12px * var(--fs)); }}
+  body.maxed .spt {{ font-size: calc(11px * var(--fs)); }}
+  body.maxed .sbar {{ height: 5px; }}
+  body.maxed .vnav button {{ color: #98b3d6; }}
   body.maxed .colhead .cell {{ padding-bottom: 1px; }}
   body.maxed .colhead i {{ color: #4a5170; font-size: calc(8px * var(--fs)); font-weight: 700;
     text-transform: uppercase; }}
@@ -424,6 +528,35 @@ document.addEventListener("keydown", (e) => {{
   if (e.key === "Escape") setMaxed(false);
 }});
 
+// Per-card view. Ordered, so the arrows step through it and adding a third view
+// is one entry here plus its markup -- and "roster" first is what the board
+// loads on.
+const VIEWS = ["roster", "summary"];
+let views = {{}};
+try {{ views = JSON.parse(localStorage.getItem("draftsim.views")) || {{}}; }} catch (e) {{}}
+
+// #rosters is replaced wholesale every tick, so the chosen view lives here and
+// is re-applied after each swap -- otherwise every card would snap back to
+// roster view twice a second.
+function applyViews() {{
+  document.querySelectorAll("section.card").forEach((card) => {{
+    card.classList.toggle("view-summary", views[card.dataset.roster] === "summary");
+  }});
+}}
+
+// Delegated: the arrow buttons are destroyed and rebuilt on every refresh, so
+// nothing may hold a reference to them.
+document.getElementById("rosters").addEventListener("click", (e) => {{
+  const btn = e.target.closest(".vnav button");
+  if (!btn) return;
+  const slot = btn.closest("section.card").dataset.roster;
+  const step = btn.classList.contains("vnext") ? 1 : -1;
+  const at = VIEWS.indexOf(views[slot] || VIEWS[0]);
+  views[slot] = VIEWS[(at + step + VIEWS.length) % VIEWS.length];
+  localStorage.setItem("draftsim.views", JSON.stringify(views));
+  applyViews();
+}});
+
 function highlight() {{
   const mine = seatSel.value;
   document.querySelectorAll("section.card").forEach((card) => {{
@@ -440,10 +573,11 @@ async function tick() {{
     document.getElementById("sub").textContent = s.subtitle;
     document.getElementById("block").innerHTML = s.nomination_html;
     document.getElementById("rosters").innerHTML = s.rosters_html;
+    highlight();
+    applyViews();
     document.getElementById("pulse").textContent = s.polled_at;
     document.getElementById("warn").textContent = s.warning || "";
     dot.classList.remove("stale");
-    highlight();
   }} catch (err) {{
     dot.classList.add("stale");
     document.getElementById("pulse").textContent = "server unreachable";
