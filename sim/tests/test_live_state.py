@@ -441,6 +441,20 @@ def test_bench_players_are_dimmed_not_hidden():
     assert ".prow.bench {" not in page.replace("{{", "{")
 
 
+def test_board_controls_sit_in_a_menu_bar_over_the_grid():
+    page = render_page("123")
+    # The controls belong to the board, so they live above it rather than across
+    # the aisle in the state column -- and they stay reachable when the board
+    # takes the whole viewport.
+    bar = page.index('class="menubar"')
+    assert page.index('class="board"') < bar < page.index('id="rosters"')
+    assert bar < page.index('id="max"') < page.index('id="rosters"')
+    assert bar < page.index('id="reorder"') < page.index('id="rosters"')
+    # The grid takes what the bar leaves rather than a flat 100% of the column,
+    # which would have pushed the bottom row of cards off screen.
+    assert "#rosters { flex: 1; min-height: 0; }" in page
+
+
 def test_page_splits_state_left_from_rosters_right():
     page = render_page("123")
     assert 'id="max"' in page
@@ -545,6 +559,54 @@ def test_view_state_is_client_side_and_survives_a_refresh():
     assert "applyViews()" in page
     assert 'getElementById("rosters").addEventListener("click"' in page
     assert "draftsim.views" in page
+
+
+# -- dragging cards into a different order -----------------------------------
+
+
+def test_cards_are_draggable(midway):
+    html = render_rosters(midway)
+    assert html.count('draggable="true"') == len(midway.seats)
+
+
+def test_dragging_does_not_change_what_the_server_sends(midway):
+    # Order is presentational -- CSS `order` over markup that stays in seat
+    # order, so the server has no idea the board was rearranged and seat order
+    # is always recoverable.
+    page = render_page("123")
+    assert "card.style.order" in page
+    assert "draftsim.order" in page
+    order = [int(c.split('"')[0]) for c in render_rosters(midway).split('data-roster="')[1:]]
+    assert order == sorted(midway.seats)
+
+
+def test_a_drop_inserts_and_shifts_the_rest_down():
+    page = render_page("123")
+    # Remove then re-insert at the target's index: that is what makes the rest
+    # shift down instead of the two cards swapping places.
+    assert "order.splice(order.indexOf(dragging), 1)" in page
+    assert "order.splice(order.indexOf(target), 0, dragging)" in page
+
+
+def test_the_refresh_holds_still_while_a_card_is_in_hand():
+    # The board polls every 2s; swapping #rosters mid-drag would delete the
+    # element being dragged and the drop would land nowhere.
+    page = render_page("123")
+    assert "if (dragging === null) {" in page
+    assert "rosters.innerHTML = s.rosters_html;" in page
+
+
+def test_a_saved_order_is_reconciled_against_the_seats_on_the_board():
+    page = render_page("123")
+    # A stored order from a different league size must not hide a seat.
+    assert "function normalizeOrder()" in page
+    assert "if (!order.includes(slot)) order.push(slot);" in page
+
+
+def test_there_is_a_way_back_to_seat_order():
+    page = render_page("123")
+    assert 'id="reorder"' in page
+    assert 'localStorage.removeItem("draftsim.order")' in page
 
 
 # -- compact names -----------------------------------------------------------

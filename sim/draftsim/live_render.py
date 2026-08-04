@@ -3,7 +3,8 @@
 A header strip naming whatever is on the block, then every seat's roster as a
 card -- each player in the slot they would actually start in, with what they
 cost. Each card also carries a summary view of the same roster (how full each
-position is, and what it scores), reached by the arrows in the card header.
+position is, and what it scores), reached by the arrows in the card header, and
+cards can be dragged into whatever order you want to read them in.
 
 The page is served by `live.py` and refreshes itself by refetching `/api/state`
 and swapping in the fragments below — so everything here renders from a
@@ -221,7 +222,7 @@ def _roster_card(state: LeagueState, seat: Seat) -> str:
     open_txt = f" · {bench_open} open" if bench_open else ""
     summary = _summary_block(position_summary(seat, state.config))
     return (
-        f'<section class="card" data-roster="{seat.slot}">'
+        f'<section class="card" data-roster="{seat.slot}" draggable="true">'
         f'<header><span class="team">S{seat.slot}</span>'
         f'<span class="totals">${seat.budget_left} · {start_pts:.0f}'
         f"{open_txt}</span>"
@@ -240,6 +241,11 @@ def render_rosters(state: LeagueState) -> str:
     Seat order, and never sorted by anything that moves: these are read to look
     something up ("what does seat 4 still need at receiver?"), so a card has to
     stay where you last saw it rather than jumping every time someone bids.
+
+    The client can drag cards into a different order, and that ordering is
+    presentational only -- CSS `order` on the grid items, so this markup stays in
+    seat order. Which is the point: the one thing allowed to move a card is the
+    hand that dragged it, and a rearranged board still knows what seat order was.
     """
     cards = "".join(
         _roster_card(state, state.seats[slot]) for slot in sorted(state.seats)
@@ -295,7 +301,8 @@ def render_page(draft_id: str) -> str:
     scroll mid-auction. The maximize toggle is pure CSS over the same markup,
     so opening the overlay costs no fetch and cannot show a different moment of
     the draft than the compact view behind it. Per-card view is the same trick,
-    and for the same reason.
+    and for the same reason; so is card order, which the client drags and stores
+    but the server never knows about.
     """
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -320,7 +327,18 @@ def render_page(draft_id: str) -> str:
   .side h1 {{ font-size: calc(13px * var(--fs)); margin: 0; }}
   .side .sub {{ margin: 0; font-size: calc(11px * var(--fs)); }}
 
-  .board {{ min-width: 0; overflow: hidden; padding: 6px 8px; }}
+  /* A column, so the menu bar takes its own height off the top and the grid
+     gets exactly what's left -- the grid sizes to that, and a bar measured in
+     `height: 100%` terms would have pushed the bottom row off screen. */
+  .board {{ min-width: 0; overflow: hidden; padding: 6px 8px;
+    display: flex; flex-direction: column; gap: 4px; }}
+
+  /* The board's own controls, over the thing they control rather than across
+     the aisle in the state column. */
+  .menubar {{ display: flex; align-items: center; gap: 6px; flex: none;
+    min-width: 0; }}
+  .menubar .hint {{ color: #4a5170; font-size: calc(9px * var(--fs));
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
 
   .bar {{ display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
     font-size: calc(11px * var(--fs)); color: #98b3d6; }}
@@ -343,7 +361,7 @@ def render_page(draft_id: str) -> str:
 
   /* Three across, four down: twelve seats, one screen, fixed positions so a
      card stays where you last saw it between refreshes. */
-  #rosters {{ height: 100%; min-height: 0; }}
+  #rosters {{ flex: 1; min-height: 0; }}
   .grid {{ display: grid; gap: 4px; height: 100%;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     grid-auto-rows: minmax(0, 1fr); }}
@@ -352,6 +370,13 @@ def render_page(draft_id: str) -> str:
     display: flex; flex-direction: column; }}
   .card header {{ display: flex; justify-content: space-between;
     align-items: baseline; gap: 6px; margin-bottom: 2px; }}
+  /* Drag to reorder. The card being carried fades so the gap it will leave is
+     visible, and the card under the cursor shows a leading edge on the side the
+     drop will insert at -- "this is where it lands", not merely "this is hovered". */
+  .card.dragging {{ opacity: 0.4; }}
+  .card.dropzone {{ box-shadow: inset 3px 0 0 #00d7ff; border-color: #00d7ff; }}
+  .card header {{ cursor: grab; }}
+  .card.dragging header {{ cursor: grabbing; }}
   .card.me {{ border-color: #00d7ff; }}
   .card.me .team::after {{ content: " (you)"; color: #00d7ff; font-weight: 400; }}
   .team {{ font-weight: 700; font-size: calc(11px * var(--fs)); }}
@@ -436,8 +461,9 @@ def render_page(draft_id: str) -> str:
      re-rendered -- the bench rows and the hidden columns were always there. */
   body.maxed .board {{ position: fixed; inset: 0; z-index: 10;
     background: #05091d; padding: 14px 16px; }}
-  /* The Maximize button lives in the left column, which the overlay covers, so
-     without this the only way out is a keyboard shortcut nobody was told about. */
+  /* A second way out, at the corner where a full-screen thing is closed. The
+     Minimize button rides along in the menu bar since that bar lives inside the
+     board, but nobody looks there first. */
   .closebtn {{ display: none; }}
   body.maxed .closebtn {{ display: block; position: fixed; z-index: 11;
     top: 8px; right: 12px; width: 26px; height: 26px; padding: 0;
@@ -453,6 +479,8 @@ def render_page(draft_id: str) -> str:
      to survive any roster size, and silently hiding a player behind
      `overflow: hidden` is the one failure this must not have. */
   body.maxed #rosters {{ overflow-y: auto; }}
+  /* Keep the close button's corner clear of the hint text. */
+  body.maxed .menubar {{ padding-right: 30px; }}
   body.maxed .card {{ padding: 6px 8px; }}
   body.maxed .team {{ font-size: calc(13px * var(--fs)); }}
   body.maxed .totals {{ font-size: calc(11px * var(--fs)); }}
@@ -486,7 +514,6 @@ def render_page(draft_id: str) -> str:
     <div class="bar">
       <span><span class="dot" id="dot"></span> <span id="pulse">polling</span></span>
       <label>Seat <select id="seat"><option value="">—</option></select></label>
-      <button id="max" type="button">Maximize</button>
       <span id="warn" class="warn"></span>
     </div>
 
@@ -496,6 +523,12 @@ def render_page(draft_id: str) -> str:
   <main class="board">
     <button id="close" class="closebtn" type="button"
             aria-label="Minimize">&times;</button>
+    <div class="menubar">
+      <button id="max" type="button">Maximize</button>
+      <button id="reorder" type="button"
+              title="Put the cards back in seat order">Seat order</button>
+      <span class="hint">drag a card to reorder · &lsaquo; &rsaquo; for the summary</span>
+    </div>
     <div id="rosters"></div>
   </main>
 
@@ -557,6 +590,93 @@ document.getElementById("rosters").addEventListener("click", (e) => {{
   applyViews();
 }});
 
+// Card order, dragged by hand and remembered. Presentational: the server always
+// sends seat order and this reorders the grid with CSS `order`, so nothing has
+// to be re-fetched and seat order is never lost -- clearing the list restores it.
+let order = [];
+try {{ order = JSON.parse(localStorage.getItem("draftsim.order")) || []; }} catch (e) {{}}
+
+function slots() {{
+  return [...document.querySelectorAll("section.card")].map((c) => c.dataset.roster);
+}}
+
+// Reconcile the stored list against the seats actually on the board: drop seats
+// that are gone, append ones it has never seen. A saved order from a 10-team
+// league must not hide seats 11 and 12 of a 12-team one.
+function normalizeOrder() {{
+  const present = slots();
+  order = order.filter((slot) => present.includes(slot));
+  present.forEach((slot) => {{ if (!order.includes(slot)) order.push(slot); }});
+}}
+
+function applyOrder() {{
+  normalizeOrder();
+  document.querySelectorAll("section.card").forEach((card) => {{
+    card.style.order = order.indexOf(card.dataset.roster);
+  }});
+}}
+
+// True while a card is in hand. The board refetches every 2s, and replacing
+// #rosters mid-drag would delete the element being dragged and drop nothing --
+// so the swap waits, and the next tick catches up.
+let dragging = null;
+
+const rosters = document.getElementById("rosters");
+
+rosters.addEventListener("dragstart", (e) => {{
+  const card = e.target.closest("section.card");
+  if (!card) return;
+  dragging = card.dataset.roster;
+  card.classList.add("dragging");
+  e.dataTransfer.effectAllowed = "move";
+  // Firefox ignores a drag that carries no data.
+  e.dataTransfer.setData("text/plain", dragging);
+}});
+
+rosters.addEventListener("dragover", (e) => {{
+  const card = e.target.closest("section.card");
+  if (dragging === null || !card) return;
+  e.preventDefault();  // without this the drop event never fires
+  e.dataTransfer.dropEffect = "move";
+  document.querySelectorAll(".dropzone").forEach((c) => c.classList.remove("dropzone"));
+  if (card.dataset.roster !== dragging) card.classList.add("dropzone");
+}});
+
+rosters.addEventListener("drop", (e) => {{
+  const card = e.target.closest("section.card");
+  if (dragging === null || !card) return;
+  e.preventDefault();
+  const target = card.dataset.roster;
+  if (target !== dragging) {{
+    // Pull the card out, then put it back at the target's position: everything
+    // from there down shifts one place, which is what dropping "onto" a slot
+    // means. Removing first is what keeps the target index right when the card
+    // came from above it.
+    normalizeOrder();
+    order.splice(order.indexOf(dragging), 1);
+    order.splice(order.indexOf(target), 0, dragging);
+    localStorage.setItem("draftsim.order", JSON.stringify(order));
+    applyOrder();
+  }}
+  endDrag();
+}});
+
+function endDrag() {{
+  dragging = null;
+  document.querySelectorAll(".dragging, .dropzone").forEach((c) => {{
+    c.classList.remove("dragging", "dropzone");
+  }});
+}}
+rosters.addEventListener("dragend", endDrag);
+
+// The way out of an arrangement you regret. Dragging persists, so without this a
+// board shuffled at 2am stays shuffled with no obvious way back.
+document.getElementById("reorder").addEventListener("click", () => {{
+  order = [];
+  localStorage.removeItem("draftsim.order");
+  applyOrder();
+}});
+
 function highlight() {{
   const mine = seatSel.value;
   document.querySelectorAll("section.card").forEach((card) => {{
@@ -572,9 +692,14 @@ async function tick() {{
     fillSeats(s.teams);
     document.getElementById("sub").textContent = s.subtitle;
     document.getElementById("block").innerHTML = s.nomination_html;
-    document.getElementById("rosters").innerHTML = s.rosters_html;
-    highlight();
-    applyViews();
+    // Everything else refreshes; the cards hold still until the drag lands, so
+    // the element in hand isn't deleted out from under it.
+    if (dragging === null) {{
+      rosters.innerHTML = s.rosters_html;
+      highlight();
+      applyViews();
+      applyOrder();
+    }}
     document.getElementById("pulse").textContent = s.polled_at;
     document.getElementById("warn").textContent = s.warning || "";
     dot.classList.remove("stale");
