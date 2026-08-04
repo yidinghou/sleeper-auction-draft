@@ -54,6 +54,11 @@ different moment of the draft than the compact view.
 Bench players show under the starters, **dimmed** — depth is worth seeing, and
 greying it apart from the lineup reads faster than the `BN` label does.
 
+Compact names shorten to initial + surname (`J. Burrow`), which is what stops
+them ellipsising at 115px; defenses use their nickname, since `K. City Chiefs`
+helps nobody. Maximized restores full names, widens to 3 columns, and labels the
+bye / points / price columns — fixed-width and tabular, so they read down.
+
 Each card compresses the 10 starter slots into 5 rows of two:
 
 | Row | | |

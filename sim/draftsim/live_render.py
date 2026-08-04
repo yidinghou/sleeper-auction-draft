@@ -64,10 +64,47 @@ def _pair_starters(rows: List[Row]) -> List[Tuple[Optional[Row], Optional[Row]]]
     return paired
 
 
+def _short_name(player: Player) -> str:
+    """First initial + surname, for the compact view.
+
+    "Joe Burrow" -> "J. Burrow", and "Amon-Ra St. Brown" -> "A. St. Brown",
+    which is what actually stops names ellipsising at 115px. Team defenses are
+    named for their city ("Kansas City Chiefs"), where an initial reads as
+    nonsense -- they get the nickname instead.
+    """
+    parts = player.name.split()
+    if len(parts) < 2:
+        return player.name
+    if player.pos == "DEF":
+        return parts[-1]
+    return f"{parts[0][0]}. {' '.join(parts[1:])}"
+
+
+def _player_cell(label: str, player: Player, price: int) -> str:
+    """A filled lineup seat: slot chip, name, then the numeric columns.
+
+    Both name forms are emitted and CSS picks one -- short when compact, full
+    when maximized. Rendering both costs a few bytes and keeps the swap free;
+    re-fetching to change name length would not.
+    """
+    color = POS_COLOR.get(player.pos, POS_FALLBACK)
+    tip = f"{player.name} · {player.pos} · {player.team or 'FA'}"
+    if player.bye:
+        tip += f" · BYE {player.bye}"
+    tip += f" · {player.points:.0f} pts · ${price}"
+    return (
+        f'<span class="cell" style="--pos:{color}" title="{_esc(tip)}">'
+        f'<i class="ms">{_esc(label)}</i>'
+        f'<b class="mn">{_esc(_short_name(player))}</b>'
+        f'<b class="mnf">{_esc(player.name)}</b>'
+        f'<i class="mb">{player.bye or "—"}</i>'
+        f'<i class="mp">{player.points:.0f}</i>'
+        f'<i class="mc">${price}</i></span>'
+    )
+
+
 def _cell(row: Optional[Row], price: int) -> str:
-    """One slot in a paired row. The position shows as the cell's own color
-    rather than a badge -- at this size a badge costs more width than the name
-    it labels, and the color carries the same information."""
+    """One slot in a paired row."""
     if row is None:
         return '<span class="cell gone"></span>'
     slot, player = row
@@ -77,33 +114,26 @@ def _cell(row: Optional[Row], price: int) -> str:
             f'<span class="cell open"><i class="ms">{_esc(label)}</i>'
             '<b class="mn">—</b></span>'
         )
-    color = POS_COLOR.get(player.pos, POS_FALLBACK)
-    tip = f"{player.name} · {player.pos} · {player.team or 'FA'}"
-    if player.bye:
-        tip += f" · BYE {player.bye}"
-    tip += f" · {player.points:.0f} pts · ${price}"
-    return (
-        f'<span class="cell" style="--pos:{color}" title="{_esc(tip)}">'
-        f'<i class="ms">{_esc(label)}</i>'
-        f'<b class="mn">{_esc(player.name)}</b>'
-        f'<i class="mb">{player.bye or "—"}</i>'
-        f'<i class="mp">{player.points:.0f}</i>'
-        f'<i class="mc">${price}</i></span>'
-    )
+    return _player_cell(label, player, price)
 
 
 def _bench_cell(player: Optional[Player], price: int) -> str:
-    """A bench body. Bench slots are fungible, so they carry no slot label."""
+    """A bench body. Bench slots are fungible, so they all label as BN."""
     if player is None:
         return '<span class="cell gone"></span>'
-    color = POS_COLOR.get(player.pos, POS_FALLBACK)
+    return _player_cell(BENCH, player, price)
+
+
+def _column_header() -> str:
+    """Column labels, shown only when maximized -- compact has no room and only
+    one number to label anyway."""
     return (
-        f'<span class="cell" style="--pos:{color}" '
-        f'title="{_esc(player.name)} · {_esc(player.pos)}">'
-        f'<i class="ms">BN</i><b class="mn">{_esc(player.name)}</b>'
-        f'<i class="mb">{player.bye or "—"}</i>'
-        f'<i class="mp">{player.points:.0f}</i>'
-        f'<i class="mc">${price}</i></span>'
+        '<div class="prow colhead">'
+        '<span class="cell"><i class="ms"></i><b class="mn"></b>'
+        '<i class="mb">BYE</i><i class="mp">PTS</i><i class="mc">$</i></span>'
+        '<span class="cell"><i class="ms"></i><b class="mn"></b>'
+        '<i class="mb">BYE</i><i class="mp">PTS</i><i class="mc">$</i></span>'
+        "</div>"
     )
 
 
@@ -127,7 +157,7 @@ def _roster_card(state: LeagueState, seat: Seat) -> str:
     starter_rows = [r for r in layout if r[0] != BENCH]
     bench = [player for slot, player in layout if slot == BENCH and player]
 
-    rows = "".join(
+    rows = _column_header() + "".join(
         f'<div class="prow">{_cell(a, price(a))}{_cell(b, price(b))}</div>'
         for a, b in _pair_starters(starter_rows)
     )
@@ -277,9 +307,10 @@ def render_page(draft_id: str) -> str:
      tinting the whole cell made twelve cards read as a wall of blocks with the
      names competing against their own backgrounds. The chip still says which
      slot it is, so a WR sitting in FLEX shows "FLEX" in receiver blue. */
-  .cell {{ display: grid; grid-template-columns: auto 1fr auto;
+  .cell {{ display: grid; grid-template-columns: auto minmax(0, 1fr) 28px;
     align-items: center; gap: 3px; min-width: 0;
     padding: 0 2px; font-size: 10px; line-height: 1.45; }}
+  .colhead {{ display: none; }}
   .ms {{ font-style: normal; font-size: 8px; text-transform: uppercase;
     font-weight: 700; text-align: center; min-width: 24px;
     border-radius: 3px; padding: 0 3px;
@@ -287,26 +318,48 @@ def render_page(draft_id: str) -> str:
     background: color-mix(in srgb, var(--pos, #414566) 20%, transparent); }}
   .cell.open .ms {{ color: #4a5170; background: #1a2038; }}
   .cell.open {{ color: #4a5170; }}
-  .mn {{ font-weight: 400; overflow: hidden; text-overflow: ellipsis;
+  .mn, .mnf {{ font-weight: 400; overflow: hidden; text-overflow: ellipsis;
     white-space: nowrap; }}
-  .mc {{ font-style: normal; color: #ffab0e; font-weight: 700; font-size: 9px; }}
+  /* Compact shows the short name, maximized the full one. Both are in the
+     markup so the swap is free. */
+  .mnf {{ display: none; }}
+  /* Fixed widths and tabular figures, so the numbers form real columns you can
+     read down rather than ragged text that happens to sit near the edge. */
+  .mb, .mp, .mc {{ font-style: normal; font-size: 9px; text-align: right;
+    font-variant-numeric: tabular-nums; }}
+  .mc {{ color: #ffab0e; font-weight: 700; }}
   /* Bye and points are the first things to go when space is short; they live
      in the hover tooltip until the overlay has room for them. */
-  .mb, .mp {{ display: none; font-style: normal; color: #98b3d6; font-size: 9px; }}
+  .mb, .mp {{ display: none; color: #98b3d6; }}
 
   /* Maximized: the board leaves its half and takes the viewport. Nothing is
      re-rendered -- the bench rows and the hidden columns were always there. */
   body.maxed .live {{ position: fixed; inset: 0; z-index: 10;
     background: #05091d; padding: 14px 16px; }}
-  body.maxed .grid {{ grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }}
+  /* Three across maximized, not four: the extra width goes to the names, which
+     is the whole reason to maximize. Four fitted more cards per row but clipped
+     every name in the right-hand column. */
+  body.maxed .grid {{ grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
+    height: auto; grid-auto-rows: min-content; }}
+  /* Cards size to their content here and the overlay scrolls if they overflow.
+     The compact view can clip nothing because it is tuned to fit; maximized has
+     to survive any roster size, and silently hiding a player behind
+     `overflow: hidden` is the one failure this must not have. */
+  body.maxed #rosters {{ overflow-y: auto; }}
   body.maxed .card {{ padding: 6px 8px; }}
   body.maxed .team {{ font-size: 13px; }}
   body.maxed .totals {{ font-size: 11px; }}
-  body.maxed .cell {{ font-size: 11px; padding: 1px 5px;
-    grid-template-columns: auto 1fr auto auto auto; gap: 5px; }}
+  body.maxed .cell {{ font-size: 11px; padding: 0 4px; gap: 6px; line-height: 1.3;
+    grid-template-columns: auto minmax(0, 1fr) 24px 30px 34px; }}
   body.maxed .ms {{ font-size: 9px; }}
-  body.maxed .mb, body.maxed .mp {{ display: inline; }}
-  body.maxed .mc {{ font-size: 11px; }}
+  body.maxed .mn {{ display: none; }}
+  body.maxed .mnf {{ display: block; }}
+  body.maxed .mb, body.maxed .mp {{ display: block; }}
+  body.maxed .mb, body.maxed .mp, body.maxed .mc {{ font-size: 10px; }}
+  body.maxed .colhead {{ display: grid; }}
+  body.maxed .colhead .cell {{ padding-bottom: 1px; }}
+  body.maxed .colhead i {{ color: #4a5170; font-size: 8px; font-weight: 700;
+    text-transform: uppercase; }}
 </style></head>
 <body>
   <aside class="reserved">reserved</aside>

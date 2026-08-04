@@ -8,6 +8,7 @@ import pytest
 from draftsim.config import DraftConfig
 from draftsim.live_render import (
     _pair_starters,
+    _short_name,
     render_nomination,
     render_page,
     render_rosters,
@@ -395,3 +396,63 @@ def test_page_offers_a_maximize_toggle_and_reserves_the_left_half():
     assert 'id="max"' in page
     assert "body.maxed" in page
     assert 'class="reserved"' in page
+
+
+# -- compact names -----------------------------------------------------------
+
+
+def _P(name, pos="WR"):
+    return Player(id=name, name=name, pos=pos, team="KC", points=0.0)
+
+
+def test_short_name_is_initial_plus_surname():
+    assert _short_name(_P("Joe Burrow", "QB")) == "J. Burrow"
+    assert _short_name(_P("Ja'Marr Chase")) == "J. Chase"
+
+
+def test_short_name_keeps_compound_surnames_whole():
+    # "A. Brown" would be the wrong player entirely.
+    assert _short_name(_P("Amon-Ra St. Brown")) == "A. St. Brown"
+    assert _short_name(_P("Jaxon Smith-Njigba")) == "J. Smith-Njigba"
+
+
+def test_a_defense_gets_its_nickname_not_an_initial():
+    # Defenses are named for their city, where an initial reads as nonsense --
+    # "K. City Chiefs" helps nobody.
+    assert _short_name(_P("Kansas City Chiefs", "DEF")) == "Chiefs"
+    assert _short_name(_P("New York Giants", "DEF")) == "Giants"
+
+
+def test_a_one_word_name_is_left_alone():
+    assert _short_name(_P("Cher")) == "Cher"
+
+
+def test_cards_carry_both_name_forms_so_maximizing_needs_no_refetch(midway):
+    seat = next(s for s in midway.seats.values() if s.roster)
+    card = render_rosters(midway).split('data-roster="%d"' % seat.slot)[1]
+    card = card.split("</section>")[0]
+    player = seat.picks[0].player
+    assert f'class="mn">{_short_name(player)}<' in card
+    assert f'class="mnf">{_esc_name(player.name)}<' in card
+
+
+def _esc_name(name):
+    import html as _h
+
+    return _h.escape(name)
+
+
+def test_cards_label_their_numeric_columns(midway):
+    # The labels ship in every card but only show when maximized, where there
+    # is room for the bye and points columns they name.
+    card = render_rosters(midway).split('data-roster="1"')[1]
+    assert ">BYE<" in card
+    assert ">PTS<" in card
+    assert 'class="prow colhead"' in card
+
+
+def test_the_page_hides_column_labels_until_maximized():
+    page = render_page("123")
+    assert "body.maxed .colhead" in page
+    # Tabular figures are what make the numbers read as columns.
+    assert "tabular-nums" in page
