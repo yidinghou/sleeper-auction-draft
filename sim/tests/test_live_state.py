@@ -1,20 +1,21 @@
 """Rebuilding league standings from a pick feed, and rendering them."""
 
 import json
+import math
 from pathlib import Path
 
 import pytest
 
 from draftsim.config import BENCH, DraftConfig
 from draftsim.live_render import (
-    _SUMMARY_SKIP,
-    _pair_starters,
+    _NEED_SKIP,
     _short_name,
     render_nomination,
     render_page,
     render_rosters,
 )
 from draftsim.live_state import (
+    DRAFT_TARGETS,
     contenders,
     position_summary,
     reconstruct,
@@ -211,12 +212,35 @@ def test_a_pick_with_no_price_is_free_not_a_crash(mock_config, pool):
 # -- the per-seat summary ----------------------------------------------------
 
 
-def test_summary_need_is_the_same_need_the_seat_already_reports(midway):
-    # Two ways to the same number; if they part company the summary card starts
-    # contradicting the roster card next to it.
+def test_summary_targets_are_the_draft_plan_not_the_slot_count(midway):
+    # The pane answers "should this seat buy another receiver?", which is a
+    # draft target, not a legality check -- so it deliberately parts company
+    # with seat.needs, which counts what makes a lineup legal.
     for seat in midway.seats.values():
         for line in position_summary(seat, midway.config):
-            assert line.need == seat.needs.get(line.pos, 0)
+            if line.pos in DRAFT_TARGETS:
+                assert line.want == DRAFT_TARGETS[line.pos]
+
+
+def test_a_position_with_no_target_falls_back_to_the_slot_count(midway):
+    # DEF has no entry in the plan. It must still report a target rather than
+    # silently reading as "wants none" beside the positions that have one.
+    counts = midway.config.starter_counts()
+    for seat in midway.seats.values():
+        for line in position_summary(seat, midway.config):
+            if line.pos not in DRAFT_TARGETS:
+                assert line.want == counts.get(line.pos, 0)
+
+
+def test_targets_stay_fractional_all_the_way_to_the_line(midway):
+    # Rounding 2.5 up to 3 is what made a seat holding two and a flex read as
+    # short; the half has to survive into the PositionLine.
+    assert any(t % 1 for t in DRAFT_TARGETS.values())
+    for seat in midway.seats.values():
+        lines = {line.pos: line for line in position_summary(seat, midway.config)}
+        for pos, target in DRAFT_TARGETS.items():
+            if pos in lines:
+                assert lines[pos].want == pytest.approx(target)
 
 
 def test_summary_points_add_up_to_the_starting_lineup(midway):
@@ -231,15 +255,20 @@ def test_summary_counts_bench_depth_as_have_but_never_as_need(finished):
     lines = {line.pos: line for line in position_summary(seat, finished.config)}
     for pos, line in lines.items():
         assert line.have == sum(1 for p in seat.roster if p.pos == pos)
-    # A finished roster is deeper than its lineup at some position, and depth
+    # A finished roster is deeper than its target at some position, and depth
     # must never read as a hole.
     assert any(line.have > line.want for line in lines.values())
-    assert all(line.need == 0 for line in lines.values())
+    assert all(line.need == 0 for line in lines.values() if line.have >= line.want)
+    # A full roster can still miss the plan -- sixteen bodies bought without a
+    # third quarterback is a legal lineup and a missed target, and the pane is
+    # the thing that says so. Legality is seat.needs' job, and it is zero here.
+    assert sum(seat.needs.values()) == 0
 
 
 def test_a_position_nobody_starts_or_owns_is_left_out(midway):
-    # The default lineup has no kicker slot, so K is noise until someone drafts
-    # one -- at which point the body has to show up somewhere.
+    # The default lineup has no kicker slot, and the plan names no kicker
+    # target, so K is noise until someone drafts one -- at which point the body
+    # has to show up somewhere.
     for seat in midway.seats.values():
         positions = {line.pos for line in position_summary(seat, midway.config)}
         has_kicker = any(p.pos == "K" for p in seat.roster)
@@ -250,7 +279,8 @@ def test_an_empty_roster_summarizes_as_all_holes(mock_config, pool):
     state = reconstruct([], mock_config, pool)
     lines = position_summary(state.seats[1], mock_config)
     assert [(l.pos, l.have, l.want) for l in lines] == [
-        ("QB", 0, 2), ("RB", 0, 3), ("WR", 0, 3), ("TE", 0, 1), ("DEF", 0, 1),
+        ("QB", 0, 3.0), ("RB", 0, 2.5), ("WR", 0, 3.5), ("TE", 0, 1.0),
+        ("DEF", 0, 1.0),
     ]
     assert all(line.starter_points == 0.0 for line in lines)
     assert all(line.need == line.want for line in lines)
@@ -317,8 +347,7 @@ def test_cards_are_in_seat_order_not_reach_order(midway):
 
 def test_a_card_shows_each_player_with_price_points_and_bye(midway):
     seat = next(s for s in midway.seats.values() if s.roster)
-    card = render_rosters(midway).split('data-roster="%d"' % seat.slot)[1]
-    card = card.split("</section>")[0]
+    card = _card(midway, seat.slot)
     for pick in seat.picks:
         assert pick.player.name.replace("'", "&#x27;") in card
         assert f"${pick.price}" in card
@@ -326,30 +355,52 @@ def test_a_card_shows_each_player_with_price_points_and_bye(midway):
             assert f">{pick.player.bye}<" in card
 
 
-def test_a_card_totals_only_the_starting_lineup(midway):
+def test_a_card_leads_with_money_and_reach(midway):
+    # The header answers "can this seat outbid me" and nothing else: what is
+    # left, and the most of it that can go on one player.
     seat = next(s for s in midway.seats.values() if s.roster)
-    card = render_rosters(midway).split('data-roster="%d"' % seat.slot)[1]
-    lineup = [p for p in starters(seat.roster, midway.config) if p is not None]
-    assert f"{sum(p.points for p in lineup):.0f}" in card.split("</header>")[0]
-    # Not the whole roster: a bench body must not inflate the headline.
-    assert sum(p.points for p in lineup) <= sum(p.points for p in seat.roster)
+    header = _card(midway, seat.slot).split("</header>")[0]
+    assert f'class="big">${seat.budget_left}<' in header
+    assert f"<b>${seat.max_bid}</b>" in header
+
+
+def test_the_header_carries_no_points_or_slot_counts(midway):
+    # Both moved into the NEED pane, where there is room to label them. They
+    # were read occasionally and competed with the two numbers read constantly.
+    for slot in midway.seats:
+        header = _card(midway, slot).split("</header>")[0]
+        assert "pts" not in header
+        assert "open" not in header
+
+
+def test_the_budget_bar_splits_spendable_from_reserved(midway):
+    # A dollar per unfilled slot is in the account but already owed; a seat with
+    # $80 and eight holes is not the threat its balance says it is.
+    for seat in midway.seats.values():
+        bar = _card(midway, seat.slot).split('class="budget"')[1].split("</div>")[0]
+        widths = [float(w.split("%")[0]) for w in bar.split("width:")[1:]]
+        assert len(widths) == 2
+        assert sum(widths) <= 100.0 + 1e-6
+        held = max(0, seat.open_slots - 1)
+        assert widths[1] == pytest.approx(100 * held / midway.config.budget, abs=0.1)
+
+
+def test_a_seat_out_of_the_market_is_flagged(mock_config, pool):
+    # A max bid that cannot win anyone is a seat you have stopped bidding
+    # against, and the card says so rather than leaving you to notice.
+    state = reconstruct([], mock_config, pool)
+    rich = render_rosters(state)
+    assert 'class="card broke"' not in rich
+    for seat in state.seats.values():
+        seat.max_bid = 3
+    assert render_rosters(state).count('class="card broke"') == mock_config.teams
 
 
 def test_unfilled_starter_slots_are_shown(midway):
     seat = next(s for s in midway.seats.values() if s.open_slots > 6)
-    card = render_rosters(midway).split('data-roster="%d"' % seat.slot)[1]
-    card = card.split("</section>")[0]
+    card = _card(midway, seat.slot)
     # A hole at a starting slot is the point of the card, so it stays visible.
-    assert 'class="cell open"' in card
-    # The header carries how much bench is still to come.
-    assert "open</span>" in card
-
-
-def test_a_full_roster_has_no_open_bench_note(finished):
-    card = render_rosters(finished).split('data-roster="1"')[1]
-    card = card.split("</section>")[0]
-    assert "open</span>" not in card
-    assert "—" not in card
+    assert 'class="ln open"' in card
 
 
 def test_empty_rosters_still_render_their_shape(mock_config, pool):
@@ -357,88 +408,76 @@ def test_empty_rosters_still_render_their_shape(mock_config, pool):
     html = render_rosters(state)
     assert html.count("data-roster=") == mock_config.teams
     # Every seat shows the full lineup shape, all of it empty.
-    assert html.count('class="cell open"') == mock_config.teams * len(
+    assert html.count('class="ln open"') == mock_config.teams * len(
         [s for s in mock_config.roster_slots if s != "BN"]
     )
 
 
-# -- starter pairing ---------------------------------------------------------
+def test_a_seat_with_no_bench_says_so_rather_than_showing_a_blank_pane(
+    mock_config, pool
+):
+    state = reconstruct([], mock_config, pool)
+    assert render_rosters(state).count('class="empty"') == mock_config.teams
 
 
-def _rows(*slots):
-    return [(slot, None) for slot in slots]
-
-
-def test_default_lineup_pairs_as_documented(mock_config):
-    starter_rows = [
-        (slot, None) for slot in mock_config.roster_slots if slot != "BN"
-    ]
-    pairs = _pair_starters(starter_rows)
-    assert [(a[0], b[0]) for a, b in pairs] == [
-        ("QB", "SUPER_FLEX"),
-        ("RB", "WR"),
-        ("RB", "WR"),
-        ("FLEX", "REC_FLEX"),
-        ("DEF", "TE"),
-    ]
-
-
-def test_pairing_never_drops_or_duplicates_a_slot(mock_config):
-    starter_rows = [
-        (slot, None) for slot in mock_config.roster_slots if slot != "BN"
-    ]
-    flat = [row for pair in _pair_starters(starter_rows) for row in pair if row]
-    assert sorted(s for s, _ in flat) == sorted(s for s, _ in starter_rows)
-
-
-def test_an_unlisted_lineup_falls_back_to_chunks_of_two():
-    # A league whose slots aren't in _PREFERRED_PAIRS still renders, two per
-    # row, rather than losing the slots the table doesn't name.
-    pairs = _pair_starters(_rows("K", "K", "IDP", "IDP", "IDP"))
-    assert [(a[0], b[0] if b else None) for a, b in pairs] == [
-        ("K", "K"),
-        ("IDP", "IDP"),
-        ("IDP", None),
-    ]
-
-
-def test_a_lineup_missing_half_a_pair_still_renders_the_half_it_has():
-    pairs = _pair_starters(_rows("QB", "RB", "WR"))
-    assert [(a[0] if a else None, b[0] if b else None) for a, b in pairs] == [
-        ("QB", None),
-        ("RB", "WR"),
-    ]
-
-
-def test_cells_carry_position_colour_and_price(midway):
-    from draftsim.theme import POS_COLOR
+def test_rows_carry_position_colour_and_price(midway):
+    from draftsim.theme import POS_COLOR_LIGHT
 
     seat = next(s for s in midway.seats.values() if s.roster)
-    card = render_rosters(midway).split('data-roster="%d"' % seat.slot)[1]
-    card = card.split("</section>")[0]
-    # Position reads as the cell's colour, not a badge -- so no badge markup,
-    # but every drafted player's colour must be present.
+    card = _card(midway, seat.slot)
+    # Position reads as the row's own tint, not a badge -- so no badge markup,
+    # but every drafted player's colour must be present to mix that tint from.
     assert 'class="badge"' not in card
     for pick in seat.picks:
-        assert f"--pos:{POS_COLOR[pick.player.pos]}" in card
+        assert f"--pos:{POS_COLOR_LIGHT[pick.player.pos]}" in card
         assert f"${pick.price}" in card
 
 
-def test_bench_is_shown_but_marked_so_it_can_be_dimmed(finished):
-    card = render_rosters(finished).split('data-roster="1"')[1]
-    card = card.split("</section>")[0]
-    # Bench is visible alongside the starters -- the `bench` class is what lets
-    # CSS grey it back, so a glance still separates starters from depth.
-    assert card.count('class="prow bench"') == 3  # 6 bench slots, two to a row
-    assert 'class="prow bench"' in card
-
-
-def test_bench_players_are_dimmed_not_hidden():
+def test_the_row_is_tinted_and_the_slot_label_is_not(midway):
+    # The colour is the field the name sits on. A coloured chip put the loudest
+    # thing in the row right beside the thing you actually read.
     page = render_page("123")
-    assert ".prow.bench .cell" in page
-    assert "opacity" in page
-    # The old behaviour -- hidden until maximized -- must not come back.
-    assert ".prow.bench {" not in page.replace("{{", "{")
+    assert "background: color-mix(in srgb, var(--pos, #7c90a0) 26%, #fff)" in page
+    label = page.split(".ms {")[1].split("}")[0]
+    assert "var(--pos" not in label  # same grey on every row
+
+
+def test_an_empty_slot_reads_as_absence_not_as_a_position(midway):
+    # A hole is flat grey: tinting it would say "receiver" about a seat that
+    # has no receiver.
+    page = render_page("123")
+    assert ".ln.open { background: #f4f4f4; }" in page
+
+
+def test_one_player_per_line(midway):
+    # The old card paired two players to a row; a row is one player now, so the
+    # lineup pane has exactly one line per starting slot.
+    seat = next(s for s in midway.seats.values() if s.roster)
+    lineup = _pane(midway, seat.slot, "lineup")
+    starter_slots = len(midway.config.starter_slots)
+    assert lineup.count('<div class="ln') == starter_slots + 1  # + column labels
+
+
+def test_bench_is_its_own_pane_labelled_by_real_position(finished):
+    # In a pane of its own nothing else says what these players are, so the chip
+    # is the player's position rather than a fungible BN.
+    seat = finished.seats[1]
+    bench = _pane(finished, 1, "bench")
+    starting = {id(p) for p in starters(seat.roster, finished.config) if p}
+    depth = [p for p in seat.roster if id(p) not in starting]
+    assert bench.count('<div class="ln bench"') == len(depth)
+    assert f">{BENCH}</i>" not in bench
+    for player in depth:
+        assert f'class="ms">{player.pos}<' in bench
+
+
+def test_bench_rows_keep_their_position_tint_but_sit_back():
+    page = render_page("123")
+    # Depth is worth seeing -- it keeps the position tint, since in a pane of
+    # its own nothing else says what these bodies are -- but a step back from
+    # the lineup. The old "hidden until maximized" behaviour must not come back.
+    assert ".ln.bench { opacity: 0.75; }" in page
+    assert ".ln.bench { display: none" not in page.replace("{{", "{")
 
 
 def test_board_controls_sit_in_a_menu_bar_over_the_grid():
@@ -455,6 +494,47 @@ def test_board_controls_sit_in_a_menu_bar_over_the_grid():
     assert "#rosters { flex: 1; min-height: 0; }" in page
 
 
+def test_the_grid_is_four_across_three_down_in_both_sizes():
+    # Twelve seats either way; a row per starter wants height, so the card is
+    # wider than it is tall. Maximizing keeps the shape -- a card must be where
+    # it was, only bigger -- and all twelve still fit one screen.
+    page = render_page("123")
+    grid = page.split(".grid {")[1].split("}")[0]
+    maxed = page.split("body.maxed .grid {")[1].split("}")[0]
+    assert "repeat(4, minmax(0, 1fr))" in grid
+    assert "repeat(4, minmax(0, 1fr))" in maxed
+    assert "height: 100%" in maxed  # rows share the viewport, nothing scrolls off
+
+
+def test_lineup_rows_share_the_card_rather_than_a_fixed_height():
+    # A fixed row height had to be tuned to one viewport: tall enough to fill a
+    # big screen, it scrolled a short one. The rows flex instead, so the same
+    # card fills a 1000px window and still fits an 820px one.
+    page = render_page("123")
+    assert ".pane.lineup .ln { flex: 1 1 auto; }" in page
+
+
+def test_the_live_board_is_light_and_the_report_stays_dark():
+    # The board sits open beside Sleeper's dark app for three hours; looking
+    # unlike it is the point. The report is a different surface and keeps the
+    # dark palette, so the two must not silently re-converge on one theme.
+    from draftsim import theme
+
+    page = render_page("123")
+    assert theme.BASE_CSS_LIGHT in page
+    assert theme.BASE_CSS not in page
+    assert f"background: {theme.L_PAGE}" in page
+    assert theme.BG not in page  # no stray dark-palette page background
+
+
+def test_the_current_pane_stays_legible_when_maximized():
+    # The pressed segment is dark-on-light; a blanket recolour in the overlay
+    # would paint its label the same colour as the pill under it.
+    page = render_page("123")
+    seg = page.split('.seg button[aria-pressed="true"] {')[1].split("}")[0]
+    assert "#fff" in seg and "#1a1a1a" in seg  # dark fill, light label
+
+
 def test_page_splits_state_left_from_rosters_right():
     page = render_page("123")
     assert 'id="max"' in page
@@ -466,7 +546,7 @@ def test_page_splits_state_left_from_rosters_right():
     assert page.index('class="side"') < page.index('class="board"')
 
 
-# -- the summary view --------------------------------------------------------
+# -- the three panes ---------------------------------------------------------
 
 
 def _card(state, slot):
@@ -474,91 +554,137 @@ def _card(state, slot):
     return card.split("</section>")[0]
 
 
-def test_every_card_carries_both_views_and_the_arrows_between_them(midway):
+def _pane(state, slot, pane):
+    """One pane's markup. The pane name appears twice in a card -- on the button
+    that picks it and on the pane itself -- so match the pane, not the first hit.
+    """
+    chunks = _card(state, slot).split('<div class="pane')[1:]
+    return next(c for c in chunks if f'data-pane="{pane}"' in c)
+
+
+def test_every_card_carries_all_three_panes_and_the_control_between_them(midway):
     html = render_rosters(midway)
     teams = len(midway.seats)
-    assert html.count('class="sum"') == teams
-    assert html.count('class="vnav"') == teams
-    assert html.count('class="vnext"') == teams
-    assert html.count('class="vprev"') == teams
+    for pane in ("lineup", "bench", "need"):
+        # Once as the button that picks it, once as the pane itself.
+        assert html.count(f'data-pane="{pane}"') == teams * 2
+    assert html.count('class="seg"') == teams
 
 
-def test_the_summary_ships_alongside_the_roster_rows_not_instead_of_them(midway):
-    # Both views in one card is what makes flipping free: no fetch, so the two
-    # views can never show different moments of the draft.
+def test_the_panes_ship_together_so_switching_needs_no_fetch(midway):
+    # Three panes in one card is what makes switching free: no fetch, so two
+    # panes can never show different moments of the draft.
     seat = next(s for s in midway.seats.values() if s.roster)
     card = _card(midway, seat.slot)
-    assert 'class="sum"' in card
-    assert 'class="prow"' in card
+    assert 'class="pane lineup"' in card
+    assert 'class="pane need"' in card
     for pick in seat.picks:
         assert pick.player.name.replace("'", "&#x27;") in card
 
 
-def _summarized(state, seat):
-    """The rows a seat's summary view actually shows."""
+def _needed(state, seat):
+    """The rows a seat's NEED pane actually shows."""
     return [
         line
         for line in position_summary(seat, state.config)
-        if line.pos not in _SUMMARY_SKIP
+        if line.pos not in _NEED_SKIP
     ]
 
 
-def test_summary_shows_each_positions_fill_and_points(midway):
+def test_need_shows_each_positions_target_and_points(midway):
     seat = next(s for s in midway.seats.values() if s.roster)
-    summary = _card(midway, seat.slot).split('class="sum"')[1].split("</div></div>")[0]
-    for line in _summarized(midway, seat):
-        assert f">{line.have}<i>/{line.want}</i>" in summary
+    need = _pane(midway, seat.slot, "need")
+    for line in _needed(midway, seat):
+        want = f"{line.want:g}"  # 2.5 stays 2.5; 3.0 prints as 3
+        assert f">{line.have}<i>/{want}</i>" in need
         if line.starter_points:
-            assert f">{line.starter_points:.0f}<" in summary
+            assert f">{line.starter_points:.0f}<" in need
 
 
-def test_summary_flags_only_the_positions_still_short(midway):
+def test_need_flags_only_the_positions_still_short(midway):
     for seat in midway.seats.values():
-        summary = _card(midway, seat.slot).split('class="sum"')[1]
-        short = [line for line in _summarized(midway, seat) if line.need]
-        assert summary.count('class="srow short"') == len(short)
+        need = _pane(midway, seat.slot, "need")
+        short = [line for line in _needed(midway, seat) if line.need]
+        assert need.count('class="nrow short"') == len(short)
 
 
-def test_summary_leaves_out_the_rows_that_are_never_a_decision(midway):
-    # One defense, bought once, and bench depth you don't decide at the podium:
-    # rows that cost space without changing a bid. The full roster still has them.
+def test_need_leaves_out_the_rows_that_are_never_a_decision(midway):
+    # One defense and one kicker, bought once and never decided at the podium:
+    # rows that cost space without changing a bid. The lineup pane still has them.
     for seat in midway.seats.values():
-        card = _card(midway, seat.slot)
-        summary, rows = card.split('class="sum"')[1].split('<div class="prow')[:2]
-        assert ">DEF</i>" not in summary
-        assert ">BN</i>" not in summary
-        assert summary.count('class="srow') == len(_summarized(midway, seat))
+        need = _pane(midway, seat.slot, "need")
+        assert ">DEF</i>" not in need
+        assert ">K</i>" not in need
+        assert need.count('class="nrow') == len(_needed(midway, seat))
 
 
-def test_the_roster_view_still_shows_what_the_summary_drops(finished):
-    # Dropping them from the summary must not lose them: a full roster's
-    # defense and bench are still there in the view that lists everything.
-    roster_rows = _card(finished, 1).split('<div class="prow', 1)[1]
-    assert ">DEF</i>" in roster_rows
-    assert f">{BENCH}</i>" in roster_rows
+def test_the_lineup_pane_still_shows_what_need_drops(finished):
+    # Dropping them from NEED must not lose them: a full roster's defense is
+    # still there in the pane that lists every slot.
+    assert ">DEF</i>" in _pane(finished, 1, "lineup")
 
 
-def test_the_fill_meter_never_overflows_its_track(finished):
-    # A fourth running back is depth; a bar past 100% would read as a fault.
-    for slot in finished.seats:
-        widths = [
-            int(chunk.split("%")[0])
-            for chunk in _card(finished, slot).split("width:")[1:]
-        ]
-        assert widths and all(0 <= w <= 100 for w in widths)
+def test_pips_draw_the_target_at_its_true_length(midway):
+    # One pip per whole starter wanted, plus a half-width pip for a fractional
+    # target -- which is the thing a percentage bar could not say.
+    for seat in midway.seats.values():
+        need = _pane(midway, seat.slot, "need")
+        for line in _needed(midway, seat):
+            row = need.split(f'>{line.pos}</i>')[1].split("</div>")[0]
+            whole = int(line.want)
+            assert row.count('class="pip"') + row.count('class="pip on"') == whole
+            assert row.count("pip half") == (1 if line.want > whole else 0)
 
 
-def test_view_state_is_client_side_and_survives_a_refresh():
+def test_pips_fill_to_what_a_seat_owns_and_no_further(midway):
+    for seat in midway.seats.values():
+        need = _pane(midway, seat.slot, "need")
+        for line in _needed(midway, seat):
+            row = need.split(f'>{line.pos}</i>')[1].split("</div>")[0]
+            filled = row.count('class="pip on"') + row.count('class="pip half on"')
+            assert filled == min(line.have, math.ceil(line.want))
+
+
+def test_surplus_shows_as_extra_pips_outside_the_run(finished):
+    # A fourth running back is depth, not a fault. The old fill bar capped at
+    # 100% and drew it as "done"; here it sits past the target, outlined.
+    seat = finished.seats[1]
+    need = _pane(finished, 1, "need")
+    for line in _needed(finished, seat):
+        row = need.split(f'>{line.pos}</i>')[1].split("</div>")[0]
+        assert row.count("pip extra") == max(0, line.have - math.ceil(line.want))
+    assert "pip extra" in need  # a finished roster is deep somewhere
+
+
+def test_the_need_pane_ends_with_the_spending_pace(midway):
+    # $37 across three slots and $37 across twelve are different seats, and the
+    # balance alone does not say which one you are looking at.
+    for seat in midway.seats.values():
+        pace = _pane(midway, seat.slot, "need").split('class="pace"')[1]
+        assert f"<b>{seat.open_slots}</b> slots left" in pace
+        if seat.open_slots:
+            rate = round(seat.budget_left / seat.open_slots, 1)
+            assert f"<b>${rate:g}</b> / slot" in pace
+
+
+def test_a_full_seat_reports_no_pace_rather_than_dividing_by_zero(finished):
+    pace = _pane(finished, 1, "need").split('class="pace"')[1]
+    assert "<b>0</b> slots left" in pace
+    assert "$0" in pace
+
+
+def test_pane_state_is_client_side_and_survives_a_refresh():
     page = render_page("123")
-    # Roster view is what the board loads on; summary is behind the arrows.
-    assert ".sum { display: none; }" in page
-    assert '.card.view-summary .sum { display: block; }' in page
-    assert '.card.view-summary .prow { display: none; }' in page
+    # Lineup is what the board loads on; a card with no stored choice shows it.
+    assert ".card .pane.lineup { display: flex;" in page.replace("{{", "{")
+    assert '.card.view-need .pane.need' in page
     # The cards are replaced every tick, so the choice must be re-applied after
-    # each swap and the arrow handler must be delegated, not per-button.
+    # each swap and the handler must be delegated, not per-button.
     assert "applyViews()" in page
     assert 'getElementById("rosters").addEventListener("click"' in page
     assert "draftsim.views" in page
+    # The pressed segment is re-marked too, since the buttons are new markup.
+    assert 'b.setAttribute("aria-pressed"' in page
 
 
 # -- dragging cards into a different order -----------------------------------
@@ -659,7 +785,7 @@ def test_cards_label_their_numeric_columns(midway):
     card = render_rosters(midway).split('data-roster="1"')[1]
     assert ">BYE<" in card
     assert ">PTS<" in card
-    assert 'class="prow colhead"' in card
+    assert 'class="ln colhead"' in card
 
 
 def test_the_overlay_has_its_own_way_out():

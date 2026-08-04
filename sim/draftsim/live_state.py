@@ -234,6 +234,21 @@ def contenders(state: LeagueState, player: Optional[Player]) -> List[Seat]:
     return sorted(live, key=lambda s: (-s.max_bid, s.slot))
 
 
+# How many bodies a seat wants at each position, as starter-equivalents.
+#
+# Deliberately *not* `config.starter_shares()` (QB 2.00, RB 2.77, WR 3.23,
+# TE 1.00). Those are structural -- how the lineup template divides, and the
+# right input to replacement level. These are a draft plan: the extra QB is
+# insurance in a superflex league where the position empties early, and the
+# lighter RB / heavier WR reflects buying the flex with receivers. Fractional
+# because a flex slot is genuinely shared -- "2.5 running backs" is the honest
+# target, and rounding it to 3 is what made a filled seat look short.
+#
+# Positions absent here fall back to the structural count, so DEF and K still
+# report a target rather than silently reading as zero.
+DRAFT_TARGETS: Dict[str, float] = {"QB": 3.0, "RB": 2.5, "WR": 3.5, "TE": 1.0}
+
+
 @dataclass(frozen=True)
 class PositionLine:
     """One position's worth of a seat, summarized."""
@@ -241,16 +256,16 @@ class PositionLine:
     pos: str
     have: int
     """Bodies on the roster at this position, bench included."""
-    want: int
-    """Startable spots, from `config.starter_counts()`."""
+    want: float
+    """Target bodies at this position, from `DRAFT_TARGETS`. Fractional."""
     starter_points: float
     """What this position contributes to the seat's starting lineup."""
 
     @property
-    def need(self) -> int:
-        """More bodies wanted before the lineup is legal here. Never negative --
-        a fourth running back is depth, not a need."""
-        return max(0, self.want - self.have)
+    def need(self) -> float:
+        """More bodies wanted before the target is met. Never negative -- a
+        fourth running back is depth, not a need."""
+        return max(0.0, self.want - self.have)
 
 
 def position_summary(seat: Seat, config: DraftConfig) -> List[PositionLine]:
@@ -259,12 +274,17 @@ def position_summary(seat: Seat, config: DraftConfig) -> List[PositionLine]:
     The coarse read the roster card can't give you -- *does seat 7 still need a
     receiver?* -- without reading sixteen rows to find out.
 
+    `want` is the draft target (`DRAFT_TARGETS`), not the slot count, so this
+    deliberately differs from `seat.needs`: the seat's structural need says what
+    makes a legal lineup, this says what makes a good one.
+
     `starter_points` is grouped off the same `starters()` matching the simulator
     scores on, so the summary and the roster behind it cannot disagree. A
     position nobody starts and nobody owns is dropped, so K stays out of a
     league that doesn't play one but appears the moment someone drafts a kicker.
     """
-    want = config.starter_counts()
+    want: Dict[str, float] = dict(config.starter_counts())
+    want.update(DRAFT_TARGETS)
     have: Dict[str, int] = {}
     for player in seat.roster:
         have[player.pos] = have.get(player.pos, 0) + 1
@@ -283,7 +303,7 @@ def position_summary(seat: Seat, config: DraftConfig) -> List[PositionLine]:
         PositionLine(
             pos=pos,
             have=have.get(pos, 0),
-            want=want.get(pos, 0),
+            want=float(want.get(pos, 0)),
             starter_points=points.get(pos, 0.0),
         )
         for pos in positions

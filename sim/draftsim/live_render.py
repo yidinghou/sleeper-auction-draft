@@ -1,10 +1,15 @@
 """Render the live draft board.
 
 A header strip naming whatever is on the block, then every seat's roster as a
-card -- each player in the slot they would actually start in, with what they
-cost. Each card also carries a summary view of the same roster (how full each
-position is, and what it scores), reached by the arrows in the card header, and
-cards can be dragged into whatever order you want to read them in.
+card -- one player per line, in the slot they would actually start in, with what
+they cost. Each card carries three panes over the same data (LINEUP, BN, NEED),
+picked by the segmented control in its header, and cards can be dragged into
+whatever order you want to read them in.
+
+The card header is money and nothing else: what a seat has left, the most it can
+still bid, and a bar of the two. That is the question the board exists to answer
+-- *who can outbid me* -- and points and slot counts were competing with it, so
+they moved into the NEED pane where there is room to label them.
 
 The page is served by `live.py` and refreshes itself by refetching `/api/state`
 and swapping in the fragments below — so everything here renders from a
@@ -14,56 +19,36 @@ and swapping in the fragments below — so everything here renders from a
 from __future__ import annotations
 
 import html
-from typing import List, Optional, Tuple
+import math
+from typing import Optional
 
 from .config import BENCH
 from .live_state import LeagueState, PositionLine, Seat, position_summary
-from .roster import display_slots, starters
+from .roster import display_slots
 from .sleeper import Nomination
-from .theme import BASE_CSS, POS_COLOR, POS_FALLBACK, SLOT_LABEL, badge
+from .theme import (
+    BASE_CSS_LIGHT,
+    POS_COLOR_LIGHT,
+    POS_FALLBACK_LIGHT,
+    SLOT_LABEL,
+    badge,
+)
 from .valuation import Player, market_value
+
+# A max bid at or under this cannot win a player anyone else wants, so the seat
+# has stopped being someone you bid against. The card says so in red rather than
+# leaving you to notice the number.
+_OUT_OF_MARKET = 5
 
 
 def _esc(text: object) -> str:
     return html.escape(str(text))
 
 
-# How starter slots pair up, two per row. Chosen so each row reads as one
-# decision: your two quarterback seats, then the two flex-ish RB/WR seats twice,
-# then the pure flexes, then the leftovers. Slots absent from a league are
-# skipped and anything unlisted is chunked in twos, so a non-default lineup
-# still renders.
-_PREFERRED_PAIRS = (
-    ("QB", "SUPER_FLEX"),
-    ("RB", "WR"),
-    ("RB", "WR"),
-    ("FLEX", "REC_FLEX"),
-    ("DEF", "TE"),
-)
-
-Row = Tuple[str, Optional[Player]]
-
-
-def _pair_starters(rows: List[Row]) -> List[Tuple[Optional[Row], Optional[Row]]]:
-    """Fold slot rows into pairs, following _PREFERRED_PAIRS where possible."""
-    remaining = list(rows)
-
-    def take(slot: str) -> Optional[Row]:
-        for i, (s, _) in enumerate(remaining):
-            if s == slot:
-                return remaining.pop(i)
-        return None
-
-    paired: List[Tuple[Optional[Row], Optional[Row]]] = []
-    for left, right in _PREFERRED_PAIRS:
-        a, b = take(left), take(right)
-        if a or b:
-            paired.append((a, b))
-    while remaining:
-        a = remaining.pop(0)
-        b = remaining.pop(0) if remaining else None
-        paired.append((a, b))
-    return paired
+def _num(value: float) -> str:
+    """Trim a target or a rate to the shortest honest form: 2.5 stays 2.5, 3.0
+    prints as 3. A trailing `.0` down every column reads as false precision."""
+    return f"{value:g}"
 
 
 def _short_name(player: Player) -> str:
@@ -82,156 +67,188 @@ def _short_name(player: Player) -> str:
     return f"{parts[0][0]}. {' '.join(parts[1:])}"
 
 
-def _player_cell(label: str, player: Player, price: int) -> str:
-    """A filled lineup seat: slot chip, name, then the numeric columns.
+def _player_row(label: str, player: Player, price: int, bench: bool = False) -> str:
+    """One player, one line: slot chip, name, then the numeric columns.
 
     Both name forms are emitted and CSS picks one -- short when compact, full
     when maximized. Rendering both costs a few bytes and keeps the swap free;
     re-fetching to change name length would not.
+
+    Bench rows carry the player's own position as the chip rather than a
+    fungible BN. In the bench pane there is nothing else saying what these
+    players are, and "three of my four bench bodies are receivers" is what the
+    pane is read for. CSS outlines that chip instead of filling it, so depth
+    still reads differently from the lineup.
     """
-    color = POS_COLOR.get(player.pos, POS_FALLBACK)
+    color = POS_COLOR_LIGHT.get(player.pos, POS_FALLBACK_LIGHT)
     tip = f"{player.name} · {player.pos} · {player.team or 'FA'}"
     if player.bye:
         tip += f" · BYE {player.bye}"
     tip += f" · {player.points:.0f} pts · ${price}"
     return (
-        f'<span class="cell" style="--pos:{color}" title="{_esc(tip)}">'
+        f'<div class="ln{" bench" if bench else ""}" style="--pos:{color}"'
+        f' title="{_esc(tip)}">'
         f'<i class="ms">{_esc(label)}</i>'
         f'<b class="mn">{_esc(_short_name(player))}</b>'
         f'<b class="mnf">{_esc(player.name)}</b>'
         f'<i class="mb">{player.bye or "—"}</i>'
         f'<i class="mp">{player.points:.0f}</i>'
-        f'<i class="mc">${price}</i></span>'
+        f'<i class="mc">${price}</i></div>'
     )
 
 
-def _cell(row: Optional[Row], price: int) -> str:
-    """One slot in a paired row."""
-    if row is None:
-        return '<span class="cell gone"></span>'
-    slot, player = row
+def _open_row(slot: str) -> str:
+    """An unfilled starter slot. The hole is the point of the card, so it takes
+    a full line like anything else rather than being collapsed away."""
     label = SLOT_LABEL.get(slot, slot)
-    if player is None:
-        return (
-            f'<span class="cell open"><i class="ms">{_esc(label)}</i>'
-            '<b class="mn">—</b></span>'
-        )
-    return _player_cell(label, player, price)
-
-
-def _bench_cell(player: Optional[Player], price: int) -> str:
-    """A bench body. Bench slots are fungible, so they all label as BN."""
-    if player is None:
-        return '<span class="cell gone"></span>'
-    return _player_cell(BENCH, player, price)
+    return (
+        f'<div class="ln open"><i class="ms">{_esc(label)}</i>'
+        '<b class="mn">—</b><b class="mnf">—</b>'
+        '<i class="mb"></i><i class="mp"></i><i class="mc">·</i></div>'
+    )
 
 
 def _column_header() -> str:
     """Column labels, shown only when maximized -- compact has no room and only
     one number to label anyway."""
     return (
-        '<div class="prow colhead">'
-        '<span class="cell"><i class="ms"></i><b class="mn"></b>'
-        '<i class="mb">BYE</i><i class="mp">PTS</i><i class="mc">$</i></span>'
-        '<span class="cell"><i class="ms"></i><b class="mn"></b>'
-        '<i class="mb">BYE</i><i class="mp">PTS</i><i class="mc">$</i></span>'
-        "</div>"
+        '<div class="ln colhead"><i class="ms"></i>'
+        '<b class="mn"></b><b class="mnf"></b>'
+        '<i class="mb">BYE</i><i class="mp">PTS</i><i class="mc">$</i></div>'
     )
 
 
-def _summary_row(pos: str, have: int, want: int, points: float, short: bool) -> str:
-    """One position's line: chip, have/want, a fill meter, starter points.
+def _pips(have: int, want: float, color: str) -> str:
+    """The target drawn at its true length: one pip per whole starter it asks
+    for, the fractional remainder drawn as a half-width pip.
 
-    The meter is the whole reason this view exists -- it answers "is this seat
-    done at receiver?" without reading a count. It's a ratio against a limit, so
-    the fill is capped at 100%: a fourth running back is depth, and a bar that
-    overflowed its track would read as a problem instead.
+    This replaced a percentage-fill bar, which lied at the top end -- a ratio
+    pins at 100% the moment you reach the target, so 4/2.5 and 2.5/2.5 drew
+    identically when they mean opposite things. Here surplus bodies show as
+    narrow outlined pips *past* the run, so depth reads as depth.
     """
-    color = POS_COLOR.get(pos, POS_FALLBACK)
-    fill = min(100, round(100 * have / want)) if want else 0
-    pts = f"{points:.0f}" if points else "—"  # a dash: nothing starting here yet
+    whole = int(want)
+    pips = "".join(
+        f'<span class="pip{" on" if i < have else ""}"></span>'
+        for i in range(whole)
+    )
+    if want > whole:
+        pips += f'<span class="pip half{" on" if have > whole else ""}"></span>'
+    pips += '<span class="pip extra"></span>' * max(0, have - math.ceil(want))
+    return f'<span class="pips" style="--pos:{color}">{pips}</span>'
+
+
+def _need_row(line: PositionLine) -> str:
+    """One position: chip, have/target, the pips, and what it starts."""
+    color = POS_COLOR_LIGHT.get(line.pos, POS_FALLBACK_LIGHT)
+    pts = f"{line.starter_points:.0f}" if line.starter_points else "—"
     return (
-        f'<div class="srow{" short" if short else ""}" style="--pos:{color}">'
-        f'<i class="ms">{_esc(pos)}</i>'
-        f'<b class="sct">{have}<i>/{want}</i></b>'
-        f'<span class="sbar"><span style="width:{fill}%"></span></span>'
-        f'<i class="spt">{pts}</i></div>'
+        f'<div class="nrow{" short" if line.need else ""}" style="--pos:{color}">'
+        f'<i class="ms">{_esc(line.pos)}</i>'
+        f'<b class="nct">{line.have}<i>/{_num(line.want)}</i></b>'
+        f"{_pips(line.have, line.want, color)}"
+        f'<i class="npt">{pts}</i></div>'
     )
 
 
-# Positions the summary leaves out. Both are settled early and stay settled --
-# you buy one defense, and bench depth is not a decision you make at the podium
-# -- so they cost a row each without ever changing what you'd bid. The full
-# roster view still shows them.
-_SUMMARY_SKIP = ("DEF",)
+# Positions the NEED pane leaves out. Both are settled early and stay settled --
+# you buy one defense, one kicker, and neither is a decision you make at the
+# podium -- so they cost a row each without ever changing what you would bid.
+# The LINEUP pane still shows them.
+_NEED_SKIP = ("DEF", "K")
 
 
-def _summary_block(lines: List[PositionLine]) -> str:
-    """A seat at a glance: one row per position that's still a live decision.
+def _need_pane(state: LeagueState, seat: Seat) -> str:
+    """What this seat still wants, and how fast it has to spend to get it.
 
-    Emitted into the same card as the full roster and hidden by CSS, so flipping
-    views costs no fetch and cannot show a different moment of the draft than
-    the view it replaced -- the same bargain the short/full name swap makes.
+    The pace line is the pane's footer because budget alone does not say whether
+    a seat is ahead or behind: $37 across three slots and $37 across twelve are
+    different seats. Dollars per remaining slot is the number that says when to
+    start dumping.
     """
     rows = "".join(
-        _summary_row(
-            line.pos, line.have, line.want, line.starter_points, line.need > 0
-        )
-        for line in lines
-        if line.pos not in _SUMMARY_SKIP
+        _need_row(line)
+        for line in position_summary(seat, state.config)
+        if line.pos not in _NEED_SKIP
     )
-    return f'<div class="sum">{rows}</div>'
+    per_slot = seat.budget_left / seat.open_slots if seat.open_slots else 0.0
+    return (
+        f'<div class="pane need" data-pane="need">{rows}'
+        '<div class="pace">'
+        f'<span><b>{seat.open_slots}</b> slots left</span>'
+        f'<span><b>${_num(round(per_slot, 1))}</b> / slot</span>'
+        "</div></div>"
+    )
+
+
+def _card_header(state: LeagueState, seat: Seat) -> str:
+    """Money, and nothing else: what is left, the most it can still bid, and a
+    bar of both.
+
+    The bar splits what is spendable from what is already owed -- a dollar per
+    slot still to fill is in the account but not available, and a seat with $80
+    and eight holes is not the threat its balance says it is. Points and slot
+    counts used to sit here and moved to the NEED pane; they were read
+    occasionally and competed with the two numbers that are read constantly.
+    """
+    budget = state.config.budget
+    held = max(0, seat.open_slots - 1)
+    spendable = max(0, seat.budget_left - held)
+    return (
+        '<header>'
+        f'<div class="top"><span class="team">S{seat.slot}</span>'
+        '<span class="seg">'
+        '<button data-pane="lineup" type="button">LINEUP</button>'
+        '<button data-pane="bench" type="button">BN</button>'
+        '<button data-pane="need" type="button">NEED</button></span></div>'
+        f'<div class="top"><span class="big">${seat.budget_left}</span>'
+        f'<span class="max">max <b>${seat.max_bid}</b></span></div>'
+        '<div class="budget">'
+        f'<i style="width:{100 * spendable / budget:.1f}%"></i>'
+        f'<i class="held" style="width:{100 * held / budget:.1f}%"></i>'
+        "</div></header>"
+    )
 
 
 def _roster_card(state: LeagueState, seat: Seat) -> str:
-    """One seat's roster: starters paired two to a row, then the bench.
+    """One seat, as three panes over the same roster.
 
-    Bench rows carry a `bench` class so CSS can grey them back. They stay
-    visible rather than hidden -- depth is worth seeing, and dimming separates
-    it from the lineup faster than reading the BN label would.
-
-    The card also carries a summary view of the same roster, and the arrows that
-    flip between them. Both views are always in the markup; which one shows is a
-    class the client toggles.
+    LINEUP is every starting slot, one player per line, in the slot they would
+    actually start in. BN is the bench. NEED is the position targets. All three
+    ship in the markup and CSS shows one, so switching panes costs no fetch and
+    cannot show a different moment of the draft than the pane it replaced -- the
+    same bargain the short/full name swap makes.
     """
     price_of = {pick.player.id: pick.price for pick in seat.picks}
-    lineup = [p for p in starters(seat.roster, state.config) if p is not None]
-    start_pts = sum(p.points for p in lineup)
-
-    def price(row: Optional[Row]) -> int:
-        if row is None or row[1] is None:
-            return 0
-        return price_of.get(row[1].id, 0)
-
     layout = display_slots(seat.roster, state.config)
-    starter_rows = [r for r in layout if r[0] != BENCH]
-    bench = [player for slot, player in layout if slot == BENCH and player]
 
-    rows = _column_header() + "".join(
-        f'<div class="prow">{_cell(a, price(a))}{_cell(b, price(b))}</div>'
-        for a, b in _pair_starters(starter_rows)
+    lineup = _column_header() + "".join(
+        _open_row(slot)
+        if player is None
+        else _player_row(
+            SLOT_LABEL.get(slot, slot), player, price_of.get(player.id, 0)
+        )
+        for slot, player in layout
+        if slot != BENCH
     )
-    for i in range(0, len(bench), 2):
-        pair = bench[i : i + 2]
-        cells = "".join(_bench_cell(p, price_of.get(p.id, 0)) for p in pair)
-        if len(pair) == 1:
-            cells += '<span class="cell gone"></span>'
-        rows += f'<div class="prow bench">{cells}</div>'
+    bench_players = [p for slot, p in layout if slot == BENCH and p]
+    bench = "".join(
+        _player_row(p.pos or BENCH, p, price_of.get(p.id, 0), bench=True)
+        for p in bench_players
+    )
+    if not bench:
+        bench = '<div class="empty">no bench yet</div>'
 
-    bench_open = state.config.roster_slots.count(BENCH) - len(bench)
-    open_txt = f" · {bench_open} open" if bench_open else ""
-    summary = _summary_block(position_summary(seat, state.config))
+    broke = " broke" if seat.max_bid <= _OUT_OF_MARKET else ""
     return (
-        f'<section class="card" data-roster="{seat.slot}" draggable="true">'
-        f'<header><span class="team">S{seat.slot}</span>'
-        f'<span class="totals">${seat.budget_left} · {start_pts:.0f}'
-        f"{open_txt}</span>"
-        '<span class="vnav">'
-        '<button class="vprev" type="button" aria-label="Previous view">'
-        "&lsaquo;</button>"
-        '<button class="vnext" type="button" aria-label="Next view">'
-        "&rsaquo;</button></span></header>"
-        f"{summary}{rows}</section>"
+        f'<section class="card{broke}" data-roster="{seat.slot}"'
+        ' draggable="true">'
+        f"{_card_header(state, seat)}"
+        '<div class="body">'
+        f'<div class="pane lineup" data-pane="lineup">{lineup}</div>'
+        f'<div class="pane" data-pane="bench">{bench}</div>'
+        f"{_need_pane(state, seat)}"
+        "</div></section>"
     )
 
 
@@ -270,7 +287,7 @@ def render_nomination(
         proj = market_value(player)
         proj_txt = f"${proj:.0f}" if proj else "—"
         meta = (
-            f'{badge(player.pos)} <span class="muted">{_esc(player.team)}</span> '
+            f'{badge(player.pos, light=True)} <span class="muted">{_esc(player.team)}</span> '
             f'· <span class="muted">$PROJ</span> <span class="proj">{proj_txt}</span> '
             f'· <span class="muted">{player.points:.0f} pts</span>'
         )
@@ -308,12 +325,12 @@ def render_page(draft_id: str) -> str:
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Live draft board</title>
-<style>{BASE_CSS}
+<style>{BASE_CSS_LIGHT}
   /* One knob for board type size: every font-size and every width that has to
      hold digits is a multiple of it, so nudging density is one edit rather
      than a dozen. Raising it eats vertical room -- re-check that a full
      16-man roster still clears the fold. */
-  :root {{ --fs: 1.3; }}
+  :root {{ --fs: 1.17; }}
   html, body {{ height: 100%; }}
   body {{ margin: 0; padding: 0; overflow: hidden;
     display: grid; grid-template-columns: 1fr 1fr; }}
@@ -323,7 +340,7 @@ def render_page(draft_id: str) -> str:
      whole viewport height instead of sharing it with the chrome, which is what
      lets a full 16-man roster fit. Space under the header is left free. */
   .side {{ display: flex; flex-direction: column; min-width: 0;
-    padding: 10px 12px; gap: 6px; border-right: 1px solid #252942; }}
+    padding: 10px 12px; gap: 6px; border-right: 1px solid #eee; }}
   .side h1 {{ font-size: calc(13px * var(--fs)); margin: 0; }}
   .side .sub {{ margin: 0; font-size: calc(11px * var(--fs)); }}
 
@@ -337,174 +354,243 @@ def render_page(draft_id: str) -> str:
      the aisle in the state column. */
   .menubar {{ display: flex; align-items: center; gap: 6px; flex: none;
     min-width: 0; }}
-  .menubar .hint {{ color: #4a5170; font-size: calc(9px * var(--fs));
+  .menubar .hint {{ color: #aaa; font-size: calc(9px * var(--fs));
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
 
   .bar {{ display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
-    font-size: calc(11px * var(--fs)); color: #98b3d6; }}
-  select {{ background: #131b38; color: #fafafa; border: 1px solid #414566;
+    font-size: calc(11px * var(--fs)); color: #666; }}
+  select {{ background: #fff; color: #1a1a1a; border: 1px solid #ddd;
     border-radius: 6px; padding: 2px 6px; font: inherit; }}
-  button {{ background: #131b38; color: #00d7ff; border: 1px solid #414566;
+  button {{ background: #f6f6f6; color: #1a1a1a; border: 1px solid #ddd;
     border-radius: 6px; padding: 2px 8px; font: inherit; cursor: pointer; }}
-  button:hover {{ border-color: #00d7ff; }}
-  .dot {{ width: 7px; height: 7px; border-radius: 50%; background: #28e757;
+  button:hover {{ border-color: #1a1a1a; }}
+  .dot {{ width: 7px; height: 7px; border-radius: 50%; background: #1a7f37;
     display: inline-block; }}
-  .dot.stale {{ background: #ff6482; }}
+  .dot.stale {{ background: #c0392b; }}
 
-  .block {{ background: #131b38; border: 1px solid #414566; border-radius: 8px;
-    padding: 3px 10px; display: flex; gap: 10px;
+  /* What is on the block. The one panel on the page that is not white, because
+     it is the thing you look up at between bids. */
+  .block {{ background: #f6f6f6; border: 1px solid #ddd; border-radius: 8px;
+    padding: 4px 10px; display: flex; gap: 10px;
     justify-content: space-between; align-items: center; flex-wrap: wrap; }}
-  .block.idle {{ color: #98b3d6; font-size: calc(12px * var(--fs)); }}
+  .block.idle {{ color: #888; font-size: calc(12px * var(--fs)); }}
   .who {{ font-size: calc(14px * var(--fs)); font-weight: 700; margin-right: 4px; }}
-  .bidamt {{ color: #ffab0e; font-weight: 700; font-size: calc(14px * var(--fs)); }}
-  .proj {{ color: #ffab0e; font-weight: 700; }}
+  .bidamt {{ color: #1a7f37; font-weight: 700; font-size: calc(14px * var(--fs)); }}
+  .proj {{ color: #1a7f37; font-weight: 700; }}
 
-  /* Three across, four down: twelve seats, one screen, fixed positions so a
-     card stays where you last saw it between refreshes. */
+  /* Four across, three down: twelve seats, one screen, fixed positions so a
+     card stays where you last saw it between refreshes. Wider than it is tall,
+     which is the shape the card wants now that the bench moved into its own
+     pane -- a row per starter needs height, and three rows of four give each
+     card a third more of it than four rows of three did. */
   #rosters {{ flex: 1; min-height: 0; }}
-  .grid {{ display: grid; gap: 4px; height: 100%;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  .grid {{ display: grid; gap: 5px; height: 100%;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     grid-auto-rows: minmax(0, 1fr); }}
-  .card {{ background: #131b38; border: 1px solid #414566; border-radius: 8px;
-    padding: 3px 6px; min-width: 0; overflow: hidden;
+  .card {{ background: #fff; border: 1px solid #ddd; border-radius: 6px;
+    padding: 4px 7px 6px; min-width: 0; overflow: hidden;
     display: flex; flex-direction: column; }}
-  .card header {{ display: flex; justify-content: space-between;
-    align-items: baseline; gap: 6px; margin-bottom: 2px; }}
   /* Drag to reorder. The card being carried fades so the gap it will leave is
      visible, and the card under the cursor shows a leading edge on the side the
      drop will insert at -- "this is where it lands", not merely "this is hovered". */
   .card.dragging {{ opacity: 0.4; }}
-  .card.dropzone {{ box-shadow: inset 3px 0 0 #00d7ff; border-color: #00d7ff; }}
-  .card header {{ cursor: grab; }}
+  .card.dropzone {{ box-shadow: inset 3px 0 0 #1a1a1a; border-color: #1a1a1a; }}
+  .card header {{ cursor: grab; flex: none; margin-bottom: 3px;
+    border-bottom: 1px solid #eee; padding-bottom: 3px; }}
   .card.dragging header {{ cursor: grabbing; }}
-  .card.me {{ border-color: #00d7ff; }}
-  .card.me .team::after {{ content: " (you)"; color: #00d7ff; font-weight: 400; }}
-  .team {{ font-weight: 700; font-size: calc(11px * var(--fs)); }}
-  /* Pushed right so the arrows sit at the card's edge rather than the header
-     spreading three items evenly across it. */
-  .totals {{ color: #98b3d6; font-size: calc(10px * var(--fs)); white-space: nowrap;
-    margin-left: auto; }}
+  .card.me {{ border-color: #1a1a1a; box-shadow: 0 0 0 1px #1a1a1a; }}
+  .card.me .team::after {{ content: " (you)"; color: #666; font-weight: 400;
+    font-size: calc(9px * var(--fs)); }}
+  .card header .top {{ display: flex; align-items: baseline; gap: 5px; }}
+  .team {{ font-weight: 700; font-size: calc(11px * var(--fs)); color: #444; }}
 
-  /* View arrows. Held back to near-invisible until the card is hovered: twelve
-     cards' worth of always-on chrome competes with the data for attention, and
-     these are reached for occasionally, not read. */
-  .vnav {{ display: flex; gap: 1px; flex: none; }}
-  .vnav button {{ padding: 0 3px; font-size: calc(11px * var(--fs)); line-height: 1.2;
-    border-color: transparent; color: #4a5170; background: none; }}
-  .card:hover .vnav button {{ color: #98b3d6; }}
-  .vnav button:hover {{ color: #00d7ff; border-color: #414566; }}
+  /* The header is money and nothing else. Balance in the biggest type on the
+     card, the reach beside it, and a bar of both -- everything else a seat
+     could say moved into the NEED pane, where it can be labeled. */
+  .big {{ font-size: calc(13px * var(--fs)); font-weight: 700; color: #1a7f37;
+    line-height: 1.15; font-variant-numeric: tabular-nums; }}
+  .max {{ margin-left: auto; font-size: calc(8.5px * var(--fs)); color: #888;
+    white-space: nowrap; font-variant-numeric: tabular-nums; }}
+  .max b {{ color: #1a1a1a; font-weight: 700; font-size: calc(9.5px * var(--fs)); }}
+  /* Green is spendable, grey is the dollar per unfilled slot that is in the
+     account but already owed -- which is the whole difference between a seat
+     with $80 and one hole and a seat with $80 and eight. */
+  .budget {{ height: 3px; border-radius: 2px; margin-top: 3px; display: flex;
+    background: #eee; overflow: hidden; }}
+  .budget i {{ display: block; height: 100%; background: #1a7f37; }}
+  .budget i.held {{ background: #ccc; }}
+  /* Out of the market: whatever is left cannot win a player anyone else wants,
+     so the seat stops being one you bid against. Figure and bar go together, so
+     the state reads whether you take in the number or only the colour. */
+  .card.broke .big {{ color: #c0392b; }}
+  .card.broke .budget i:not(.held) {{ background: #c0392b; }}
 
-  /* Summary view: one row per position, hidden until the card asks for it.
-     Roster view is what the board loads on, so `.sum` starts off. */
-  .sum {{ display: none; }}
-  .card.view-summary .sum {{ display: block; }}
-  .card.view-summary .prow {{ display: none; }}
-  .srow {{ display: grid; align-items: center; gap: 4px; padding: 0 2px;
-    grid-template-columns:
-      auto calc(26px * var(--fs)) minmax(0, 1fr) calc(26px * var(--fs));
-    line-height: 1.9; }}
-  /* have/want, with the "/want" half sunk: what you own is the number being
-     read, the target is context. Short positions take the accent -- that is the
-     one thing this view exists to surface. */
-  .sct {{ font-size: calc(10px * var(--fs)); font-weight: 700; text-align: right;
-    font-variant-numeric: tabular-nums; color: #98b3d6; }}
-  .sct i {{ font-style: normal; font-weight: 400; color: #4a5170; }}
-  .srow.short .sct {{ color: #fafafa; }}
-  /* Ratio against a limit: fill in the position's own color over a lighter step
-     of it, so the whole bar carries the state rather than only the filled part.
-     Text stays in text colors -- the chip and the bar carry position. */
-  .sbar {{ height: 4px; border-radius: 2px; overflow: hidden;
-    background: color-mix(in srgb, var(--pos, #414566) 14%, transparent); }}
-  .sbar span {{ display: block; height: 100%; border-radius: 2px;
-    background: var(--pos, #98b3d6); }}
-  .spt {{ font-style: normal; font-size: calc(9px * var(--fs)); text-align: right;
-    font-variant-numeric: tabular-nums; color: #98b3d6; }}
+  /* Three panes over one roster, as tabs across the card. On the dark board
+     these hid until hover because twelve cards' worth of lit chrome drowned the
+     data; on white they can simply be visible. */
+  .seg {{ display: flex; gap: 2px; margin-left: auto; flex: none; }}
+  .seg button {{ padding: 1px 5px; font-size: calc(7.5px * var(--fs)); line-height: 1.4;
+    font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase;
+    border: 1px solid #e2e2e2; background: #f6f6f6; color: #888;
+    border-radius: 3px; }}
+  .seg button:hover {{ color: #555; border-color: #cbd8ea; }}
+  .seg button[aria-pressed="true"] {{ color: #fff; background: #1a1a1a;
+    border-color: #1a1a1a; }}
 
-  .prow {{ display: grid; grid-template-columns: 1fr 1fr; gap: 3px;
-    margin-bottom: 1px; min-width: 0; }}
-  /* Bench sits back twice over: dimmed, and a size smaller when compact, so
-     the starting lineup is what the eye lands on first. Maximized keeps one
-     size -- there the point is reading the whole roster, not ranking it. */
-  .prow.bench .cell {{ opacity: 0.45; }}
-  body:not(.maxed) .prow.bench .cell {{ font-size: calc(8.5px * var(--fs)); }}
+  /* All three panes ship in every card and CSS shows one, so switching costs no
+     fetch and two panes can never show different moments of the draft. No class
+     means LINEUP, which is what the board loads on. */
+  .body {{ flex: 1; min-height: 0; display: flex; flex-direction: column; }}
+  /* A pane scrolls rather than clipping. Three rows of four fit the default
+     ten-slot lineup with room to spare, but a deeper lineup must not silently
+     hide a player. */
+  .pane {{ display: none; overflow-y: auto; scrollbar-width: thin;
+    scrollbar-color: #ccc transparent; }}
+  .card .pane.lineup {{ display: flex; flex-direction: column;
+    flex: 1; min-height: 0; }}
+  .card.view-bench .pane.lineup, .card.view-need .pane.lineup {{ display: none; }}
+  .card.view-bench .pane[data-pane="bench"] {{ display: block; }}
+  .card.view-need .pane.need {{ display: flex; flex-direction: column; flex: 1;
+    min-height: 0; }}
+  .empty {{ color: #aaa; font-size: calc(9px * var(--fs)); padding: 4px 2px; }}
 
-  /* One cell = one lineup seat. Only the slot chip carries the position color;
-     tinting the whole cell made twelve cards read as a wall of blocks with the
-     names competing against their own backgrounds. The chip still says which
-     slot it is, so a WR sitting in FLEX shows "FLEX" in receiver blue. */
-  .cell {{ display: grid; grid-template-columns: auto minmax(0, 1fr) calc(28px * var(--fs));
-    align-items: center; gap: 3px; min-width: 0;
-    padding: 0 2px; font-size: calc(10px * var(--fs)); line-height: 1.4; }}
+  /* One line per player, and the position is the *field the name sits on*: a
+     pale tint of the position colour, mixed against white. A coloured chip put
+     the loudest thing in the row next to the thing you actually read; this way
+     the row is legible at a glance as "a receiver" without anything competing
+     with the name. Fixed widths and tabular figures keep the numbers in real
+     columns you can read down. */
+  .ln {{ display: grid; align-items: center; gap: 3px; padding: 1px 3px;
+    margin-bottom: 1px; border-radius: 3px;
+    grid-template-columns: calc(22px * var(--fs)) minmax(0, 1fr) calc(26px * var(--fs));
+    font-size: calc(10px * var(--fs)); line-height: 1.35; min-width: 0;
+    background: color-mix(in srgb, var(--pos, #7c90a0) 26%, #fff); }}
+  /* The lineup's rows share whatever height the card has: the line-height above
+     is a floor, and `flex: 1` spends the rest of the card on the gaps between
+     rows. A fixed row height had to be tuned to one viewport -- generous enough
+     to fill a tall screen, it overflowed a short one. */
+  .pane.lineup .ln {{ flex: 1 1 auto; }}
   .colhead {{ display: none; }}
-  .ms {{ font-style: normal; font-size: calc(8px * var(--fs)); text-transform: uppercase;
-    font-weight: 700; text-align: center; min-width: calc(24px * var(--fs));
-    border-radius: 3px; padding: 0 3px;
-    color: var(--pos, #98b3d6);
-    background: color-mix(in srgb, var(--pos, #414566) 20%, transparent); }}
-  .cell.open .ms {{ color: #4a5170; background: #1a2038; }}
-  .cell.open {{ color: #4a5170; }}
-  .mn, .mnf {{ font-weight: 400; overflow: hidden; text-overflow: ellipsis;
-    white-space: nowrap; }}
+  /* The slot label is a label: same grey on every row, so the eye reads the
+     tint for position and this only for which seat of the lineup it is. */
+  .ms {{ font-style: normal; font-size: calc(7.5px * var(--fs)); text-transform: uppercase;
+    font-weight: 700; text-align: left; color: #555; }}
+  /* A hole reads as absence, not as a position: flat grey, no tint. */
+  .ln.open {{ background: #f4f4f4; }}
+  .ln.open .ms {{ color: #aaa; }}
+  .ln.open .mn, .ln.open .mnf {{ color: #bbb; }}
+  /* Depth keeps its position tint -- in a pane of its own nothing else says what
+     these bodies are -- but sits back a step from the lineup. */
+  .ln.bench {{ opacity: 0.75; }}
+  .mn, .mnf {{ font-weight: 400; color: #1a1a1a; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }}
   /* Compact shows the short name, maximized the full one. Both are in the
      markup so the swap is free. */
   .mnf {{ display: none; }}
-  /* Fixed widths and tabular figures, so the numbers form real columns you can
-     read down rather than ragged text that happens to sit near the edge. */
   .mb, .mp, .mc {{ font-style: normal; font-size: calc(9px * var(--fs)); text-align: right;
     font-variant-numeric: tabular-nums; }}
-  .mc {{ color: #ffab0e; font-weight: 700; }}
+  .mc {{ color: #1a7f37; font-weight: 700; }}
+  .ln.open .mc {{ color: #ccc; font-weight: 400; }}
   /* Bye and points are the first things to go when space is short; they live
      in the hover tooltip until the overlay has room for them. */
-  .mb, .mp {{ display: none; color: #98b3d6; }}
+  .mb, .mp {{ display: none; color: #666; }}
+
+  /* The NEED pane. Targets are fractional and the indicator is a run of pips,
+     not a fill bar: a ratio bar pins at 100% the moment you reach the target,
+     so a seat one body short and a seat two deep drew the same picture. This is
+     the one place the position colour stays at full strength -- the pips are
+     the mark being read, not a field behind text. */
+  .nrow {{ display: grid; align-items: center; gap: 5px; padding: 1px 3px;
+    margin-bottom: 1px; border-radius: 3px;
+    grid-template-columns:
+      calc(24px * var(--fs)) calc(30px * var(--fs)) minmax(0, 1fr) calc(26px * var(--fs));
+    line-height: 1.7;
+    background: color-mix(in srgb, var(--pos, #7c90a0) 14%, #fff); }}
+  /* have/target, with the target half sunk: what you own is the number being
+     read, the target is context. Short positions take the accent -- that is the
+     one thing this pane exists to surface. */
+  .nct {{ font-size: calc(9.5px * var(--fs)); font-weight: 700; text-align: right;
+    font-variant-numeric: tabular-nums; color: #666; }}
+  .nct i {{ font-style: normal; font-weight: 400; color: #aaa; }}
+  .nrow.short .nct {{ color: #c0392b; }}
+  /* One pip per whole starter the target asks for, the half-slot drawn half as
+     wide, so the row's own length is the requirement -- 2.5 is visible rather
+     than merely readable. Surplus sits outside the run, outlined. */
+  .pips {{ display: flex; align-items: center; gap: 2px; }}
+  .pip {{ height: calc(6px * var(--fs)); width: calc(8px * var(--fs)); border-radius: 2px;
+    background: color-mix(in srgb, var(--pos, #7c90a0) 22%, #fff);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pos, #7c90a0) 35%, #fff); }}
+  .pip.half {{ width: calc(4px * var(--fs)); }}
+  .pip.on {{ background: var(--pos, #7c90a0); box-shadow: none; }}
+  .pip.extra {{ background: none; width: calc(5px * var(--fs));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pos, #7c90a0) 45%, #fff); }}
+  .npt {{ font-style: normal; font-size: calc(8.5px * var(--fs)); text-align: right;
+    font-variant-numeric: tabular-nums; color: #666; }}
+  /* Pace, pinned to the pane's floor. Budget alone does not say whether a seat
+     is spending ahead or behind; dollars per slot still to fill does, and it is
+     the number that says when to start dumping. */
+  .pace {{ margin-top: auto; padding-top: 3px; border-top: 1px solid #eee;
+    display: flex; justify-content: space-between; gap: 6px;
+    font-size: calc(8px * var(--fs)); color: #888;
+    font-variant-numeric: tabular-nums; }}
+  .pace b {{ color: #1a1a1a; font-weight: 700; }}
 
   /* Maximized: the board leaves its half and takes the viewport. Nothing is
-     re-rendered -- the bench rows and the hidden columns were always there. */
+     re-rendered -- the hidden columns and the other panes were always there. */
   body.maxed .board {{ position: fixed; inset: 0; z-index: 10;
-    background: #05091d; padding: 14px 16px; }}
+    background: #fff; padding: 14px 16px; }}
   /* A second way out, at the corner where a full-screen thing is closed. The
      Minimize button rides along in the menu bar since that bar lives inside the
      board, but nobody looks there first. */
   .closebtn {{ display: none; }}
   body.maxed .closebtn {{ display: block; position: fixed; z-index: 11;
     top: 8px; right: 12px; width: 26px; height: 26px; padding: 0;
-    font-size: 18px; line-height: 1; border-radius: 50%; color: #98b3d6; }}
-  body.maxed .closebtn:hover {{ color: #00d7ff; border-color: #00d7ff; }}
-  /* Three across maximized, not four: the extra width goes to the names, which
-     is the whole reason to maximize. Four fitted more cards per row but clipped
-     every name in the right-hand column. */
-  body.maxed .grid {{ grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
-    height: auto; grid-auto-rows: min-content; }}
-  /* Cards size to their content here and the overlay scrolls if they overflow.
-     The compact view can clip nothing because it is tuned to fit; maximized has
-     to survive any roster size, and silently hiding a player behind
-     `overflow: hidden` is the one failure this must not have. */
-  body.maxed #rosters {{ overflow-y: auto; }}
+    font-size: 18px; line-height: 1; border-radius: 50%; color: #666; }}
+  body.maxed .closebtn:hover {{ color: #1a1a1a; border-color: #1a1a1a; }}
+  /* Same four across, three down as the compact board -- the overlay is the
+     whole viewport, so twelve seats fit at full size with the names spelled
+     out. Keeping the shape also means maximizing moves nothing: a card is where
+     it was, only bigger. */
+  body.maxed .grid {{ grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;
+    height: 100%; grid-auto-rows: minmax(0, 1fr); }}
+  /* A deeper lineup than this fits scrolls inside its own pane (see `.pane`)
+     rather than off the bottom of the overlay: silently hiding a player is the
+     one failure this must not have. */
+  body.maxed #rosters {{ overflow: hidden; }}
   /* Keep the close button's corner clear of the hint text. */
   body.maxed .menubar {{ padding-right: 30px; }}
   body.maxed .card {{ padding: 6px 8px; }}
-  body.maxed .team {{ font-size: calc(13px * var(--fs)); }}
-  body.maxed .totals {{ font-size: calc(11px * var(--fs)); }}
-  body.maxed .cell {{ font-size: calc(11px * var(--fs)); padding: 0 4px; gap: 6px; line-height: 1.3;
+  body.maxed .team {{ font-size: calc(12px * var(--fs)); }}
+  body.maxed .big {{ font-size: calc(15px * var(--fs)); }}
+  body.maxed .max {{ font-size: calc(10px * var(--fs)); }}
+  body.maxed .seg button {{ font-size: calc(8.5px * var(--fs)); }}
+  /* Barely larger type than compact, because at four across on a laptop there
+     is no room for more. What maximizing actually buys is the full names and
+     the bye/points columns below, not size -- and all twelve seats still have
+     to fit one screen, which a taller row would break. */
+  body.maxed .ln {{ font-size: calc(10.5px * var(--fs)); padding: 0 5px; gap: 6px;
+    line-height: 1.2;
     grid-template-columns: auto minmax(0, 1fr) calc(24px * var(--fs)) calc(30px * var(--fs)) calc(34px * var(--fs)); }}
   body.maxed .ms {{ font-size: calc(9px * var(--fs)); }}
   body.maxed .mn {{ display: none; }}
   body.maxed .mnf {{ display: block; }}
   body.maxed .mb, body.maxed .mp {{ display: block; }}
   body.maxed .mb, body.maxed .mp, body.maxed .mc {{ font-size: calc(10px * var(--fs)); }}
-  body.maxed .colhead {{ display: grid; }}
-  /* Column labels belong to the roster rows; in summary view they would head an
-     empty card. More specific than the rule above, so it wins in both views. */
-  .card.view-summary .colhead {{ display: none; }}
-  body.maxed .srow {{ line-height: 2.2; gap: 8px; padding: 0 4px;
-    grid-template-columns:
-      auto calc(34px * var(--fs)) minmax(0, 1fr) calc(32px * var(--fs)); }}
-  body.maxed .sct {{ font-size: calc(12px * var(--fs)); }}
-  body.maxed .spt {{ font-size: calc(11px * var(--fs)); }}
-  body.maxed .sbar {{ height: 5px; }}
-  body.maxed .vnav button {{ color: #98b3d6; }}
-  body.maxed .colhead .cell {{ padding-bottom: 1px; }}
-  body.maxed .colhead i {{ color: #4a5170; font-size: calc(8px * var(--fs)); font-weight: 700;
+  body.maxed .colhead {{ display: grid; background: none; }}
+  /* Column labels belong to the lineup rows; in another pane they would head an
+     empty card. More specific than the rule above, so it wins in both. */
+  .card.view-bench .colhead, .card.view-need .colhead {{ display: none; }}
+  body.maxed .colhead i {{ color: #aaa; font-size: calc(8px * var(--fs)); font-weight: 700;
     text-transform: uppercase; }}
+  body.maxed .nrow {{ line-height: 2.1; gap: 8px; padding: 1px 5px;
+    grid-template-columns:
+      calc(30px * var(--fs)) calc(36px * var(--fs)) minmax(0, 1fr) calc(32px * var(--fs)); }}
+  body.maxed .nct {{ font-size: calc(12px * var(--fs)); }}
+  body.maxed .npt {{ font-size: calc(11px * var(--fs)); }}
+  body.maxed .pip {{ height: calc(8px * var(--fs)); width: calc(11px * var(--fs)); }}
+  body.maxed .pip.half {{ width: calc(5.5px * var(--fs)); }}
+  body.maxed .pip.extra {{ width: calc(7px * var(--fs)); }}
+  body.maxed .pace {{ font-size: calc(10px * var(--fs)); padding-top: 4px; }}
 </style></head>
 <body>
   <aside class="side">
@@ -527,7 +613,7 @@ def render_page(draft_id: str) -> str:
       <button id="max" type="button">Maximize</button>
       <button id="reorder" type="button"
               title="Put the cards back in seat order">Seat order</button>
-      <span class="hint">drag a card to reorder · &lsaquo; &rsaquo; for the summary</span>
+      <span class="hint">drag a card to reorder · LINEUP / BN / NEED per card</span>
     </div>
     <div id="rosters"></div>
   </main>
@@ -561,31 +647,35 @@ document.addEventListener("keydown", (e) => {{
   if (e.key === "Escape") setMaxed(false);
 }});
 
-// Per-card view. Ordered, so the arrows step through it and adding a third view
-// is one entry here plus its markup -- and "roster" first is what the board
-// loads on.
-const VIEWS = ["roster", "summary"];
+// Per-card pane. "lineup" first: it is what the board loads on, and it is the
+// one a card with no stored choice must show.
+const VIEWS = ["lineup", "bench", "need"];
 let views = {{}};
 try {{ views = JSON.parse(localStorage.getItem("draftsim.views")) || {{}}; }} catch (e) {{}}
 
-// #rosters is replaced wholesale every tick, so the chosen view lives here and
-// is re-applied after each swap -- otherwise every card would snap back to
-// roster view twice a second.
+// #rosters is replaced wholesale every tick, so the chosen pane lives here and
+// is re-applied after each swap -- otherwise every card would snap back to the
+// lineup twice a second. The segment's pressed state is set here too, for the
+// same reason: the buttons are new markup on every refresh.
 function applyViews() {{
   document.querySelectorAll("section.card").forEach((card) => {{
-    card.classList.toggle("view-summary", views[card.dataset.roster] === "summary");
+    const view = VIEWS.includes(views[card.dataset.roster])
+      ? views[card.dataset.roster] : VIEWS[0];
+    card.classList.toggle("view-bench", view === "bench");
+    card.classList.toggle("view-need", view === "need");
+    card.querySelectorAll(".seg button").forEach((b) => {{
+      b.setAttribute("aria-pressed", String(b.dataset.pane === view));
+    }});
   }});
 }}
 
-// Delegated: the arrow buttons are destroyed and rebuilt on every refresh, so
+// Delegated: the segment buttons are destroyed and rebuilt on every refresh, so
 // nothing may hold a reference to them.
 document.getElementById("rosters").addEventListener("click", (e) => {{
-  const btn = e.target.closest(".vnav button");
+  const btn = e.target.closest(".seg button");
   if (!btn) return;
   const slot = btn.closest("section.card").dataset.roster;
-  const step = btn.classList.contains("vnext") ? 1 : -1;
-  const at = VIEWS.indexOf(views[slot] || VIEWS[0]);
-  views[slot] = VIEWS[(at + step + VIEWS.length) % VIEWS.length];
+  views[slot] = btn.dataset.pane;
   localStorage.setItem("draftsim.views", JSON.stringify(views));
   applyViews();
 }});

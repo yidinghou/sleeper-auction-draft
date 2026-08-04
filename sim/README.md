@@ -54,37 +54,68 @@ full-screen overlay with the bye/points columns revealed; it is a CSS toggle
 over the same markup, so opening it costs no fetch and can never show a
 different moment of the draft than the compact view.
 
-Bench players show under the starters, **dimmed and a size smaller** — depth is
-worth seeing, but the starting lineup is what the eye should land on first.
-Maximized keeps one size, since there the point is reading the whole roster
-rather than ranking it.
+**The live board is light; the post-mortem report is dark.** That is deliberate:
+the board sits open beside Sleeper's own dark app for three hours, and looking
+nothing like it is how you never misread one for the other mid-auction. The two
+palettes live side by side in `theme.py` (`BASE_CSS` / `POS_COLOR` dark,
+`BASE_CSS_LIGHT` / `POS_COLOR_LIGHT` light) and each surface picks one — the
+report is a separate page with its own dark CSS and is not part of the switch.
 
-Type scales off one CSS variable, `--fs` (currently 1.21). Raising it eats
-vertical room, so re-check that a full 16-man roster still clears the fold.
+`POS_COLOR_LIGHT` is a different set of hues from the app-mirroring `POS_COLOR`,
+because the app's were chosen to glow on near-black and go acidic when mixed
+down to a pale tint on white.
+
+The grid is **four cards across, three down**, in both sizes — a row per player
+wants height, and maximizing keeps the shape so a card is where it was, only
+bigger. Lineup rows **flex to share the card's height** rather than taking a
+fixed one: a row height tall enough to fill a 1000px window scrolled an 820px
+one, so the line-height is only a floor.
+
+Type scales off one CSS variable, `--fs` (currently 1.17). Raising it eats
+vertical room, so re-check that a full lineup still clears the fold.
 
 Compact names shorten to initial + surname (`J. Burrow`), which is what stops
-them ellipsising at 115px; defenses use their nickname, since `K. City Chiefs`
-helps nobody. Maximized restores full names, widens to 3 columns, and labels the
-bye / points / price columns — fixed-width and tabular, so they read down.
+them ellipsising; defenses use their nickname, since `K. City Chiefs` helps
+nobody. Maximized restores full names and labels the bye / points / price
+columns — fixed-width and tabular, so they read down.
 
-Each card compresses the 10 starter slots into 5 rows of two:
+**The card header is money and nothing else**: dollars left in the biggest type
+on the card, the max bid beside it, and a bar of the two — green for what is
+spendable, grey for the dollar-per-open-slot that is in the account but already
+owed. A seat whose max bid can no longer win anyone turns red. Points and slot
+counts used to sit here; they were read occasionally and competed with the two
+numbers read constantly, so they moved into NEED.
 
-| Row | | |
-| --- | --- | --- |
-| 1 | QB | SFLX |
-| 2 | RB | WR |
-| 3 | RB | WR |
-| 4 | FLEX | W/T |
-| 5 | DEF | TE |
+Each card carries **three panes over the same roster**, picked by the segmented
+control in its header. All three ship in the markup and CSS shows one, so
+switching costs no fetch and two panes can never show different moments of the
+draft:
 
-Position shows as the color of the **slot chip** rather than a badge — a badge
-costs more room than the name it labels, and tinting the whole cell made twelve
-cards read as a wall of blocks. The chip names the slot while carrying the
-player's colour, so a receiver in the flex reads `FLEX` in receiver blue.
-Players sit in the slot they'd
-**actually start in**, via the same `roster.display_slots` matching the engine
-scores on, so a second RB shows up in FLEX. The card header totals the starting
-lineup only, plus how much bench is still open.
+| Pane | Shows |
+| --- | --- |
+| `LINEUP` | Every starting slot, one player per line, in the slot they'd **actually start in** — via the same `roster.display_slots` matching the engine scores on, so a second RB shows up in FLEX. Unfilled slots stay visible; the hole is the point. |
+| `BN` | The bench, each row tinted by the player's **real position** rather than labelled a fungible `BN` — in a pane of its own nothing else says what these bodies are. Dimmed a step, so depth still reads as depth. |
+| `NEED` | Position targets, plus a pace line (`slots left`, `$/slot`) — the balance alone doesn't say whether a seat is ahead or behind. |
+
+Position is **the pale tint of the row itself**, not a coloured chip: a 26% mix
+of the position colour against white, with the slot label left plain grey. A
+coloured chip put the loudest thing in the row right beside the thing you
+actually read; this way a row reads as "a receiver" at a glance and nothing
+competes with the name. An unfilled slot is flat grey instead — a hole should
+read as absence, not as a position.
+
+`NEED` targets are **fractional** (`live_state.DRAFT_TARGETS`: QB 3, RB 2.5,
+WR 3.5, TE 1), because a flex slot is genuinely shared and rounding 2.5 up to 3
+made a filled seat look short. These are a draft *plan*, deliberately not
+`config.starter_shares()` (QB 2.00, RB 2.77, WR 3.23) — that is the structural
+split and the right input to replacement level; this is what you mean to buy. So
+`position_summary` and `seat.needs` disagree on purpose: legality versus plan.
+
+The indicator is a run of **pips**, not a fill bar: one pip per whole starter
+wanted, the half-slot drawn half as wide, so the row's own length *is* the
+requirement. A ratio bar pinned at 100% the moment you reached the target, which
+drew `4/2.5` and `2.5/2.5` identically when they mean opposite things — surplus
+now sits past the target as narrow outlined pips.
 
 Everything comes from two unauthenticated endpoints — no scraping, no websocket,
 no session token:
