@@ -455,6 +455,16 @@ def test_cards_label_their_numeric_columns(midway):
     assert 'class="prow colhead"' in card
 
 
+def test_the_overlay_has_its_own_way_out():
+    # Maximize sits in the left column, which the overlay covers -- without a
+    # close control inside it, Esc is the only exit and nothing says so.
+    page = render_page("123")
+    assert 'id="close"' in page
+    assert "body.maxed .closebtn" in page
+    assert 'getElementById("close")' in page
+    assert 'aria-label="Minimize"' in page
+
+
 def test_the_page_hides_column_labels_until_maximized():
     page = render_page("123")
     assert "body.maxed .colhead" in page

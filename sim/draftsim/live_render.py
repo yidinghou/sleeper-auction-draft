@@ -342,6 +342,13 @@ def render_page(draft_id: str) -> str:
      re-rendered -- the bench rows and the hidden columns were always there. */
   body.maxed .board {{ position: fixed; inset: 0; z-index: 10;
     background: #05091d; padding: 14px 16px; }}
+  /* The Maximize button lives in the left column, which the overlay covers, so
+     without this the only way out is a keyboard shortcut nobody was told about. */
+  .closebtn {{ display: none; }}
+  body.maxed .closebtn {{ display: block; position: fixed; z-index: 11;
+    top: 8px; right: 12px; width: 26px; height: 26px; padding: 0;
+    font-size: 18px; line-height: 1; border-radius: 50%; color: #98b3d6; }}
+  body.maxed .closebtn:hover {{ color: #00d7ff; border-color: #00d7ff; }}
   /* Three across maximized, not four: the extra width goes to the names, which
      is the whole reason to maximize. Four fitted more cards per row but clipped
      every name in the right-hand column. */
@@ -383,6 +390,8 @@ def render_page(draft_id: str) -> str:
   </aside>
 
   <main class="board">
+    <button id="close" class="closebtn" type="button"
+            aria-label="Minimize">&times;</button>
     <div id="rosters"></div>
   </main>
 
@@ -410,6 +419,7 @@ function setMaxed(on) {{
 maxBtn.addEventListener("click", () => {{
   setMaxed(!document.body.classList.contains("maxed"));
 }});
+document.getElementById("close").addEventListener("click", () => setMaxed(false));
 document.addEventListener("keydown", (e) => {{
   if (e.key === "Escape") setMaxed(false);
 }});
