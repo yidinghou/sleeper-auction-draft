@@ -59,7 +59,7 @@ worth seeing, but the starting lineup is what the eye should land on first.
 Maximized keeps one size, since there the point is reading the whole roster
 rather than ranking it.
 
-Type scales off one CSS variable, `--fs` (currently 1.1). Raising it eats
+Type scales off one CSS variable, `--fs` (currently 1.21). Raising it eats
 vertical room, so re-check that a full 16-man roster still clears the fold.
 
 Compact names shorten to initial + surname (`J. Burrow`), which is what stops
