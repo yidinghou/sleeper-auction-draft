@@ -250,7 +250,7 @@ def render_page(draft_id: str) -> str:
      hold digits is a multiple of it, so nudging density is one edit rather
      than a dozen. Raising it eats vertical room -- re-check that a full
      16-man roster still clears the fold. */
-  :root {{ --fs: 1.21; }}
+  :root {{ --fs: 1.3; }}
   html, body {{ height: 100%; }}
   body {{ margin: 0; padding: 0; overflow: hidden;
     display: grid; grid-template-columns: 1fr 1fr; }}
