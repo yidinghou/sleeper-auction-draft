@@ -269,24 +269,26 @@ def render_page(draft_id: str) -> str:
 
   .prow {{ display: grid; grid-template-columns: 1fr 1fr; gap: 3px;
     margin-bottom: 1px; min-width: 0; }}
-  /* Bench keeps its position colour but sits back: dimmed and untinted, so a
-     glance separates who a seat starts from who it is merely holding, without
-     having to read the BN label. */
-  .prow.bench .cell {{ opacity: 0.5; background: none; }}
+  /* Bench sits back: dimmed, so a glance separates who a seat starts from who
+     it is merely holding, without having to read the BN label. */
+  .prow.bench .cell {{ opacity: 0.45; }}
 
-  /* One cell = one lineup seat. Position is the cell's own color rather than a
-     badge: at this width a badge costs more room than the name it labels. */
+  /* One cell = one lineup seat. Only the slot chip carries the position color;
+     tinting the whole cell made twelve cards read as a wall of blocks with the
+     names competing against their own backgrounds. The chip still says which
+     slot it is, so a WR sitting in FLEX shows "FLEX" in receiver blue. */
   .cell {{ display: grid; grid-template-columns: auto 1fr auto;
     align-items: center; gap: 3px; min-width: 0;
-    background: color-mix(in srgb, var(--pos, #414566) 16%, transparent);
-    border-left: 2px solid var(--pos, #414566);
-    border-radius: 3px; padding: 0 3px; font-size: 10px; line-height: 1.45; }}
-  .cell.gone {{ background: none; border-left-color: transparent; }}
-  .cell.open {{ background: none; border-left-color: #252942; color: #4a5170; }}
-  .ms {{ font-style: normal; color: #98b3d6; font-size: 8px;
-    text-transform: uppercase; }}
+    padding: 0 2px; font-size: 10px; line-height: 1.45; }}
+  .ms {{ font-style: normal; font-size: 8px; text-transform: uppercase;
+    font-weight: 700; text-align: center; min-width: 24px;
+    border-radius: 3px; padding: 0 3px;
+    color: var(--pos, #98b3d6);
+    background: color-mix(in srgb, var(--pos, #414566) 20%, transparent); }}
+  .cell.open .ms {{ color: #4a5170; background: #1a2038; }}
+  .cell.open {{ color: #4a5170; }}
   .mn {{ font-weight: 400; overflow: hidden; text-overflow: ellipsis;
-    white-space: nowrap; color: var(--pos, #fafafa); }}
+    white-space: nowrap; }}
   .mc {{ font-style: normal; color: #ffab0e; font-weight: 700; font-size: 9px; }}
   /* Bye and points are the first things to go when space is short; they live
      in the hover tooltip until the overlay has room for them. */

@@ -24,7 +24,7 @@ POS_COLOR = {
 POS_FALLBACK = "#98b3d6"  # K, DEF, anything else
 
 # Compact labels for the long flex slot names (matches `slotShortLabel()`).
-SLOT_LABEL = {"SUPER_FLEX": "SFLX", "REC_FLEX": "RFLX", "WRRB_FLEX": "W/R"}
+SLOT_LABEL = {"SUPER_FLEX": "SFLX", "REC_FLEX": "W/T", "WRRB_FLEX": "W/R"}
 
 # Palette, named so page CSS below and in callers reads as intent, not hex.
 BG = "#05091d"

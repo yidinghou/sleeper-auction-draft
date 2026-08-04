@@ -54,7 +54,7 @@ const BENCH_SLOT = "BN";
 // Compact labels for slot tokens whose Sleeper names are too long for the badge.
 const SLOT_SHORT_LABELS: Record<string, string> = {
   SUPER_FLEX: "SFLX",
-  REC_FLEX: "RFLX",
+  REC_FLEX: "W/T",
   WRRB_FLEX: "W/R",
 };
 
