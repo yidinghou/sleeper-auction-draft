@@ -391,11 +391,15 @@ def test_bench_players_are_dimmed_not_hidden():
     assert ".prow.bench {" not in page.replace("{{", "{")
 
 
-def test_page_offers_a_maximize_toggle_and_reserves_the_left_half():
+def test_page_splits_state_left_from_rosters_right():
     page = render_page("123")
     assert 'id="max"' in page
     assert "body.maxed" in page
-    assert 'class="reserved"' in page
+    # The nomination strip and controls live in the left column; the roster
+    # grid gets its own column so it can take the full viewport height.
+    assert 'class="side"' in page
+    assert 'class="board"' in page
+    assert page.index('class="side"') < page.index('class="board"')
 
 
 # -- compact names -----------------------------------------------------------

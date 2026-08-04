@@ -246,24 +246,28 @@ def render_page(draft_id: str) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Live draft board</title>
 <style>{BASE_CSS}
+  /* One knob for board type size: every font-size and every width that has to
+     hold digits is a multiple of it, so nudging density is one edit rather
+     than a dozen. Raising it eats vertical room -- re-check that a full
+     16-man roster still clears the fold. */
+  :root {{ --fs: 1.1; }}
   html, body {{ height: 100%; }}
   body {{ margin: 0; padding: 0; overflow: hidden;
     display: grid; grid-template-columns: 1fr 1fr; }}
 
-  .reserved {{ border-right: 1px solid #252942;
-    display: flex; align-items: center; justify-content: center;
-    color: #252942; font-size: 12px; letter-spacing: 0.18em;
-    text-transform: uppercase; }}
+  /* Left: what is happening right now -- the draft's state and whatever is on
+     the block. Right: the rosters. Splitting them this way gives the grid the
+     whole viewport height instead of sharing it with the chrome, which is what
+     lets a full 16-man roster fit. Space under the header is left free. */
+  .side {{ display: flex; flex-direction: column; min-width: 0;
+    padding: 10px 12px; gap: 6px; border-right: 1px solid #252942; }}
+  .side h1 {{ font-size: calc(13px * var(--fs)); margin: 0; }}
+  .side .sub {{ margin: 0; font-size: calc(11px * var(--fs)); }}
 
-  /* The board column is a flex stack whose last child (the grid) absorbs the
-     leftover height, so the twelve cards always end exactly at the fold. */
-  .live {{ display: flex; flex-direction: column; min-width: 0;
-    padding: 8px 10px; gap: 6px; }}
-  .live h1 {{ font-size: 13px; margin: 0; }}
-  .live .sub {{ margin: 0; font-size: 11px; }}
+  .board {{ min-width: 0; overflow: hidden; padding: 6px 8px; }}
 
   .bar {{ display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
-    font-size: 11px; color: #98b3d6; }}
+    font-size: calc(11px * var(--fs)); color: #98b3d6; }}
   select {{ background: #131b38; color: #fafafa; border: 1px solid #414566;
     border-radius: 6px; padding: 2px 6px; font: inherit; }}
   button {{ background: #131b38; color: #00d7ff; border: 1px solid #414566;
@@ -274,45 +278,47 @@ def render_page(draft_id: str) -> str:
   .dot.stale {{ background: #ff6482; }}
 
   .block {{ background: #131b38; border: 1px solid #414566; border-radius: 8px;
-    padding: 4px 10px; display: flex; gap: 10px;
+    padding: 3px 10px; display: flex; gap: 10px;
     justify-content: space-between; align-items: center; flex-wrap: wrap; }}
-  .block.idle {{ color: #98b3d6; font-size: 12px; }}
-  .who {{ font-size: 14px; font-weight: 700; margin-right: 4px; }}
-  .bidamt {{ color: #ffab0e; font-weight: 700; font-size: 14px; }}
+  .block.idle {{ color: #98b3d6; font-size: calc(12px * var(--fs)); }}
+  .who {{ font-size: calc(14px * var(--fs)); font-weight: 700; margin-right: 4px; }}
+  .bidamt {{ color: #ffab0e; font-weight: 700; font-size: calc(14px * var(--fs)); }}
   .proj {{ color: #ffab0e; font-weight: 700; }}
 
   /* Three across, four down: twelve seats, one screen, fixed positions so a
      card stays where you last saw it between refreshes. */
-  #rosters {{ flex: 1; min-height: 0; }}
-  .grid {{ display: grid; gap: 5px; height: 100%;
+  #rosters {{ height: 100%; min-height: 0; }}
+  .grid {{ display: grid; gap: 4px; height: 100%;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     grid-auto-rows: minmax(0, 1fr); }}
   .card {{ background: #131b38; border: 1px solid #414566; border-radius: 8px;
-    padding: 4px 6px; min-width: 0; overflow: hidden;
+    padding: 3px 6px; min-width: 0; overflow: hidden;
     display: flex; flex-direction: column; }}
   .card header {{ display: flex; justify-content: space-between;
     align-items: baseline; gap: 6px; margin-bottom: 2px; }}
   .card.me {{ border-color: #00d7ff; }}
   .card.me .team::after {{ content: " (you)"; color: #00d7ff; font-weight: 400; }}
-  .team {{ font-weight: 700; font-size: 11px; }}
-  .totals {{ color: #98b3d6; font-size: 10px; white-space: nowrap; }}
+  .team {{ font-weight: 700; font-size: calc(11px * var(--fs)); }}
+  .totals {{ color: #98b3d6; font-size: calc(10px * var(--fs)); white-space: nowrap; }}
 
   .prow {{ display: grid; grid-template-columns: 1fr 1fr; gap: 3px;
     margin-bottom: 1px; min-width: 0; }}
-  /* Bench sits back: dimmed, so a glance separates who a seat starts from who
-     it is merely holding, without having to read the BN label. */
+  /* Bench sits back twice over: dimmed, and a size smaller when compact, so
+     the starting lineup is what the eye lands on first. Maximized keeps one
+     size -- there the point is reading the whole roster, not ranking it. */
   .prow.bench .cell {{ opacity: 0.45; }}
+  body:not(.maxed) .prow.bench .cell {{ font-size: calc(8.5px * var(--fs)); }}
 
   /* One cell = one lineup seat. Only the slot chip carries the position color;
      tinting the whole cell made twelve cards read as a wall of blocks with the
      names competing against their own backgrounds. The chip still says which
      slot it is, so a WR sitting in FLEX shows "FLEX" in receiver blue. */
-  .cell {{ display: grid; grid-template-columns: auto minmax(0, 1fr) 28px;
+  .cell {{ display: grid; grid-template-columns: auto minmax(0, 1fr) calc(28px * var(--fs));
     align-items: center; gap: 3px; min-width: 0;
-    padding: 0 2px; font-size: 10px; line-height: 1.45; }}
+    padding: 0 2px; font-size: calc(10px * var(--fs)); line-height: 1.4; }}
   .colhead {{ display: none; }}
-  .ms {{ font-style: normal; font-size: 8px; text-transform: uppercase;
-    font-weight: 700; text-align: center; min-width: 24px;
+  .ms {{ font-style: normal; font-size: calc(8px * var(--fs)); text-transform: uppercase;
+    font-weight: 700; text-align: center; min-width: calc(24px * var(--fs));
     border-radius: 3px; padding: 0 3px;
     color: var(--pos, #98b3d6);
     background: color-mix(in srgb, var(--pos, #414566) 20%, transparent); }}
@@ -325,7 +331,7 @@ def render_page(draft_id: str) -> str:
   .mnf {{ display: none; }}
   /* Fixed widths and tabular figures, so the numbers form real columns you can
      read down rather than ragged text that happens to sit near the edge. */
-  .mb, .mp, .mc {{ font-style: normal; font-size: 9px; text-align: right;
+  .mb, .mp, .mc {{ font-style: normal; font-size: calc(9px * var(--fs)); text-align: right;
     font-variant-numeric: tabular-nums; }}
   .mc {{ color: #ffab0e; font-weight: 700; }}
   /* Bye and points are the first things to go when space is short; they live
@@ -334,7 +340,7 @@ def render_page(draft_id: str) -> str:
 
   /* Maximized: the board leaves its half and takes the viewport. Nothing is
      re-rendered -- the bench rows and the hidden columns were always there. */
-  body.maxed .live {{ position: fixed; inset: 0; z-index: 10;
+  body.maxed .board {{ position: fixed; inset: 0; z-index: 10;
     background: #05091d; padding: 14px 16px; }}
   /* Three across maximized, not four: the extra width goes to the names, which
      is the whole reason to maximize. Four fitted more cards per row but clipped
@@ -347,24 +353,22 @@ def render_page(draft_id: str) -> str:
      `overflow: hidden` is the one failure this must not have. */
   body.maxed #rosters {{ overflow-y: auto; }}
   body.maxed .card {{ padding: 6px 8px; }}
-  body.maxed .team {{ font-size: 13px; }}
-  body.maxed .totals {{ font-size: 11px; }}
-  body.maxed .cell {{ font-size: 11px; padding: 0 4px; gap: 6px; line-height: 1.3;
-    grid-template-columns: auto minmax(0, 1fr) 24px 30px 34px; }}
-  body.maxed .ms {{ font-size: 9px; }}
+  body.maxed .team {{ font-size: calc(13px * var(--fs)); }}
+  body.maxed .totals {{ font-size: calc(11px * var(--fs)); }}
+  body.maxed .cell {{ font-size: calc(11px * var(--fs)); padding: 0 4px; gap: 6px; line-height: 1.3;
+    grid-template-columns: auto minmax(0, 1fr) calc(24px * var(--fs)) calc(30px * var(--fs)) calc(34px * var(--fs)); }}
+  body.maxed .ms {{ font-size: calc(9px * var(--fs)); }}
   body.maxed .mn {{ display: none; }}
   body.maxed .mnf {{ display: block; }}
   body.maxed .mb, body.maxed .mp {{ display: block; }}
-  body.maxed .mb, body.maxed .mp, body.maxed .mc {{ font-size: 10px; }}
+  body.maxed .mb, body.maxed .mp, body.maxed .mc {{ font-size: calc(10px * var(--fs)); }}
   body.maxed .colhead {{ display: grid; }}
   body.maxed .colhead .cell {{ padding-bottom: 1px; }}
-  body.maxed .colhead i {{ color: #4a5170; font-size: 8px; font-weight: 700;
+  body.maxed .colhead i {{ color: #4a5170; font-size: calc(8px * var(--fs)); font-weight: 700;
     text-transform: uppercase; }}
 </style></head>
 <body>
-  <aside class="reserved">reserved</aside>
-
-  <main class="live">
+  <aside class="side">
     <h1>Live draft board</h1>
     <p class="sub" id="sub">connecting to draft {_esc(draft_id)}…</p>
 
@@ -376,6 +380,9 @@ def render_page(draft_id: str) -> str:
     </div>
 
     <div id="block"></div>
+  </aside>
+
+  <main class="board">
     <div id="rosters"></div>
   </main>
 

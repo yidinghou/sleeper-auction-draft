@@ -44,15 +44,23 @@ python -m draftsim.live --draft-id 1387810431371853824            # the real thi
 
 Then open <http://127.0.0.1:8765> and pick your seat from the dropdown.
 
-The board takes the **right half** of the screen and fits all 12 rosters in
-**one viewport height** — nothing to scroll mid-auction. The left half is
-reserved space. **Maximize** (or `Esc` to close) expands the rosters to a
+The screen splits in two: **left** is the draft's live state — what's on the
+block, the current high bid, your seat picker — and **right** is all 12 rosters
+in **one viewport height**, nothing to scroll mid-auction. Splitting it this way
+gives the grid the full height instead of sharing it with the chrome. Space
+under the left header is free. **Maximize** (or `Esc` to close) expands the
+rosters to a
 full-screen overlay with the bye/points columns revealed; it is a CSS toggle
 over the same markup, so opening it costs no fetch and can never show a
 different moment of the draft than the compact view.
 
-Bench players show under the starters, **dimmed** — depth is worth seeing, and
-greying it apart from the lineup reads faster than the `BN` label does.
+Bench players show under the starters, **dimmed and a size smaller** — depth is
+worth seeing, but the starting lineup is what the eye should land on first.
+Maximized keeps one size, since there the point is reading the whole roster
+rather than ranking it.
+
+Type scales off one CSS variable, `--fs` (currently 1.1). Raising it eats
+vertical room, so re-check that a full 16-man roster still clears the fold.
 
 Compact names shorten to initial + surname (`J. Burrow`), which is what stops
 them ellipsising at 115px; defenses use their nickname, since `K. City Chiefs`
