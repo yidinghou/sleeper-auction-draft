@@ -6,7 +6,12 @@ from pathlib import Path
 import pytest
 
 from draftsim.config import DraftConfig
-from draftsim.live_render import render_nomination, render_page, render_rosters
+from draftsim.live_render import (
+    _pair_starters,
+    render_nomination,
+    render_page,
+    render_rosters,
+)
 from draftsim.live_state import (
     contenders,
     reconstruct,
@@ -274,20 +279,21 @@ def test_a_card_totals_only_the_starting_lineup(midway):
     seat = next(s for s in midway.seats.values() if s.roster)
     card = render_rosters(midway).split('data-roster="%d"' % seat.slot)[1]
     lineup = [p for p in starters(seat.roster, midway.config) if p is not None]
-    assert f"{sum(p.points for p in lineup):.0f} pts" in card
+    assert f"{sum(p.points for p in lineup):.0f}" in card.split("</header>")[0]
     # Not the whole roster: a bench body must not inflate the headline.
     assert sum(p.points for p in lineup) <= sum(p.points for p in seat.roster)
 
 
-def test_unfilled_starter_slots_are_shown_but_empty_bench_is_collapsed(midway):
+def test_unfilled_starter_slots_are_shown_but_bench_is_hidden_until_maximized(
+    midway,
+):
     seat = next(s for s in midway.seats.values() if s.open_slots > 6)
     card = render_rosters(midway).split('data-roster="%d"' % seat.slot)[1]
     card = card.split("</section>")[0]
     # A hole at a starting slot is the point of the card, so it stays visible.
-    assert card.count("—") >= 1
-    # Six rows of empty bench are not, and would make twelve cards unscannable.
+    assert 'class="cell open"' in card
+    # The header carries how much bench is still to come.
     assert "open</span>" in card
-    assert card.count(">BN<") == 1
 
 
 def test_a_full_roster_has_no_open_bench_note(finished):
@@ -301,4 +307,84 @@ def test_empty_rosters_still_render_their_shape(mock_config, pool):
     state = reconstruct([], mock_config, pool)
     html = render_rosters(state)
     assert html.count("data-roster=") == mock_config.teams
-    assert "0 pts" in html
+    # Every seat shows the full lineup shape, all of it empty.
+    assert html.count('class="cell open"') == mock_config.teams * len(
+        [s for s in mock_config.roster_slots if s != "BN"]
+    )
+
+
+# -- starter pairing ---------------------------------------------------------
+
+
+def _rows(*slots):
+    return [(slot, None) for slot in slots]
+
+
+def test_default_lineup_pairs_as_documented(mock_config):
+    starter_rows = [
+        (slot, None) for slot in mock_config.roster_slots if slot != "BN"
+    ]
+    pairs = _pair_starters(starter_rows)
+    assert [(a[0], b[0]) for a, b in pairs] == [
+        ("QB", "SUPER_FLEX"),
+        ("RB", "WR"),
+        ("RB", "WR"),
+        ("FLEX", "REC_FLEX"),
+        ("DEF", "TE"),
+    ]
+
+
+def test_pairing_never_drops_or_duplicates_a_slot(mock_config):
+    starter_rows = [
+        (slot, None) for slot in mock_config.roster_slots if slot != "BN"
+    ]
+    flat = [row for pair in _pair_starters(starter_rows) for row in pair if row]
+    assert sorted(s for s, _ in flat) == sorted(s for s, _ in starter_rows)
+
+
+def test_an_unlisted_lineup_falls_back_to_chunks_of_two():
+    # A league whose slots aren't in _PREFERRED_PAIRS still renders, two per
+    # row, rather than losing the slots the table doesn't name.
+    pairs = _pair_starters(_rows("K", "K", "IDP", "IDP", "IDP"))
+    assert [(a[0], b[0] if b else None) for a, b in pairs] == [
+        ("K", "K"),
+        ("IDP", "IDP"),
+        ("IDP", None),
+    ]
+
+
+def test_a_lineup_missing_half_a_pair_still_renders_the_half_it_has():
+    pairs = _pair_starters(_rows("QB", "RB", "WR"))
+    assert [(a[0] if a else None, b[0] if b else None) for a, b in pairs] == [
+        ("QB", None),
+        ("RB", "WR"),
+    ]
+
+
+def test_cells_carry_position_colour_and_price(midway):
+    from draftsim.theme import POS_COLOR
+
+    seat = next(s for s in midway.seats.values() if s.roster)
+    card = render_rosters(midway).split('data-roster="%d"' % seat.slot)[1]
+    card = card.split("</section>")[0]
+    # Position reads as the cell's colour, not a badge -- so no badge markup,
+    # but every drafted player's colour must be present.
+    assert 'class="badge"' not in card
+    for pick in seat.picks:
+        assert f"--pos:{POS_COLOR[pick.player.pos]}" in card
+        assert f"${pick.price}" in card
+
+
+def test_bench_is_in_the_markup_so_the_overlay_needs_no_refetch(finished):
+    card = render_rosters(finished).split('data-roster="1"')[1]
+    card = card.split("</section>")[0]
+    assert 'class="prow bench"' in card
+    # 6 bench slots, two to a row.
+    assert card.count('class="prow bench"') == 3
+
+
+def test_page_offers_a_maximize_toggle_and_reserves_the_left_half():
+    page = render_page("123")
+    assert 'id="max"' in page
+    assert "body.maxed" in page
+    assert 'class="reserved"' in page

@@ -44,15 +44,28 @@ python -m draftsim.live --draft-id 1387810431371853824            # the real thi
 
 Then open <http://127.0.0.1:8765> and pick your seat from the dropdown.
 
-A header strip names whoever is nominated, with their `$PROJ` against the room's
-current high bid. Under it, every seat's roster as a card — 3 rows of 4 for a
-12-team league, in fixed seat order so a card stays where you last saw it.
+The board takes the **right half** of the screen and fits all 12 rosters in
+**one viewport height** — nothing to scroll mid-auction. The left half is
+reserved space. **Maximize** (or `Esc` to close) expands the rosters to a
+full-screen overlay with the bench and the bye/points columns revealed; it is a
+CSS toggle over the same markup, so opening it costs no fetch and can never show
+a different moment of the draft than the compact view.
 
-Each player sits in the slot they'd **actually start in**, via the same
-`roster.display_slots` matching the engine scores on — so a second RB shows up
-in FLEX, not at RB. Rows carry bye, season projection and price paid; the card
-header totals the starting lineup only. Empty starter slots stay visible (a hole
-at RB is the point); empty bench rows collapse to `+N open`.
+Each card compresses the 10 starter slots into 5 rows of two:
+
+| Row | | |
+| --- | --- | --- |
+| 1 | QB | SFLX |
+| 2 | RB | WR |
+| 3 | RB | WR |
+| 4 | FLEX | RFLX |
+| 5 | DEF | TE |
+
+Position shows as the **cell's own color** rather than a badge — at this width a
+badge costs more room than the name it labels. Players sit in the slot they'd
+**actually start in**, via the same `roster.display_slots` matching the engine
+scores on, so a second RB shows up in FLEX. The card header totals the starting
+lineup only, plus how much bench is still open.
 
 Everything comes from two unauthenticated endpoints — no scraping, no websocket,
 no session token:

@@ -12,13 +12,13 @@ and swapping in the fragments below — so everything here renders from a
 from __future__ import annotations
 
 import html
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from .config import BENCH
 from .live_state import LeagueState, Seat
 from .roster import display_slots, starters
 from .sleeper import Nomination
-from .theme import BASE_CSS, SLOT_LABEL, badge
+from .theme import BASE_CSS, POS_COLOR, POS_FALLBACK, SLOT_LABEL, badge
 from .valuation import Player, market_value
 
 
@@ -26,64 +26,126 @@ def _esc(text: object) -> str:
     return html.escape(str(text))
 
 
-def _empty_row(label: str, text: str) -> str:
-    """A slot with nobody in it. The blank second cell is the badge column —
-    without it the text lands there and gets clipped to the badge's width."""
+# How starter slots pair up, two per row. Chosen so each row reads as one
+# decision: your two quarterback seats, then the two flex-ish RB/WR seats twice,
+# then the pure flexes, then the leftovers. Slots absent from a league are
+# skipped and anything unlisted is chunked in twos, so a non-default lineup
+# still renders.
+_PREFERRED_PAIRS = (
+    ("QB", "SUPER_FLEX"),
+    ("RB", "WR"),
+    ("RB", "WR"),
+    ("FLEX", "REC_FLEX"),
+    ("DEF", "TE"),
+)
+
+Row = Tuple[str, Optional[Player]]
+
+
+def _pair_starters(rows: List[Row]) -> List[Tuple[Optional[Row], Optional[Row]]]:
+    """Fold slot rows into pairs, following _PREFERRED_PAIRS where possible."""
+    remaining = list(rows)
+
+    def take(slot: str) -> Optional[Row]:
+        for i, (s, _) in enumerate(remaining):
+            if s == slot:
+                return remaining.pop(i)
+        return None
+
+    paired: List[Tuple[Optional[Row], Optional[Row]]] = []
+    for left, right in _PREFERRED_PAIRS:
+        a, b = take(left), take(right)
+        if a or b:
+            paired.append((a, b))
+    while remaining:
+        a = remaining.pop(0)
+        b = remaining.pop(0) if remaining else None
+        paired.append((a, b))
+    return paired
+
+
+def _cell(row: Optional[Row], price: int) -> str:
+    """One slot in a paired row. The position shows as the cell's own color
+    rather than a badge -- at this size a badge costs more width than the name
+    it labels, and the color carries the same information."""
+    if row is None:
+        return '<span class="cell gone"></span>'
+    slot, player = row
+    label = SLOT_LABEL.get(slot, slot)
+    if player is None:
+        return (
+            f'<span class="cell open"><i class="ms">{_esc(label)}</i>'
+            '<b class="mn">—</b></span>'
+        )
+    color = POS_COLOR.get(player.pos, POS_FALLBACK)
+    tip = f"{player.name} · {player.pos} · {player.team or 'FA'}"
+    if player.bye:
+        tip += f" · BYE {player.bye}"
+    tip += f" · {player.points:.0f} pts · ${price}"
     return (
-        f'<div class="prow empty"><span class="slot">{_esc(label)}</span>'
-        f'<span></span><span class="pname">{_esc(text)}</span></div>'
+        f'<span class="cell" style="--pos:{color}" title="{_esc(tip)}">'
+        f'<i class="ms">{_esc(label)}</i>'
+        f'<b class="mn">{_esc(player.name)}</b>'
+        f'<i class="mb">{player.bye or "—"}</i>'
+        f'<i class="mp">{player.points:.0f}</i>'
+        f'<i class="mc">${price}</i></span>'
     )
 
 
-def _roster_row(slot: str, player: Optional[Player], price: int) -> str:
-    label = SLOT_LABEL.get(slot, slot)
+def _bench_cell(player: Optional[Player], price: int) -> str:
+    """A bench body. Bench slots are fungible, so they carry no slot label."""
     if player is None:
-        return _empty_row(label, "—")
-    bye = str(player.bye) if player.bye else "—"
+        return '<span class="cell gone"></span>'
+    color = POS_COLOR.get(player.pos, POS_FALLBACK)
     return (
-        '<div class="prow">'
-        f'<span class="slot">{label}</span>'
-        f"{badge(player.pos)}"
-        f'<span class="pname" title="{_esc(player.team or "FA")}">'
-        f"{_esc(player.name)}</span>"
-        f'<span class="bye">{bye}</span>'
-        f'<span class="pts">{player.points:.0f}</span>'
-        f'<span class="price">${price}</span>'
-        "</div>"
+        f'<span class="cell" style="--pos:{color}" '
+        f'title="{_esc(player.name)} · {_esc(player.pos)}">'
+        f'<i class="ms">BN</i><b class="mn">{_esc(player.name)}</b>'
+        f'<i class="mb">{player.bye or "—"}</i>'
+        f'<i class="mp">{player.points:.0f}</i>'
+        f'<i class="mc">${price}</i></span>'
     )
 
 
 def _roster_card(state: LeagueState, seat: Seat) -> str:
-    """One seat's roster, laid out in the slots they would actually start in."""
+    """One seat's roster: starters paired two to a row, then the bench.
+
+    Bench rows are always emitted but carry a `bench` class — minimized they are
+    hidden by CSS, maximized they appear. Rendering them once and toggling in
+    CSS means opening the overlay costs nothing and never shows a different
+    moment of the draft than the card behind it.
+    """
     price_of = {pick.player.id: pick.price for pick in seat.picks}
     lineup = [p for p in starters(seat.roster, state.config) if p is not None]
     start_pts = sum(p.points for p in lineup)
-    # Empty starter slots are shown -- a hole at RB is the whole point of the
-    # card. Empty bench slots are not: bench seats are fungible, and six rows of
-    # dashes early on make every card tall and unreadable at exactly the moment
-    # you need to scan twelve of them.
-    layout = [
-        (slot, player)
-        for slot, player in display_slots(seat.roster, state.config)
-        if player is not None or slot != BENCH
-    ]
+
+    def price(row: Optional[Row]) -> int:
+        if row is None or row[1] is None:
+            return 0
+        return price_of.get(row[1].id, 0)
+
+    layout = display_slots(seat.roster, state.config)
+    starter_rows = [r for r in layout if r[0] != BENCH]
+    bench = [player for slot, player in layout if slot == BENCH and player]
+
     rows = "".join(
-        _roster_row(slot, player, price_of.get(player.id, 0) if player else 0)
-        for slot, player in layout
+        f'<div class="prow">{_cell(a, price(a))}{_cell(b, price(b))}</div>'
+        for a, b in _pair_starters(starter_rows)
     )
-    bench_open = state.config.roster_slots.count(BENCH) - sum(
-        1 for slot, _ in layout if slot == BENCH
-    )
-    if bench_open:
-        rows += _empty_row(BENCH, f"+{bench_open} open")
+    for i in range(0, len(bench), 2):
+        pair = bench[i : i + 2]
+        cells = "".join(_bench_cell(p, price_of.get(p.id, 0)) for p in pair)
+        if len(pair) == 1:
+            cells += '<span class="cell gone"></span>'
+        rows += f'<div class="prow bench">{cells}</div>'
+
+    bench_open = state.config.roster_slots.count(BENCH) - len(bench)
+    open_txt = f" · {bench_open} open" if bench_open else ""
     return (
         f'<section class="card" data-roster="{seat.slot}">'
-        f'<header><span class="team">Seat {seat.slot}</span>'
-        f'<span class="totals">${seat.budget_left} left · '
-        f"{start_pts:.0f} pts</span></header>"
-        f'<div class="prow head"><span class="slot"></span><span></span>'
-        f'<span class="pname"></span><span class="bye">BYE</span>'
-        f'<span class="pts">PTS</span><span class="price">$</span></div>'
+        f'<header><span class="team">S{seat.slot}</span>'
+        f'<span class="totals">${seat.budget_left} · {start_pts:.0f}'
+        f"{open_txt}</span></header>"
         f"{rows}</section>"
     )
 
@@ -142,78 +204,124 @@ def render_nomination(
 
 
 def render_page(draft_id: str) -> str:
-    """The page shell. Contents arrive from /api/state and refresh in place."""
+    """The page shell. Contents arrive from /api/state and refresh in place.
+
+    Two halves: the left is reserved space, the right holds the whole board
+    inside one viewport height -- twelve seats visible at once, nothing to
+    scroll mid-auction. The maximize toggle is pure CSS over the same markup,
+    so opening the overlay costs no fetch and cannot show a different moment of
+    the draft than the compact view behind it.
+    """
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Live draft board</title>
 <style>{BASE_CSS}
-  .block {{ background: #131b38; border: 1px solid #414566; border-radius: 10px;
-    padding: 10px 14px; margin: 0 0 16px; display: flex; gap: 16px;
-    justify-content: space-between; align-items: center; flex-wrap: wrap; }}
-  .block.idle {{ color: #98b3d6; }}
-  .who {{ font-size: 17px; font-weight: 700; margin-right: 6px; }}
-  .bidamt {{ color: #ffab0e; font-weight: 700; font-size: 17px; }}
-  .proj {{ color: #ffab0e; font-weight: 700; }}
+  html, body {{ height: 100%; }}
+  body {{ margin: 0; padding: 0; overflow: hidden;
+    display: grid; grid-template-columns: 1fr 1fr; }}
 
-  /* Fixed four across, so a 12-seat league lays out as 3 rows of 4 and every
-     card keeps the same place on screen between refreshes -- an auto-fill grid
-     reflows as the window changes and you lose track of which card is whose.
-     Narrower viewports still step down rather than crushing the rows. */
-  .grid {{ display: grid; gap: 14px;
-    grid-template-columns: repeat(4, minmax(0, 1fr)); }}
-  @media (max-width: 1100px) {{
-    .grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
-  }}
-  @media (max-width: 620px) {{
-    .grid {{ grid-template-columns: minmax(0, 1fr); }}
-  }}
-  .card {{ background: #131b38; border: 1px solid #414566; border-radius: 10px;
-    padding: 10px 12px; }}
-  .card header {{ display: flex; justify-content: space-between; align-items: baseline;
-    margin-bottom: 6px; padding-bottom: 6px; border-bottom: 1px solid #252942; }}
-  .card.me {{ border-color: #00d7ff; }}
-  .card.me .team::after {{ content: " (you)"; color: #00d7ff; font-weight: 400; }}
-  .team {{ font-weight: 700; }}
-  .totals {{ color: #98b3d6; font-size: 11px; }}
-  .prow {{ display: grid; grid-template-columns: 38px 34px 1fr 26px 34px 36px;
-    align-items: center; gap: 6px; padding: 2px 0; }}
-  .prow.empty {{ color: #4a5170; }}
-  .prow.head {{ color: #4a5170; font-size: 9px; text-transform: uppercase;
-    padding-bottom: 2px; }}
-  .slot {{ color: #98b3d6; font-size: 10px; text-transform: uppercase; }}
-  .pname {{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    cursor: default; }}
-  .bye, .pts {{ color: #98b3d6; font-size: 11px; text-align: right; }}
-  .price {{ color: #ffab0e; font-weight: 700; font-size: 12px; text-align: right; }}
+  .reserved {{ border-right: 1px solid #252942;
+    display: flex; align-items: center; justify-content: center;
+    color: #252942; font-size: 12px; letter-spacing: 0.18em;
+    text-transform: uppercase; }}
 
-  .bar {{ display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
-    margin: 0 0 16px; font-size: 13px; color: #98b3d6; }}
+  /* The board column is a flex stack whose last child (the grid) absorbs the
+     leftover height, so the twelve cards always end exactly at the fold. */
+  .live {{ display: flex; flex-direction: column; min-width: 0;
+    padding: 10px 12px; gap: 8px; }}
+  .live h1 {{ font-size: 14px; margin: 0; }}
+  .live .sub {{ margin: 0; font-size: 11px; }}
+
+  .bar {{ display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    font-size: 11px; color: #98b3d6; }}
   select {{ background: #131b38; color: #fafafa; border: 1px solid #414566;
-    border-radius: 6px; padding: 4px 8px; font: inherit; }}
-  .dot {{ width: 8px; height: 8px; border-radius: 50%; background: #28e757;
+    border-radius: 6px; padding: 2px 6px; font: inherit; }}
+  button {{ background: #131b38; color: #00d7ff; border: 1px solid #414566;
+    border-radius: 6px; padding: 2px 8px; font: inherit; cursor: pointer; }}
+  button:hover {{ border-color: #00d7ff; }}
+  .dot {{ width: 7px; height: 7px; border-radius: 50%; background: #28e757;
     display: inline-block; }}
   .dot.stale {{ background: #ff6482; }}
+
+  .block {{ background: #131b38; border: 1px solid #414566; border-radius: 8px;
+    padding: 6px 10px; display: flex; gap: 10px;
+    justify-content: space-between; align-items: center; flex-wrap: wrap; }}
+  .block.idle {{ color: #98b3d6; font-size: 12px; }}
+  .who {{ font-size: 14px; font-weight: 700; margin-right: 4px; }}
+  .bidamt {{ color: #ffab0e; font-weight: 700; font-size: 14px; }}
+  .proj {{ color: #ffab0e; font-weight: 700; }}
+
+  /* Three across, four down: twelve seats, one screen, fixed positions so a
+     card stays where you last saw it between refreshes. */
+  #rosters {{ flex: 1; min-height: 0; }}
+  .grid {{ display: grid; gap: 6px; height: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-rows: minmax(0, 1fr); }}
+  .card {{ background: #131b38; border: 1px solid #414566; border-radius: 8px;
+    padding: 5px 6px; min-width: 0; overflow: hidden;
+    display: flex; flex-direction: column; }}
+  .card header {{ display: flex; justify-content: space-between;
+    align-items: baseline; gap: 6px; margin-bottom: 3px; }}
+  .card.me {{ border-color: #00d7ff; }}
+  .card.me .team::after {{ content: " (you)"; color: #00d7ff; font-weight: 400; }}
+  .team {{ font-weight: 700; font-size: 11px; }}
+  .totals {{ color: #98b3d6; font-size: 10px; white-space: nowrap; }}
+
+  .prow {{ display: grid; grid-template-columns: 1fr 1fr; gap: 3px;
+    margin-bottom: 2px; min-width: 0; }}
+  .prow.bench {{ display: none; }}
+
+  /* One cell = one lineup seat. Position is the cell's own color rather than a
+     badge: at this width a badge costs more room than the name it labels. */
+  .cell {{ display: grid; grid-template-columns: auto 1fr auto;
+    align-items: center; gap: 3px; min-width: 0;
+    background: color-mix(in srgb, var(--pos, #414566) 16%, transparent);
+    border-left: 2px solid var(--pos, #414566);
+    border-radius: 3px; padding: 1px 3px; font-size: 10px; line-height: 1.35; }}
+  .cell.gone {{ background: none; border-left-color: transparent; }}
+  .cell.open {{ background: none; border-left-color: #252942; color: #4a5170; }}
+  .ms {{ font-style: normal; color: #98b3d6; font-size: 8px;
+    text-transform: uppercase; }}
+  .mn {{ font-weight: 400; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; color: var(--pos, #fafafa); }}
+  .mc {{ font-style: normal; color: #ffab0e; font-weight: 700; font-size: 9px; }}
+  /* Bye and points are the first things to go when space is short; they live
+     in the hover tooltip until the overlay has room for them. */
+  .mb, .mp {{ display: none; font-style: normal; color: #98b3d6; font-size: 9px; }}
+
+  /* Maximized: the board leaves its half and takes the viewport. Nothing is
+     re-rendered -- the bench rows and the hidden columns were always there. */
+  body.maxed .live {{ position: fixed; inset: 0; z-index: 10;
+    background: #05091d; padding: 14px 16px; }}
+  body.maxed .grid {{ grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }}
+  body.maxed .card {{ padding: 8px 10px; }}
+  body.maxed .team {{ font-size: 13px; }}
+  body.maxed .totals {{ font-size: 11px; }}
+  body.maxed .prow.bench {{ display: grid; }}
+  body.maxed .cell {{ font-size: 12px; padding: 2px 5px;
+    grid-template-columns: auto 1fr auto auto auto; gap: 5px; }}
+  body.maxed .ms {{ font-size: 9px; }}
+  body.maxed .mb, body.maxed .mp {{ display: inline; }}
+  body.maxed .mc {{ font-size: 11px; }}
 </style></head>
 <body>
-  <h1>Live draft board</h1>
-  <p class="sub" id="sub">connecting to draft {_esc(draft_id)}…</p>
+  <aside class="reserved">reserved</aside>
 
-  <div class="bar">
-    <span><span class="dot" id="dot"></span> <span id="pulse">polling</span></span>
-    <label>Your seat
-      <select id="seat"><option value="">—</option></select>
-    </label>
-    <span id="warn" class="warn"></span>
-  </div>
+  <main class="live">
+    <h1>Live draft board</h1>
+    <p class="sub" id="sub">connecting to draft {_esc(draft_id)}…</p>
 
-  <div id="block"></div>
+    <div class="bar">
+      <span><span class="dot" id="dot"></span> <span id="pulse">polling</span></span>
+      <label>Seat <select id="seat"><option value="">—</option></select></label>
+      <button id="max" type="button">Maximize</button>
+      <span id="warn" class="warn"></span>
+    </div>
 
-  <h2>Rosters</h2>
-  <p class="sub">Each player sits in the slot they would actually start in, not
-    the one they were bought for. PTS is the season projection; the card total is
-    the starting lineup only.</p>
-  <div id="rosters"></div>
+    <div id="block"></div>
+    <div id="rosters"></div>
+  </main>
 
 <script>
 const seatSel = document.getElementById("seat");
@@ -229,6 +337,18 @@ function fillSeats(teams) {{
 seatSel.addEventListener("change", () => {{
   localStorage.setItem("draftsim.seat", seatSel.value);
   highlight();
+}});
+
+const maxBtn = document.getElementById("max");
+function setMaxed(on) {{
+  document.body.classList.toggle("maxed", on);
+  maxBtn.textContent = on ? "Minimize" : "Maximize";
+}}
+maxBtn.addEventListener("click", () => {{
+  setMaxed(!document.body.classList.contains("maxed"));
+}});
+document.addEventListener("keydown", (e) => {{
+  if (e.key === "Escape") setMaxed(false);
 }});
 
 function highlight() {{
