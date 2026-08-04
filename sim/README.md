@@ -66,11 +66,14 @@ Each card compresses the 10 starter slots into 5 rows of two:
 | 1 | QB | SFLX |
 | 2 | RB | WR |
 | 3 | RB | WR |
-| 4 | FLEX | RFLX |
+| 4 | FLEX | W/T |
 | 5 | DEF | TE |
 
-Position shows as the **cell's own color** rather than a badge — at this width a
-badge costs more room than the name it labels. Players sit in the slot they'd
+Position shows as the color of the **slot chip** rather than a badge — a badge
+costs more room than the name it labels, and tinting the whole cell made twelve
+cards read as a wall of blocks. The chip names the slot while carrying the
+player's colour, so a receiver in the flex reads `FLEX` in receiver blue.
+Players sit in the slot they'd
 **actually start in**, via the same `roster.display_slots` matching the engine
 scores on, so a second RB shows up in FLEX. The card header totals the starting
 lineup only, plus how much bench is still open.
