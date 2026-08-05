@@ -17,5 +17,10 @@ analysis = ["pandas>=2"]  # only used by the Stage 5 batch tooling
 where = ["."]
 include = ["draftsim*"]
 
+# The live board's shell, stylesheet and client. `render_page` reads them from
+# beside the module, so they have to travel with it into a non-editable install.
+[tool.setuptools.package-data]
+draftsim = ["static/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

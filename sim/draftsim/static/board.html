@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live draft board</title>
+<style>/*__CSS__*/</style></head>
+<body>
+  <aside class="side">
+    <!-- Three bands. The chrome -- the headers you double-click to fold --
+         lives here in the shell rather than in the fragments, because the
+         fragments are replaced every two seconds and a control destroyed that
+         often can hold neither focus nor state. Only the insides are swapped. -->
+    <section class="band band-live" data-band="live">
+      <div class="bandhd"><h2>Live draft board</h2>
+        <span class="note" id="pulsewrap"><span class="dot" id="dot"></span>
+          <span id="pulse">polling</span></span></div>
+      <div class="bandbody">
+        <p class="sub" id="sub">connecting to draft __DRAFT_ID__…</p>
+        <div class="bar">
+          <label>Seat <select id="seat"><option value="">—</option></select></label>
+          <span id="warn" class="warn"></span>
+        </div>
+        <div id="block"></div>
+      </div>
+    </section>
+
+    <section class="band band-runs" data-band="runs">
+      <div class="bandhd"><h2>Run pressure</h2>
+        <span class="note">RUNS / TIER per card · click a card header to fold</span></div>
+      <div class="bandbody"><div id="pressure"></div></div>
+    </section>
+
+    <section class="band band-panes" data-band="panes">
+      <div class="bandbody panes">
+        <div class="pane2 band" data-band="pool">
+          <div class="bandhd"><h2>Player pool</h2>
+            <span class="note">by $PROJ</span></div>
+          <div class="bandbody listwrap" id="pool"></div>
+        </div>
+        <div class="pane2 band" data-band="log">
+          <div class="bandhd"><h2>Draft log</h2>
+            <span class="note">newest first</span></div>
+          <div class="bandbody listwrap" id="log"></div>
+        </div>
+      </div>
+    </section>
+  </aside>
+
+  <main class="board">
+    <button id="close" class="closebtn" type="button"
+            aria-label="Minimize">&times;</button>
+    <div class="menubar">
+      <button id="max" type="button">Maximize</button>
+      <button id="reorder" type="button"
+              title="Put the cards back in seat order">Seat order</button>
+      <span class="hint">drag a card to reorder · double-click a row bar to fold
+        the row · LINEUP / BN / NEED per card</span>
+    </div>
+    <div id="rosters"></div>
+  </main>
+
+<script>/*__JS__*/</script>
+</body></html>

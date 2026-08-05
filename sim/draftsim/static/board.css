@@ -1,0 +1,594 @@
+
+  /* One knob for board type size: every font-size and every width that has to
+     hold digits is a multiple of it, so nudging density is one edit rather
+     than a dozen. Raising it eats vertical room -- re-check that a full
+     16-man roster still clears the fold. The left column overrides it on
+     `.side`, so this value is the roster board's alone. */
+  :root { --fs: 1.17; }
+  html, body { height: 100%; }
+  /* 60 / 40, not half and half: the left column now carries four position cards
+     that each hold a tier list, and that needs the room more than a twelfth
+     roster column does. The rosters stay four across -- names ellipsize at this
+     width, which is the price paid for the tier being readable. */
+  body { margin: 0; padding: 0; overflow: hidden;
+    display: grid; grid-template-columns: 3fr 2fr; }
+
+  /* Left: what is happening right now -- the draft's state and whatever is on
+     the block. Right: the rosters. Splitting them this way gives the grid the
+     whole viewport height instead of sharing it with the chrome, which is what
+     lets a full 16-man roster fit. Space under the header is left free. */
+  /* Three bands down the left: what is happening now (1/5), run pressure (2/5),
+     then the pool and the log sharing the last 2/5. Flex rather than fixed grid
+     rows, because a collapsed band then hands its height to its siblings with
+     no arithmetic -- `flex: 0 0 auto` and the others simply grow. */
+  /* The left column runs a size of its own. Its rows carry more per line than
+     the roster cards do -- five columns inside a ~230px card -- and were squeezed
+     down to 7px labels to fit. The knob is scoped here so raising it cannot move
+     a roster card by a pixel. */
+  .side { --fs-base: 1.30; --fs: var(--fs-base);
+    display: flex; flex-direction: column; min-width: 0;
+    padding: 8px 10px; gap: 6px; border-right: 1px solid #eee; overflow: hidden; }
+  /* Each band is a box, not a run of text with a heading over it. Folding is a
+     double-click with no button to leave behind, so without a frame a shut band
+     would vanish into the gap between its neighbours -- the border and the
+     tinted header strip are what stay on screen to say it is still there. */
+  .band { display: flex; flex-direction: column; min-height: 0; min-width: 0;
+    position: relative; border: 1px solid #e0e0e0; border-radius: 8px;
+    background: #fff; overflow: hidden; }
+  /* Sized to its content, not to a share. Band 1 holds three fixed things -- the
+     league line, the seat picker, the block -- so a share only parked white space
+     under them, and worse: folding a band below handed this one a third of the
+     freed height, which pushed the header you had just double-clicked a hundred
+     pixels down the screen. Content-sized, it never moves and never takes. */
+  .band-live { flex: 0 0 auto; }
+  .band-runs { flex: 2 1 0; }
+  /* A wrapper, not a section: the pool and the log carry their own headers and
+     their own frames, and a box around the pair would only double every line. */
+  .band-panes { flex: 2 1 0; border: none; background: none; overflow: visible; }
+  .band > .bandhd { display: flex; align-items: baseline; gap: 6px; flex: none;
+    padding: 3px 7px; background: #f7f7f7; border-bottom: 1px solid #e8e8e8; }
+  .bandhd h2 { font-size: calc(10px * var(--fs)); margin: 0; color: #555;
+    text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
+  .bandhd .note { font-size: calc(9px * var(--fs)); color: #bbb;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .band > .bandbody { flex: 1; min-height: 0; display: flex;
+    flex-direction: column; gap: 5px; padding: 5px 6px; }
+  /* Shut, a band is its title bar and nothing else -- so the strip stops being a
+     lid and becomes the whole box, and the fill says at a glance which of the
+     four you have put away. */
+  .band.collapsed { background: #fafafa; }
+  .band.collapsed > .bandhd { border-bottom: none; }
+
+  /* The header *is* the control -- double-click it to fold. No caret, because a
+     16px button is a small target to hunt for mid-auction and there are six of
+     them. The cost is that a gesture leaves nothing on screen saying it exists,
+     so the header lights up under the cursor and says what it does: the hover
+     state is the entire affordance, and without it this would be a secret. */
+  .band > .bandhd { cursor: pointer; user-select: none; border-radius: 3px; }
+  .band > .bandhd:hover { background: #ededed; }
+  .band > .bandhd:hover h2 { color: #1a1a1a; }
+  .band > .bandhd::after { content: "\25BE"; margin-left: auto; flex: none;
+    font-size: calc(8px * var(--fs)); color: #bbb; line-height: 1.6; }
+  .band > .bandhd:hover::after { color: #888; }
+  .collapsed > .bandbody { display: none; }
+  .band.collapsed { flex: 0 0 auto; }
+  .collapsed > .bandhd::after { transform: rotate(-90deg); }
+
+  /* Band 1 is the one place on the left that was never too small, so its
+     multipliers come down as the column's knob goes up: the room the bigger type
+     needs is taken from the band that did not need the size, not from the pool. */
+  .side h1 { font-size: calc(12px * var(--fs)); margin: 0; }
+  .side .sub { margin: 0; font-size: calc(10px * var(--fs)); }
+
+  /* A column, so the menu bar takes its own height off the top and the grid
+     gets exactly what's left -- the grid sizes to that, and a bar measured in
+     `height: 100%` terms would have pushed the bottom row off screen. */
+  .board { min-width: 0; overflow: hidden; padding: 6px 8px;
+    display: flex; flex-direction: column; gap: 4px; }
+
+  /* The board's own controls, over the thing they control rather than across
+     the aisle in the state column. */
+  .menubar { display: flex; align-items: center; gap: 6px; flex: none;
+    min-width: 0; }
+  .menubar .hint { color: #aaa; font-size: calc(9px * var(--fs));
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    font-size: calc(10px * var(--fs)); color: #666; }
+  select { background: #fff; color: #1a1a1a; border: 1px solid #ddd;
+    border-radius: 6px; padding: 2px 6px; font: inherit; }
+  button { background: #f6f6f6; color: #1a1a1a; border: 1px solid #ddd;
+    border-radius: 6px; padding: 2px 8px; font: inherit; cursor: pointer; }
+  button:hover { border-color: #1a1a1a; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #1a7f37;
+    display: inline-block; }
+  .dot.stale { background: #c0392b; }
+
+  /* What is on the block. The one panel on the page that is not white, because
+     it is the thing you look up at between bids. */
+  .block { background: #f6f6f6; border: 1px solid #ddd; border-radius: 8px;
+    padding: 4px 10px; display: flex; gap: 10px;
+    justify-content: space-between; align-items: center; flex-wrap: wrap; }
+  .block.idle { color: #888; font-size: calc(11px * var(--fs)); }
+  .who { font-size: calc(13px * var(--fs)); font-weight: 700; margin-right: 4px; }
+  .bidamt { color: #1a7f37; font-weight: 700; font-size: calc(13px * var(--fs)); }
+  .proj { color: #1a7f37; font-weight: 700; }
+
+  /* Four across, three down: twelve seats, one screen, fixed positions so a
+     card stays where you last saw it between refreshes. Wider than it is tall,
+     which is the shape the card wants now that the bench moved into its own
+     pane -- a row per starter needs height, and three rows of four give each
+     card a third more of it than four rows of three did. */
+  /* `--fs-strip` is the density a folded row keeps. The client raises `--fs` on
+     this grid as rows are folded away (see `applyDensity`), and a folded row
+     must not grow with them -- the room it just gave up would come straight
+     back. Rows are written as an explicit `grid-template-rows` by the client
+     when anything is folded; `grid-auto-rows` is what an unfolded board uses. */
+  #rosters { flex: 1; min-height: 0; }
+  .grid { display: grid; gap: 5px; height: 100%; --fs-strip: 1.17;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-auto-rows: minmax(0, 1fr); }
+  .card { background: #fff; border: 1px solid #ddd; border-radius: 6px;
+    padding: 4px 7px 6px; min-width: 0; overflow: hidden;
+    display: flex; flex-direction: column; }
+  /* Drag to reorder. The card being carried fades so the gap it will leave is
+     visible, and the card under the cursor shows a leading edge on the side the
+     drop will insert at -- "this is where it lands", not merely "this is hovered". */
+  .card.dragging { opacity: 0.4; }
+  .card.dropzone { box-shadow: inset 3px 0 0 #1a1a1a; border-color: #1a1a1a; }
+  .card header { cursor: grab; flex: none; margin-bottom: 3px;
+    border-bottom: 1px solid #eee; padding-bottom: 3px; }
+  .card.dragging header { cursor: grabbing; }
+  .card.me { border-color: #1a1a1a; box-shadow: 0 0 0 1px #1a1a1a; }
+  .card.me .team::after { content: " (you)"; color: #666; font-weight: 400;
+    font-size: calc(9px * var(--fs)); }
+  .card header .top { display: flex; align-items: baseline; gap: 5px; }
+  .team { font-weight: 700; font-size: calc(11px * var(--fs)); color: #444; }
+
+  /* The header is money and nothing else. Balance in the biggest type on the
+     card, the reach beside it, and a bar of both -- everything else a seat
+     could say moved into the NEED pane, where it can be labeled. */
+  .big { font-size: calc(13px * var(--fs)); font-weight: 700; color: #1a7f37;
+    line-height: 1.15; font-variant-numeric: tabular-nums; }
+  .max { margin-left: auto; font-size: calc(8.5px * var(--fs)); color: #888;
+    white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .max b { color: #1a1a1a; font-weight: 700; font-size: calc(9.5px * var(--fs)); }
+  /* Green is spendable, grey is the dollar per unfilled slot that is in the
+     account but already owed -- which is the whole difference between a seat
+     with $80 and one hole and a seat with $80 and eight. */
+  .budget { height: 3px; border-radius: 2px; margin-top: 3px; display: flex;
+    background: #eee; overflow: hidden; }
+  .budget i { display: block; height: 100%; background: #1a7f37; }
+  .budget i.held { background: #ccc; }
+  /* Out of the market: whatever is left cannot win a player anyone else wants,
+     so the seat stops being one you bid against. Figure and bar go together, so
+     the state reads whether you take in the number or only the colour. */
+  .card.broke .big { color: #c0392b; }
+  .card.broke .budget i:not(.held) { background: #c0392b; }
+
+  /* Folded, a row of four cards is a strip of money and pips: the four seats
+     still in their four columns, each saying what it can spend and which
+     positions it has filled. That is what you want from seats you are not
+     studying, and it is also the thing you double-click to bring the row back --
+     so the fold leaves a control behind rather than a gap.
+
+     `.body` is hidden rather than the panes inside it, which sidesteps the
+     specificity trap the pressure cards hit (see the note further down): with
+     the parent gone, `.card.view-need .pane.need` has nothing left to win. */
+  .card.collapsed { background: #fafafa; --fs: var(--fs-strip); }
+  .card.collapsed > .body { display: none; }
+  .card.collapsed header { margin-bottom: 0; border-bottom: none;
+    padding-bottom: 0; }
+  .card.collapsed .seg { display: none; }
+  .card .foldsum { display: none; }
+  .card.collapsed .foldsum { display: flex; gap: 5px; padding-top: 3px;
+    align-items: center; flex-wrap: wrap; }
+  .foldsum .fpos { display: flex; align-items: center; gap: 3px; min-width: 0; }
+  .foldsum .ms { font-style: normal; font-weight: 700; color: #999;
+    font-size: calc(7px * var(--fs)); }
+  /* Smaller than the NEED pane's pips, and only just: four positions' worth of
+     them have to sit on one line in a quarter-width card, and a second line
+     costs the strip a third of its height for one tight end. Wrapping rather
+     than clipping, because a narrower window must lose the layout, not the
+     position. */
+  .foldsum .pips { gap: 1.5px; }
+  .foldsum .pip { height: calc(5.5px * var(--fs)); width: calc(6px * var(--fs)); }
+  .foldsum .pip.half { width: calc(3.5px * var(--fs)); }
+  .foldsum .pip.extra { width: calc(4px * var(--fs)); }
+  /* The bar over each row: what divides twelve cards into three rows you can
+     name, and the control that folds one away. Deliberately the same furniture
+     as the bands down the left column -- tinted strip, small caps, a caret that
+     turns -- because it is the same gesture, and a board that folds two
+     different ways by two different rules is a board you have to remember.
+
+     Thin: three of these are three rows' worth of chrome the cards used to have,
+     so they carry one line at the smallest size on the board and no padding to
+     speak of. */
+  .rowhd { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 6px;
+    padding: 1px 6px; background: #f4f4f4; border-radius: 3px;
+    cursor: pointer; user-select: none; }
+  .rowhd:hover { background: #ededed; }
+  .rowhd h2 { font-size: calc(8.5px * var(--fs-strip)); margin: 0; color: #666;
+    text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
+  .rowhd:hover h2 { color: #1a1a1a; }
+  .rowhd .note { font-size: calc(8px * var(--fs-strip)); color: #bbb;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-variant-numeric: tabular-nums; }
+  .rowhd::after { content: "\25BE"; margin-left: auto; flex: none;
+    font-size: calc(7px * var(--fs-strip)); color: #bbb; line-height: 1.6; }
+  .rowhd:hover::after { color: #888; }
+  .rowhd.shut::after { transform: rotate(-90deg); }
+  .rowhd.shut { background: #ededed; }
+
+  /* Three panes over one roster, as tabs across the card. On the dark board
+     these hid until hover because twelve cards' worth of lit chrome drowned the
+     data; on white they can simply be visible. */
+  .seg { display: flex; gap: 2px; margin-left: auto; flex: none; }
+  .seg button { padding: 1px 5px; font-size: calc(7.5px * var(--fs)); line-height: 1.4;
+    font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase;
+    border: 1px solid #e2e2e2; background: #f6f6f6; color: #888;
+    border-radius: 3px; }
+  .seg button:hover { color: #555; border-color: #cbd8ea; }
+  .seg button[aria-pressed="true"] { color: #fff; background: #1a1a1a;
+    border-color: #1a1a1a; }
+
+  /* All three panes ship in every card and CSS shows one, so switching costs no
+     fetch and two panes can never show different moments of the draft. No class
+     means LINEUP, which is what the board loads on. */
+  .body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  /* A pane scrolls rather than clipping. Three rows of four fit the default
+     ten-slot lineup with room to spare, but a deeper lineup must not silently
+     hide a player. */
+  .pane { display: none; overflow-y: auto; scrollbar-width: thin;
+    scrollbar-color: #ccc transparent; }
+  .card .pane.lineup { display: flex; flex-direction: column;
+    flex: 1; min-height: 0; }
+  .card.view-bench .pane.lineup, .card.view-need .pane.lineup { display: none; }
+  .card.view-bench .pane[data-pane="bench"] { display: block; }
+  .card.view-need .pane.need { display: flex; flex-direction: column; flex: 1;
+    min-height: 0; }
+  .empty { color: #aaa; font-size: calc(9px * var(--fs)); padding: 4px 2px; }
+
+  /* One line per player, and the position is the *field the name sits on*: a
+     pale tint of the position colour, mixed against white. A coloured chip put
+     the loudest thing in the row next to the thing you actually read; this way
+     the row is legible at a glance as "a receiver" without anything competing
+     with the name. Fixed widths and tabular figures keep the numbers in real
+     columns you can read down. */
+  .ln { display: grid; align-items: center; gap: 3px; padding: 1px 3px;
+    margin-bottom: 1px; border-radius: 3px;
+    grid-template-columns: calc(22px * var(--fs)) minmax(0, 1fr) calc(26px * var(--fs));
+    font-size: calc(10px * var(--fs)); line-height: 1.35; min-width: 0;
+    background: color-mix(in srgb, var(--pos, #7c90a0) 26%, #fff); }
+  /* The lineup's rows share whatever height the card has: the line-height above
+     is a floor, and `flex: 1` spends the rest of the card on the gaps between
+     rows. A fixed row height had to be tuned to one viewport -- generous enough
+     to fill a tall screen, it overflowed a short one. */
+  .pane.lineup .ln { flex: 1 1 auto; }
+  .colhead { display: none; }
+  /* The slot label is a label: same grey on every row, so the eye reads the
+     tint for position and this only for which seat of the lineup it is. */
+  .ms { font-style: normal; font-size: calc(7.5px * var(--fs)); text-transform: uppercase;
+    font-weight: 700; text-align: left; color: #555; }
+  /* A hole reads as absence, not as a position: flat grey, no tint. */
+  .ln.open { background: #f4f4f4; }
+  .ln.open .ms { color: #aaa; }
+  .ln.open .mn, .ln.open .mnf { color: #bbb; }
+  /* Depth keeps its position tint -- in a pane of its own nothing else says what
+     these bodies are -- but sits back a step from the lineup. */
+  .ln.bench { opacity: 0.75; }
+  .mn, .mnf { font-weight: 400; color: #1a1a1a; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  /* Compact shows the short name, maximized the full one. Both are in the
+     markup so the swap is free. */
+  .mnf { display: none; }
+  .mb, .mp, .mc { font-style: normal; font-size: calc(9px * var(--fs)); text-align: right;
+    font-variant-numeric: tabular-nums; }
+  .mc { color: #1a7f37; font-weight: 700; }
+  .ln.open .mc { color: #ccc; font-weight: 400; }
+  /* Bye and points are the first things to go when space is short; they live
+     in the hover tooltip until the overlay has room for them. */
+  .mb, .mp { display: none; color: #666; }
+
+  /* The NEED pane. Targets are fractional and the indicator is a run of pips,
+     not a fill bar: a ratio bar pins at 100% the moment you reach the target,
+     so a seat one body short and a seat two deep drew the same picture. This is
+     the one place the position colour stays at full strength -- the pips are
+     the mark being read, not a field behind text. */
+  .nrow { display: grid; align-items: center; gap: 5px; padding: 1px 3px;
+    margin-bottom: 1px; border-radius: 3px;
+    grid-template-columns:
+      calc(24px * var(--fs)) calc(30px * var(--fs)) minmax(0, 1fr) calc(26px * var(--fs));
+    line-height: 1.7;
+    background: color-mix(in srgb, var(--pos, #7c90a0) 14%, #fff); }
+  /* have/target, with the target half sunk: what you own is the number being
+     read, the target is context. Short positions take the accent -- that is the
+     one thing this pane exists to surface. */
+  .nct { font-size: calc(9.5px * var(--fs)); font-weight: 700; text-align: right;
+    font-variant-numeric: tabular-nums; color: #666; }
+  .nct i { font-style: normal; font-weight: 400; color: #aaa; }
+  .nrow.short .nct { color: #c0392b; }
+  /* One pip per whole starter the target asks for, the half-slot drawn half as
+     wide, so the row's own length is the requirement -- 2.5 is visible rather
+     than merely readable. Surplus sits outside the run, outlined. */
+  .pips { display: flex; align-items: center; gap: 2px; }
+  .pip { height: calc(6px * var(--fs)); width: calc(8px * var(--fs)); border-radius: 2px;
+    background: color-mix(in srgb, var(--pos, #7c90a0) 22%, #fff);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pos, #7c90a0) 35%, #fff); }
+  .pip.half { width: calc(4px * var(--fs)); }
+  .pip.on { background: var(--pos, #7c90a0); box-shadow: none; }
+  .pip.extra { background: none; width: calc(5px * var(--fs));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pos, #7c90a0) 45%, #fff); }
+  .npt { font-style: normal; font-size: calc(8.5px * var(--fs)); text-align: right;
+    font-variant-numeric: tabular-nums; color: #666; }
+  /* Pace, pinned to the pane's floor. Budget alone does not say whether a seat
+     is spending ahead or behind; dollars per slot still to fill does, and it is
+     the number that says when to start dumping. */
+  .pace { margin-top: auto; padding-top: 3px; border-top: 1px solid #eee;
+    display: flex; justify-content: space-between; gap: 6px;
+    font-size: calc(8px * var(--fs)); color: #888;
+    font-variant-numeric: tabular-nums; }
+  .pace b { color: #1a1a1a; font-weight: 700; }
+
+  /* -- Run pressure -------------------------------------------------------
+     One card per position, in the left column under the block. The card is
+     supply (what's left in the tier) over demand (which seats still want one),
+     and the twelve tiles are the same twelve seats as the board across the
+     aisle, in the same arrangement -- drag a roster card and these follow.
+     All four cards are the same size, TE included: one starter is still a
+     position you can be run out of, and the room is there. */
+  #pressure { min-height: 0; flex: 1; display: flex; overflow: hidden; }
+  /* Cards size to their content and sit at the top of the band. Stretching them
+     to the band's full height just puts a hand of white space under the board
+     list and makes four short cards look like four half-empty ones. */
+  .pgrid { display: flex; gap: 5px; align-items: flex-start; flex: 1;
+    min-width: 0; }
+  /* Capped at the band's height, not stretched to it: a card sizes to whatever
+     it holds, but a tier list of twenty names must scroll inside the card
+     rather than growing it down over the pool and the log below. */
+  /* A fixed quarter (less the three 5px gaps), never a share of what is going.
+     Cards used to be `flex: 1 1 0` and divide the row between them, so an open
+     card was three times its usual width if its neighbours were folded and the
+     same card was a different size every time you came back to it. Pinned, an
+     open card is the width you last read it at whatever the other three do --
+     and what folding buys is quiet, not room, which is what it was for. */
+  .pcard { border: 1px solid #ddd; border-radius: 6px; padding: 4px 5px 5px;
+    min-width: 0; display: flex; flex-direction: column; gap: 3px;
+    flex: 0 0 calc((100% - 15px) / 4); max-height: 100%; }
+  /* Folded, a card is its header and nothing else: the badge and how many are
+     left, which is the one line you would still want from a position you have
+     stopped working on. It shrinks to what those two need -- a rail, so the eye
+     reads "put away" from the shape without having to read the card. */
+  .pcard.collapsed { flex: 0 0 auto; }
+  .pcard.collapsed > *:not(.phd) { display: none; }
+  /* A folded card keeps the badge, how much of the position is gone, and how
+     many are left -- the three facts you would still want from a position you
+     have stopped working on. Only the pane toggle goes, because it is a control
+     for something that is no longer on screen. */
+  .pcard.collapsed .pseg { display: none; }
+  /* The pill is pushed right by `margin-left: auto` in a full-width header. On a
+     rail there is no right to push to, so it hugs the badge instead. */
+  .pcard.collapsed .pverd { margin-left: 4px; }
+  /* Settled: no seat is short here any more, so the position cannot run and the
+     card steps back from the ones that can. Recessive, not hidden -- the tier
+     and the counts are still readable, and hovering brings it back to full
+     strength for as long as you are actually reading it. */
+  .pcard.done { opacity: 0.55; }
+  .pcard.done:hover { opacity: 1; }
+  .pcard:hover { border-color: #bbb; }
+  /* The header is the fold, one single click, the same gesture on all four. No
+     caret: the hover state is the affordance, as it is on the band headers. */
+  .phd { display: flex; align-items: center; gap: 4px; min-width: 0;
+    cursor: pointer; user-select: none; border-radius: 3px; }
+  .phd:hover { background: #f2f2f2; }
+  /* The buttons inside the header are not the fold and must not look like it. */
+  .phd .pseg { cursor: default; }
+  .phd .badge { min-width: calc(20px * var(--fs)); font-size: calc(8px * var(--fs));
+    padding: 1px 3px; }
+  /* The first thing in the header to give way when the card is narrow: the
+     verdict pill and the pane buttons are both worth more than "16/36". */
+  .pcount { font-size: calc(9px * var(--fs)); color: #888;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .pcount b { color: #1a1a1a; }
+  /* Severity is a status, so it is never the colour alone: the pill always
+     says how many are left, and the ramp only sharpens what the number says. */
+  .pverd { margin-left: auto; font-size: calc(8px * var(--fs)); font-weight: 700;
+    padding: 0 4px; border-radius: 3px; white-space: nowrap;
+    background: var(--sevbg); color: var(--sev); }
+  .sev-run { --sev: #c0392b; --sevbg: #fdecec; }
+  .sev-tight { --sev: #b7791f; --sevbg: #fdf6e6; }
+  .sev-safe { --sev: #1a7f37; --sevbg: #eefaf0; }
+  .plbl { font-style: normal; font-size: calc(8px * var(--fs)); color: #aaa;
+    text-transform: uppercase; letter-spacing: 0.03em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Four across, three down -- the roster grid's shape, so a seat sits in the
+     same place in both halves of the screen and the eye can carry across. */
+  .tiles { display: grid; gap: 2px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .tile { border: 1px solid #eee; border-radius: 3px; padding: 1px 3px 2px;
+    min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .ttop { display: flex; align-items: baseline; gap: 2px; min-width: 0; }
+  .ttop b { font-size: calc(8px * var(--fs)); font-weight: 700; color: #444; }
+  .ttop i { font-style: normal; margin-left: auto; font-size: calc(8px * var(--fs));
+    color: #1a7f37; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .tile .pips { gap: 1px; }
+  .tile .pip { height: calc(4px * var(--fs)); width: 100%; }
+  /* A seat that has met its target has stopped buying. Receding it leaves the
+     live demand as the only thing standing in the grid, which is the read. */
+  .tile.done { opacity: 0.3; }
+
+  .bd { display: flex; flex-direction: column; }
+  .brow { display: flex; justify-content: space-between; gap: 4px;
+    font-size: calc(9px * var(--fs)); line-height: 1.2; color: #444; }
+  .brow:not(:last-child) { border-bottom: 1px solid #f4f4f4; }
+  .brow b { font-weight: 400; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; }
+  .brow i { font-style: normal; color: #aaa; font-variant-numeric: tabular-nums; }
+  .brow.empty { color: #c0392b; }
+  .bmore { font-size: calc(8px * var(--fs)); color: #1a7f37; font-weight: 700; }
+  .pfoot { font-size: calc(8px * var(--fs)); color: #aaa;
+    font-variant-numeric: tabular-nums; }
+
+  /* Two panes over one position, switched by the card's own RUNS/TIER buttons.
+     Both ship in every card and CSS shows one -- so switching costs no fetch,
+     the two can never describe different moments of the draft, and above all
+     the other three positions stay on screen. The tier used to be an overlay
+     that covered them, which is precisely when you want to compare. */
+  .ppane { display: none; flex-direction: column; gap: 3px; min-height: 0; }
+  .pcard .ppane.runs { display: flex; }
+  .pcard.view-tier .ppane.runs { display: none; }
+  .pcard.view-tier .ppane.pdet { display: flex; flex: 1; }
+  /* Last word on the panes, and it has to win twice over: `.pcard .ppane.runs`
+     ties `.pcard.collapsed .ppane` on specificity and is beaten on order, but
+     `.pcard.view-tier .ppane.pdet` is a class heavier and beats order -- which
+     is why a folded card used to go on rendering its whole tier list squeezed
+     into a rail. Hence the long selector: it has to out-weigh that rule, not
+     merely follow it. Folded is folded, whichever pane the card was left on --
+     and that pane comes back untouched when you unfold, because `pviews` never
+     heard about any of this. */
+  .pcard.collapsed.view-tier .ppane.pdet,
+  .pcard.collapsed .ppane { display: none; }
+  .pseg { margin-left: 0; }
+  .pseg button { padding: 0 3px; font-size: calc(8px * var(--fs)); }
+  .pdbody { overflow-y: auto; scrollbar-width: thin;
+    scrollbar-color: #ccc transparent; min-height: 0; flex: 1; }
+
+  /* Rank, name, team, points, $PROJ -- the same five things in the same order
+     as the maximized roster row, so the eye does not have to re-learn a table
+     between the two halves of the screen.
+     Tight gaps and narrow numerals because this now lives inside a ~230px card
+     rather than a 340px panel: at the old spacing the fixed columns ate 149px
+     and left the name 73px, which is where "M. Stafford" starts losing its. */
+  /* Leading tighter than the page's 1.4: the type went up a size and the row
+     stayed where it was, so the list reads bigger without showing fewer names. */
+  .trow { display: grid; align-items: baseline; gap: 4px; padding: 1px 2px;
+    font-size: calc(10px * var(--fs)); line-height: 1.2;
+    grid-template-columns:
+      calc(12px * var(--fs)) minmax(0, 1fr) calc(18px * var(--fs))
+      calc(20px * var(--fs)) calc(22px * var(--fs)); }
+  .trow:not(:last-child) { border-bottom: 1px solid #f6f6f6; }
+  .trow i { font-style: normal; font-variant-numeric: tabular-nums;
+    text-align: right; color: #888; font-size: calc(10px * var(--fs)); }
+  .trow .tr { text-align: left; color: #ccc; }
+  .trow .ttm { text-align: left; color: #aaa; }
+  .trow .tpr { color: #1a7f37; font-weight: 700; }
+  /* Below the cliff is a different class of player, not merely a later one. */
+  .trow.below { opacity: 0.55; }
+  .trow.gone { display: block; color: #c0392b; }
+  .tcliff { margin: 5px 0; padding-top: 4px; border-top: 2px dotted #e0a89f;
+    color: #c0392b; font-size: calc(9px * var(--fs)); font-weight: 700;
+    text-align: center; }
+  .tcliff.none { border-top-color: #eee; color: #aaa; }
+
+  /* -- pool and log, sharing the bottom band ------------------------------
+     Side by side so the two questions they answer -- who is left, and what the
+     room just paid -- can be read against each other without a switch. */
+  /* Flex, again for the collapse: fold the log away and the pool takes its
+     width, rather than leaving half the band empty. Written as a child rule so
+     it outranks the column direction every other band body gets. */
+  .band > .bandbody.panes { display: flex; flex-direction: row; gap: 6px;
+    flex: 1; min-height: 0; padding: 0; }
+  /* Border and padding come from `.band` -- a pane is one of the four foldable
+     sections and is framed like the other three, not like a lesser inset. */
+  .pane2 { display: flex; flex-direction: column; min-height: 0; min-width: 0;
+    flex: 1 1 0; }
+  /* A collapsed pane keeps its title and drops everything else, the subtitle
+     included -- that note otherwise sets the width and leaves a "collapsed"
+     pane still holding a fifth of the band. */
+  .pane2.collapsed { flex: 0 0 auto; }
+  .collapsed > .bandhd .note { display: none; }
+  .pane2 > .bandhd { flex: none; }
+  /* A fifth larger again than the rest of the column, and only inside the list
+     -- the two headers stay the size the other bands' headers are, or the eye
+     would read the pool as the more important section rather than the roomier
+     one. These are the two panes you read a line at a time rather than scan as
+     a shape, and they have the width to spend on it that a 220px card does not.
+     Derived from the column's own knob so the two move together. */
+  .pane2 .listwrap { --fs: calc(var(--fs-base) * 1.2);
+    flex: 1; min-height: 0; overflow-y: auto;
+    scrollbar-width: thin; scrollbar-color: #ccc transparent; }
+
+  .prow, .lrow { display: grid; align-items: center; gap: 5px; padding: 1px 2px;
+    font-size: calc(10px * var(--fs)); line-height: 1.2; min-width: 0; }
+  .prow { grid-template-columns:
+    calc(22px * var(--fs)) minmax(0, 1fr) calc(20px * var(--fs))
+    calc(22px * var(--fs)) calc(24px * var(--fs)); }
+  .lrow { grid-template-columns:
+    calc(22px * var(--fs)) calc(18px * var(--fs)) calc(20px * var(--fs))
+    minmax(0, 1fr) calc(22px * var(--fs)) calc(26px * var(--fs)); }
+  .prow:not(:last-child), .lrow:not(:last-child) { border-bottom: 1px solid #f7f7f7; }
+  .prow b, .lrow b { font-weight: 400; min-width: 0; overflow: hidden;
+    white-space: nowrap; text-overflow: ellipsis; }
+  .prow i, .lrow i { font-style: normal; font-variant-numeric: tabular-nums;
+    text-align: right; font-size: calc(9px * var(--fs)); color: #999; }
+  .prow .badge, .lrow .badge { font-size: calc(8px * var(--fs)); min-width: 0;
+    padding: 1px 0; }
+  .prow .ptm { text-align: left; color: #bbb; }
+  .prow .ppr { color: #1a7f37; font-weight: 700; }
+  .lrow .lno { text-align: left; color: #ccc; }
+  .lrow .lst { text-align: left; color: #888; font-weight: 700; }
+  .lrow .lpr { color: #1a1a1a; font-weight: 700; }
+  /* Over and under are a status pair, so they carry a sign as well as a hue --
+     the percentage is legible without the colour and vice versa. */
+  .ldl.over { color: #c0392b; }
+  .ldl.under { color: #1a7f37; }
+  .ldl.even { color: #aaa; }
+  .pnone { color: #aaa; font-size: calc(10px * var(--fs)); padding: 4px 2px; }
+
+  /* Maximized: the board leaves its half and takes the viewport. Nothing is
+     re-rendered -- the hidden columns and the other panes were always there. */
+  body.maxed .board { position: fixed; inset: 0; z-index: 10;
+    background: #fff; padding: 14px 16px; }
+  /* A second way out, at the corner where a full-screen thing is closed. The
+     Minimize button rides along in the menu bar since that bar lives inside the
+     board, but nobody looks there first. */
+  .closebtn { display: none; }
+  body.maxed .closebtn { display: block; position: fixed; z-index: 11;
+    top: 8px; right: 12px; width: 26px; height: 26px; padding: 0;
+    font-size: 18px; line-height: 1; border-radius: 50%; color: #666; }
+  body.maxed .closebtn:hover { color: #1a1a1a; border-color: #1a1a1a; }
+  /* Same four across, three down as the compact board -- the overlay is the
+     whole viewport, so twelve seats fit at full size with the names spelled
+     out. Keeping the shape also means maximizing moves nothing: a card is where
+     it was, only bigger. */
+  body.maxed .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;
+    height: 100%; grid-auto-rows: minmax(0, 1fr); }
+  /* A deeper lineup than this fits scrolls inside its own pane (see `.pane`)
+     rather than off the bottom of the overlay: silently hiding a player is the
+     one failure this must not have. */
+  body.maxed #rosters { overflow: hidden; }
+  /* Keep the close button's corner clear of the hint text. */
+  body.maxed .menubar { padding-right: 30px; }
+  body.maxed .card { padding: 6px 8px; }
+  body.maxed .team { font-size: calc(12px * var(--fs)); }
+  body.maxed .big { font-size: calc(15px * var(--fs)); }
+  body.maxed .max { font-size: calc(10px * var(--fs)); }
+  body.maxed .seg button { font-size: calc(8.5px * var(--fs)); }
+  /* Barely larger type than compact, because at four across on a laptop there
+     is no room for more. What maximizing actually buys is the full names and
+     the bye/points columns below, not size -- and all twelve seats still have
+     to fit one screen, which a taller row would break. */
+  body.maxed .ln { font-size: calc(10.5px * var(--fs)); padding: 0 5px; gap: 6px;
+    line-height: 1.2;
+    grid-template-columns: auto minmax(0, 1fr) calc(24px * var(--fs)) calc(30px * var(--fs)) calc(34px * var(--fs)); }
+  body.maxed .ms { font-size: calc(9px * var(--fs)); }
+  body.maxed .mn { display: none; }
+  body.maxed .mnf { display: block; }
+  body.maxed .mb, body.maxed .mp { display: block; }
+  body.maxed .mb, body.maxed .mp, body.maxed .mc { font-size: calc(10px * var(--fs)); }
+  body.maxed .colhead { display: grid; background: none; }
+  /* Column labels belong to the lineup rows; in another pane they would head an
+     empty card. More specific than the rule above, so it wins in both. */
+  .card.view-bench .colhead, .card.view-need .colhead { display: none; }
+  body.maxed .colhead i { color: #aaa; font-size: calc(8px * var(--fs)); font-weight: 700;
+    text-transform: uppercase; }
+  body.maxed .nrow { line-height: 2.1; gap: 8px; padding: 1px 5px;
+    grid-template-columns:
+      calc(30px * var(--fs)) calc(36px * var(--fs)) minmax(0, 1fr) calc(32px * var(--fs)); }
+  body.maxed .nct { font-size: calc(12px * var(--fs)); }
+  body.maxed .npt { font-size: calc(11px * var(--fs)); }
+  body.maxed .pip { height: calc(8px * var(--fs)); width: calc(11px * var(--fs)); }
+  body.maxed .pip.half { width: calc(5.5px * var(--fs)); }
+  body.maxed .pip.extra { width: calc(7px * var(--fs)); }
+  body.maxed .pace { font-size: calc(10px * var(--fs)); padding-top: 4px; }
