@@ -126,7 +126,7 @@ def _column_header() -> str:
     )
 
 
-def _pips(have: int, want: float, color: str) -> str:
+def _pips(have: int, want: float, color: str, cap: bool = False) -> str:
     """The target drawn at its true length: one pip per whole starter it asks
     for, the fractional remainder drawn as a half-width pip.
 
@@ -134,6 +134,12 @@ def _pips(have: int, want: float, color: str) -> str:
     pins at 100% the moment you reach the target, so 4/2.5 and 2.5/2.5 drew
     identically when they mean opposite things. Here surplus bodies show as
     narrow outlined pips *past* the run, so depth reads as depth.
+
+    `cap` stops at the target and draws no surplus. Depth is a roster question,
+    not a run-pressure one: inside a pressure tile a fourth quarterback only made
+    one of twelve tiles wider than its neighbours, and what the run pane wants
+    from that seat is the single fact that it has stopped buying -- which the
+    dimming says. The roster's NEED rows and fold strips still draw it in full.
     """
     whole = int(want)
     pips = "".join(
@@ -142,7 +148,8 @@ def _pips(have: int, want: float, color: str) -> str:
     )
     if want > whole:
         pips += f'<span class="pip half{" on" if have > whole else ""}"></span>'
-    pips += '<span class="pip extra"></span>' * max(0, have - math.ceil(want))
+    if not cap:
+        pips += '<span class="pip extra"></span>' * max(0, have - math.ceil(want))
     return f'<span class="pips" style="--pos:{color}">{pips}</span>'
 
 
@@ -352,7 +359,7 @@ def _seat_tile(seat: Seat, line: PositionLine, color: str) -> str:
     return (
         f'<span class="tile{done}" data-seat="{seat.slot}" title="{_esc(tip)}">'
         f'<span class="ttop"><b>S{seat.slot}</b><i>${seat.budget_left}</i></span>'
-        f"{_pips(line.have, line.want, color)}</span>"
+        f"{_pips(line.have, line.want, color, cap=True)}</span>"
     )
 
 
@@ -394,11 +401,16 @@ def _pressure_card(state: LeagueState, pr: PositionPressure) -> str:
         f"{board}"
         f'<div class="pfoot">{foot}</div></div>'
     )
+    # Nobody left short: the position is settled and cannot run any more, so the
+    # whole card recedes rather than sitting at full strength competing with the
+    # three that can still cost you a lineup. It stays on screen and stays
+    # legible -- a settled position is still a thing you look up.
+    done = "" if pr.need_seats else " done"
     # Both panes ship and CSS shows one, so switching costs no fetch and the two
     # can never describe different moments of the draft -- the same bargain the
     # roster cards make with LINEUP / BN / NEED.
     return (
-        f'<section class="pcard sev-{pr.severity}"'
+        f'<section class="pcard sev-{pr.severity}{done}"'
         f' style="--pos:{color}" data-pos="{pr.pos}">'
         # The header is the fold control, so it is the header that says so --
         # a title on the whole card promised the gesture worked anywhere on it.
@@ -999,6 +1011,12 @@ def render_page(draft_id: str) -> str:
   /* The pill is pushed right by `margin-left: auto` in a full-width header. On a
      rail there is no right to push to, so it hugs the badge instead. */
   .pcard.collapsed .pverd {{ margin-left: 4px; }}
+  /* Settled: no seat is short here any more, so the position cannot run and the
+     card steps back from the ones that can. Recessive, not hidden -- the tier
+     and the counts are still readable, and hovering brings it back to full
+     strength for as long as you are actually reading it. */
+  .pcard.done {{ opacity: 0.55; }}
+  .pcard.done:hover {{ opacity: 1; }}
   .pcard:hover {{ border-color: #bbb; }}
   /* The header is the fold, one single click, the same gesture on all four. No
      caret: the hover state is the affordance, as it is on the band headers. */

@@ -1,6 +1,7 @@
 """Position scarcity: tier cuts, demand, and the tiles the board reorders."""
 
 import json
+import math
 import re
 from pathlib import Path
 
@@ -44,6 +45,12 @@ def midway(mock_config, pool, catalog):
     """The mock rewound to pick 60 -- a board with real runs in progress."""
     picks = sorted(_load("picks-mock"), key=lambda p: p["pick_no"])[:60]
     return reconstruct(picks, mock_config, pool, catalog=catalog)
+
+
+@pytest.fixture(scope="module")
+def finished(mock_config, pool, catalog):
+    """The mock played out: rosters are deep, and positions have settled."""
+    return reconstruct(_load("picks-mock"), mock_config, pool, catalog=catalog)
 
 
 def _wr(points: float, name: str = "x") -> Player:
@@ -206,6 +213,39 @@ def test_every_card_carries_a_board_list_tight_end_included(midway):
     for pos in TIERS:
         assert "on the board" in html.split(f'data-pos="{pos}"')[1]
     assert "minor" not in html
+
+
+def test_a_tile_never_draws_more_than_the_target_asks_for(finished):
+    # Depth is a roster question. Inside a pressure tile a fourth quarterback
+    # only made one of twelve tiles wider than its neighbours, and what the run
+    # pane wants from that seat is that it has stopped buying -- which the
+    # dimming says. The NEED rows still draw the surplus in full
+    # (test_live_state: test_surplus_shows_as_extra_pips_outside_the_run).
+    html = render_pressure(finished)
+    assert "pip extra" not in html
+    deep = 0
+    for pr in pressure(finished):
+        card = html.split(f'data-pos="{pr.pos}"')[1].split("</section>")[0]
+        for slot in finished.seats:
+            line = pr.lines[slot]
+            tile = card.split(f'data-seat="{slot}"')[1].split("</span></span>")[0]
+            filled = tile.count('class="pip on"') + tile.count('class="pip half on"')
+            assert filled == min(line.have, math.ceil(line.want))
+            deep += line.have > math.ceil(line.want)
+    assert deep, "no seat was over its target -- the assertion above proved nothing"
+
+
+def test_a_position_nobody_is_short_at_recedes(finished, midway):
+    # It cannot run any more, so the card steps back from the three that can.
+    # Recessive, not hidden: `.pcard.done` is an opacity, and hover restores it.
+    for state in (finished, midway):
+        html = render_pressure(state)
+        for pr in pressure(state):
+            tag = html.split(f'data-pos="{pr.pos}"')[0].rsplit("<section", 1)[1]
+            assert (" done" in tag) is (not pr.need_seats)
+    page = render_page("123")
+    assert ".pcard.done { opacity: 0.55; }" in page
+    assert ".pcard.done:hover { opacity: 1; }" in page
 
 
 def test_the_card_says_how_many_teams_are_short(midway):
