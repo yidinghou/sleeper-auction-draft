@@ -352,15 +352,15 @@
   /* Capped at the band's height, not stretched to it: a card sizes to whatever
      it holds, but a tier list of twenty names must scroll inside the card
      rather than growing it down over the pool and the log below. */
-  /* A fixed quarter (less the three 5px gaps), never a share of what is going.
-     Cards used to be `flex: 1 1 0` and divide the row between them, so an open
-     card was three times its usual width if its neighbours were folded and the
-     same card was a different size every time you came back to it. Pinned, an
-     open card is the width you last read it at whatever the other three do --
-     and what folding buys is quiet, not room, which is what it was for. */
+  /* Open cards divide the row between them, so folding one hands its width to
+     the ones you are still reading. Pinned to a fixed quarter, folding bought
+     quiet and nothing else: three rails and a quarter-width card with half the
+     band standing empty beside it. The tier list and the board list are both
+     name columns that ellipsize, and width is the only thing that helps them --
+     so the room a folded card gives up should go where you are looking. */
   .pcard { border: 1px solid #ddd; border-radius: 6px; padding: 4px 5px 5px;
     min-width: 0; display: flex; flex-direction: column; gap: 3px;
-    flex: 0 0 calc((100% - 15px) / 4); max-height: 100%; }
+    flex: 1 1 0; max-height: 100%; }
   /* Folded, a card is its header and nothing else: the badge and how many are
      left, which is the one line you would still want from a position you have
      stopped working on. It shrinks to what those two need -- a rail, so the eye

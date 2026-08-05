@@ -398,15 +398,17 @@ def test_a_folded_card_shows_nothing_but_its_header_in_either_pane():
     assert hide > page.index(".pcard.view-tier .ppane.pdet {")
 
 
-def test_an_open_cards_width_does_not_depend_on_its_neighbours():
-    # The bug this replaces: cards were `flex: 1 1 0` and divided the row between
-    # them, so opening one while the other three were folded made it three times
-    # its usual width. Pinned to a quarter, a card is the size you last read it
-    # at, and folding buys quiet rather than room.
+def test_folding_a_card_hands_its_width_to_the_ones_you_kept():
+    # Pinned to a fixed quarter, folding three cards bought quiet and nothing
+    # else: three rails and a quarter-width card with half the band empty beside
+    # it. The tier and board lists are name columns that ellipsize, and width is
+    # the only thing that helps them.
     page = render_page("123")
-    assert "flex: 0 0 calc((100% - 15px) / 4);" in page
-    assert "flex: 1 1 0;" not in page.split(".pcard { border")[1].split("}")[0]
-    # Folded, a card shrinks to its own header -- a rail, not a quarter.
+    rule = page.split(".pcard { border")[1].split("}")[0]
+    assert "flex: 1 1 0;" in rule
+    assert "calc((100% - 15px) / 4)" not in page
+    # Folded, a card shrinks to its own header -- a rail, and the room it gives
+    # up is what the open cards divide.
     assert ".pcard.collapsed { flex: 0 0 auto;" in page
 
 
