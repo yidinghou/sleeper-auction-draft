@@ -721,8 +721,17 @@ def test_the_refresh_holds_still_while_a_card_is_in_hand():
     # The board polls every 2s; swapping #rosters mid-drag would delete the
     # element being dragged and the drop would land nowhere.
     page = render_page("123")
-    assert "if (dragging === null) {" in page
+    assert "if (dragging === null &&" in page
     assert "rosters.innerHTML = s.rosters_html;" in page
+
+
+def test_the_refresh_holds_still_across_a_double_click_too():
+    # A double-click is two clicks on the same element. A swap between them
+    # replaces that element and the gesture is eaten, so a press on a foldable
+    # header buys the same pause a drag does.
+    page = render_page("123")
+    assert "Date.now() - heldAt > 500" in page
+    assert 'addEventListener("mousedown"' in page
 
 
 def test_a_saved_order_is_reconciled_against_the_seats_on_the_board():
@@ -736,6 +745,132 @@ def test_there_is_a_way_back_to_seat_order():
     page = render_page("123")
     assert 'id="reorder"' in page
     assert 'localStorage.removeItem("draftsim.order")' in page
+
+
+# -- folding a row -----------------------------------------------------------
+
+
+def test_every_card_ships_the_strip_it_folds_down_to(midway):
+    # Shipped in the markup and shown by CSS, the same bargain the three panes
+    # make: folding costs no fetch and cannot show a different moment of the
+    # draft than the pane it replaced.
+    html = render_rosters(midway)
+    assert html.count('class="foldsum"') == len(midway.seats)
+
+
+def test_the_strip_says_what_is_filled_and_what_is_not(midway):
+    # The same positions the NEED pane covers, drawn with the same pips -- one
+    # `position_summary` call feeds both, so the two cannot disagree.
+    card = _card(midway, 1)
+    strip = card.split('class="foldsum"')[1].split("</div>")[0]
+    for line in position_summary(midway.seats[1], midway.config):
+        if line.pos in _NEED_SKIP:
+            assert f">{line.pos}<" not in strip
+        else:
+            assert f">{line.pos}<" in strip
+    assert 'class="pips"' in strip
+
+
+def test_folding_is_by_row_because_a_lone_card_frees_nothing():
+    # Four cards side by side share a row's height: fold one and its neighbours
+    # still need the room. A row is the smallest thing whose height can move.
+    page = render_page("123")
+    assert '"row:" + rowHead.dataset.row' in page
+    assert "function applyRows()" in page
+    assert "applyRows();" in page.split("function applyCollapsed()")[1]
+    # Explicit rows, or `grid-auto-rows: minmax(0, 1fr)` hands a folded row its
+    # full third back however little is left in it.
+    assert "grid.style.gridTemplateRows" in page
+
+
+def test_a_folded_row_is_positional_so_it_stays_where_you_folded_it():
+    # Keyed by where the row renders, not by which seats are in it: the board
+    # can be dragged into any order, and you folded the row you were looking at.
+    page = render_page("123")
+    assert "+a.style.order" in page
+    assert "GRID_COLS" in page
+    # A card dragged across a boundary takes the state of the row it lands in.
+    assert "applyRows();" in page.split("order.splice(order.indexOf(target)")[1]
+
+
+def test_a_folded_card_shows_nothing_but_its_strip_whichever_pane_it_was_on():
+    # `.body` goes, not the panes inside it -- with the parent gone,
+    # `.card.view-need .pane.need` has no specificity fight left to win.
+    page = render_page("123").replace("{{", "{")
+    assert ".card.collapsed > .body { display: none;" in page
+    assert ".card .foldsum { display: none;" in page
+    assert ".card.collapsed .foldsum { display: flex;" in page
+
+
+def test_the_fold_is_remembered_alongside_every_other_fold():
+    page = render_page("123")
+    # One list, one key: the bands, the panes, the pressure cards and now the
+    # roster rows are the same gesture.
+    assert page.count('localStorage.setItem("draftsim.collapsed"') == 1
+    assert "applyCollapsed();\napplyPViews();\ntick();" in page
+
+
+def test_the_board_is_divided_into_rows_by_a_bar_over_each(midway):
+    html = render_rosters(midway)
+    rows = -(-len(midway.seats) // 4)
+    assert html.count('class="rowhd"') == rows
+    # Interleaved in the markup, so the board is divided on the first paint --
+    # before any client code has said a word about order.
+    assert html.index('data-row="0"') < html.index('data-seat="1"')
+    assert html.index('data-seat="4"') < html.index('data-row="1"')
+    assert html.index('data-row="1"') < html.index('data-seat="5"')
+    # One flat grid, not a grid per row: a card has to be draggable from any row
+    # to any other, and the bar spans the columns rather than boxing them in.
+    assert "grid-column: 1 / -1" in render_page("123").replace("{{", "{")
+
+
+def test_the_bar_is_the_fold_control_and_the_card_header_still_drags():
+    # The fold sits on the bar, not on the cards under it: a card header is a
+    # grab handle, and a click that ends a one-pixel drag must not put four
+    # cards away.
+    page = render_page("123")
+    dbl = page.split('addEventListener("dblclick"')[-1]
+    assert 'closest(".rowhd")' in dbl
+    assert 'closest("section.card > header")' not in dbl
+    assert ".card header { cursor: grab" in page.replace("{{", "{")
+
+
+def test_the_bar_carries_the_same_furniture_the_bands_do():
+    # Same gesture, same control: a tinted strip, a caret that turns, and a
+    # hover state -- a board that folds two ways by two rules is one you have to
+    # remember.
+    page = render_page("123").replace("{{", "{")
+    assert ".rowhd:hover" in page
+    assert '.rowhd::after { content: "\\25BE"' in page
+    assert ".rowhd.shut::after { transform: rotate(-90deg); }" in page
+    assert "fold" in page.split('class="hint"')[1].split("</span>")[0]
+
+
+def test_the_bar_names_the_seats_under_it_from_the_client():
+    # Which seats are in a row is the client's answer to give -- a dragged card
+    # changes it, and the server never hears about the drag.
+    page = render_page("123")
+    assert 'head.querySelector(".note").textContent' in page
+    assert 'mine.map((c) => "S" + c.dataset.seat)' in page
+
+
+def test_the_bars_take_their_own_place_in_the_order():
+    # Every row costs five order slots -- the bar, then its four cards -- so a
+    # dragged card cannot land between a bar and the row it belongs to.
+    page = render_page("123")
+    assert "function slotOrder(pos)" in page
+    assert "el.style.order = slotOrder(order.indexOf(el.dataset.seat));" in page
+    assert "head.style.order = r * (GRID_COLS + 1);" in page
+
+
+def test_the_type_grows_as_rows_are_folded_away():
+    # One knob, still: `--fs` is what every size on the card is a multiple of.
+    page = render_page("123").replace("{{", "{")
+    assert "const DENSITY = { 3: 1.17, 2: 1.38, 1: 1.5 };" in page
+    assert 'grid.style.setProperty("--fs"' in page
+    # The strip stays strip-sized, or the row you just put away grows too.
+    assert "--fs-strip: 1.17;" in page
+    assert ".card.collapsed { background: #fafafa; --fs: var(--fs-strip); }" in page
 
 
 # -- compact names -----------------------------------------------------------

@@ -189,6 +189,26 @@ def _need_pane(state: LeagueState, seat: Seat) -> str:
     )
 
 
+def _fold_summary(state: LeagueState, seat: Seat) -> str:
+    """What a card still says once its row is folded: which positions it has
+    filled and which it has not.
+
+    The NEED pane's own pips, at strip size -- built from the same
+    `position_summary` call the pane is built from, so a folded card cannot
+    disagree with the pane it is hiding. It ships in every card and CSS shows it
+    only when folded, the same bargain the three panes make.
+    """
+    cells = "".join(
+        f'<span class="fpos">'
+        f'<i class="ms">{_esc(line.pos)}</i>'
+        f"{_pips(line.have, line.want, POS_COLOR_LIGHT.get(line.pos, POS_FALLBACK_LIGHT))}"
+        "</span>"
+        for line in position_summary(seat, state.config)
+        if line.pos not in _NEED_SKIP
+    )
+    return f'<div class="foldsum">{cells}</div>'
+
+
 def _card_header(state: LeagueState, seat: Seat) -> str:
     """Money, and nothing else: what is left, the most it can still bid, and a
     bar of both.
@@ -214,7 +234,9 @@ def _card_header(state: LeagueState, seat: Seat) -> str:
         '<div class="budget">'
         f'<i style="width:{100 * spendable / budget:.1f}%"></i>'
         f'<i class="held" style="width:{100 * held / budget:.1f}%"></i>'
-        "</div></header>"
+        "</div>"
+        f"{_fold_summary(state, seat)}"
+        "</header>"
     )
 
 
@@ -260,8 +282,30 @@ def _roster_card(state: LeagueState, seat: Seat) -> str:
     )
 
 
+# How many cards a row of the board holds. The grid's own
+# `grid-template-columns` says the same thing, and the client says it a third
+# time as `GRID_COLS` -- all three have to agree, because the row headers are cut
+# from this number and the client folds by row.
+_GRID_COLS = 4
+
+
+def _row_header(row: int) -> str:
+    """The bar over one row of cards: a divider, and the fold control.
+
+    The same furniture the bands down the left column carry -- a tinted strip
+    with a caret that turns -- because it does the same job. Its note is filled
+    in by the client rather than here: it lists the seats in the row, and which
+    seats those are is a question only the client can answer once a card has been
+    dragged somewhere else.
+    """
+    return (
+        f'<div class="rowhd" data-row="{row}">'
+        f"<h2>Row {row + 1}</h2><span class=\"note\"></span></div>"
+    )
+
+
 def render_rosters(state: LeagueState) -> str:
-    """Every seat's roster as a card, in seat order.
+    """Every seat's roster as a card, in seat order, under a header per row.
 
     Seat order, and never sorted by anything that moves: these are read to look
     something up ("what does seat 4 still need at receiver?"), so a card has to
@@ -271,11 +315,20 @@ def render_rosters(state: LeagueState) -> str:
     presentational only -- CSS `order` on the grid items, so this markup stays in
     seat order. Which is the point: the one thing allowed to move a card is the
     hand that dragged it, and a rearranged board still knows what seat order was.
+
+    The row headers ship interleaved, one before each run of four, so the board
+    is already divided into rows on the first paint -- before any client code has
+    said a word about order. They are grid items like the cards, spanning the
+    full width, which is what keeps one flat grid: cards have to be draggable
+    from any row to any other, and a grid per row could not do that.
     """
-    cards = "".join(
-        _roster_card(state, state.seats[slot]) for slot in sorted(state.seats)
-    )
-    return f'<div class="grid">{cards}</div>'
+    slots = sorted(state.seats)
+    parts = []
+    for index, slot in enumerate(slots):
+        if index % _GRID_COLS == 0:
+            parts.append(_row_header(index // _GRID_COLS))
+        parts.append(_roster_card(state, state.seats[slot]))
+    return f'<div class="grid">{"".join(parts)}</div>'
 
 
 # Enough supply to see whether the tier is a tier or a rump, without the card
@@ -695,8 +748,13 @@ def render_page(draft_id: str) -> str:
      which is the shape the card wants now that the bench moved into its own
      pane -- a row per starter needs height, and three rows of four give each
      card a third more of it than four rows of three did. */
+  /* `--fs-strip` is the density a folded row keeps. The client raises `--fs` on
+     this grid as rows are folded away (see `applyDensity`), and a folded row
+     must not grow with them -- the room it just gave up would come straight
+     back. Rows are written as an explicit `grid-template-rows` by the client
+     when anything is folded; `grid-auto-rows` is what an unfolded board uses. */
   #rosters {{ flex: 1; min-height: 0; }}
-  .grid {{ display: grid; gap: 5px; height: 100%;
+  .grid {{ display: grid; gap: 5px; height: 100%; --fs-strip: 1.17;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     grid-auto-rows: minmax(0, 1fr); }}
   .card {{ background: #fff; border: 1px solid #ddd; border-radius: 6px;
@@ -736,6 +794,60 @@ def render_page(draft_id: str) -> str:
      the state reads whether you take in the number or only the colour. */
   .card.broke .big {{ color: #c0392b; }}
   .card.broke .budget i:not(.held) {{ background: #c0392b; }}
+
+  /* Folded, a row of four cards is a strip of money and pips: the four seats
+     still in their four columns, each saying what it can spend and which
+     positions it has filled. That is what you want from seats you are not
+     studying, and it is also the thing you double-click to bring the row back --
+     so the fold leaves a control behind rather than a gap.
+
+     `.body` is hidden rather than the panes inside it, which sidesteps the
+     specificity trap the pressure cards hit (see the note further down): with
+     the parent gone, `.card.view-need .pane.need` has nothing left to win. */
+  .card.collapsed {{ background: #fafafa; --fs: var(--fs-strip); }}
+  .card.collapsed > .body {{ display: none; }}
+  .card.collapsed header {{ margin-bottom: 0; border-bottom: none;
+    padding-bottom: 0; }}
+  .card.collapsed .seg {{ display: none; }}
+  .card .foldsum {{ display: none; }}
+  .card.collapsed .foldsum {{ display: flex; gap: 5px; padding-top: 3px;
+    align-items: center; flex-wrap: wrap; }}
+  .foldsum .fpos {{ display: flex; align-items: center; gap: 3px; min-width: 0; }}
+  .foldsum .ms {{ font-style: normal; font-weight: 700; color: #999;
+    font-size: calc(7px * var(--fs)); }}
+  /* Smaller than the NEED pane's pips, and only just: four positions' worth of
+     them have to sit on one line in a quarter-width card, and a second line
+     costs the strip a third of its height for one tight end. Wrapping rather
+     than clipping, because a narrower window must lose the layout, not the
+     position. */
+  .foldsum .pips {{ gap: 1.5px; }}
+  .foldsum .pip {{ height: calc(5.5px * var(--fs)); width: calc(6px * var(--fs)); }}
+  .foldsum .pip.half {{ width: calc(3.5px * var(--fs)); }}
+  .foldsum .pip.extra {{ width: calc(4px * var(--fs)); }}
+  /* The bar over each row: what divides twelve cards into three rows you can
+     name, and the control that folds one away. Deliberately the same furniture
+     as the bands down the left column -- tinted strip, small caps, a caret that
+     turns -- because it is the same gesture, and a board that folds two
+     different ways by two different rules is a board you have to remember.
+
+     Thin: three of these are three rows' worth of chrome the cards used to have,
+     so they carry one line at the smallest size on the board and no padding to
+     speak of. */
+  .rowhd {{ grid-column: 1 / -1; display: flex; align-items: baseline; gap: 6px;
+    padding: 1px 6px; background: #f4f4f4; border-radius: 3px;
+    cursor: pointer; user-select: none; }}
+  .rowhd:hover {{ background: #ededed; }}
+  .rowhd h2 {{ font-size: calc(8.5px * var(--fs-strip)); margin: 0; color: #666;
+    text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }}
+  .rowhd:hover h2 {{ color: #1a1a1a; }}
+  .rowhd .note {{ font-size: calc(8px * var(--fs-strip)); color: #bbb;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    font-variant-numeric: tabular-nums; }}
+  .rowhd::after {{ content: "\\25BE"; margin-left: auto; flex: none;
+    font-size: calc(7px * var(--fs-strip)); color: #bbb; line-height: 1.6; }}
+  .rowhd:hover::after {{ color: #888; }}
+  .rowhd.shut::after {{ transform: rotate(-90deg); }}
+  .rowhd.shut {{ background: #ededed; }}
 
   /* Three panes over one roster, as tabs across the card. On the dark board
      these hid until hover because twelve cards' worth of lit chrome drowned the
@@ -1147,7 +1259,8 @@ def render_page(draft_id: str) -> str:
       <button id="max" type="button">Maximize</button>
       <button id="reorder" type="button"
               title="Put the cards back in seat order">Seat order</button>
-      <span class="hint">drag a card to reorder · LINEUP / BN / NEED per card</span>
+      <span class="hint">drag a card to reorder · double-click a row bar to fold
+        the row · LINEUP / BN / NEED per card</span>
     </div>
     <div id="rosters"></div>
   </main>
@@ -1253,15 +1366,73 @@ document.getElementById("rosters").addEventListener("click", (e) => {{
   applyViews();
 }});
 
-// What is folded away, and remembered. Three consumers -- the bands down the
-// left, the pool/log panes, and the four pressure cards -- because they are the
-// same gesture: give the room to whatever you are actually reading.
+// What is folded away, and remembered. Four consumers -- the bands down the
+// left, the pool/log panes, the four pressure cards, and the roster grid's rows
+// -- because they are the same gesture: give the room to whatever you are
+// actually reading.
 //
-// Keyed by a stable name (`data-band`, or the position for a card) rather than
-// by index, so a collapsed thing stays collapsed even though the markup holding
-// it is thrown away and rebuilt twice a second.
+// Keyed by a stable name (`data-band`, the position for a card, the row number
+// for the grid) rather than by index into the markup, so a collapsed thing stays
+// collapsed even though the markup holding it is thrown away and rebuilt twice a
+// second.
 let collapsed = [];
 try {{ collapsed = JSON.parse(localStorage.getItem("draftsim.collapsed")) || []; }} catch (e) {{}}
+
+// Four across, from the grid's own `grid-template-columns`.
+const GRID_COLS = 4;
+
+// How much bigger the cards get as rows are folded away. Three rows is the size
+// the board was tuned at; fold one and the survivors gain half a row of height,
+// and the point of that height is reading rather than white space -- so the
+// board's one density knob goes up with them. A folded row pins itself back to
+// `--fs-strip` in CSS, or the strip you just put away would grow too.
+// The top step is where it is because a folded row gives back height, not
+// width: past about 1.5 the fixed slot and price columns grow into the name and
+// the longest ones start ellipsizing, which is not what "bigger" was for.
+const DENSITY = {{ 3: 1.17, 2: 1.38, 1: 1.5 }};
+
+// Fold by row, not by card. Four cards side by side share a row's height, so
+// folding one alone frees nothing -- its neighbours still need the room. A whole
+// row is the smallest thing whose height can actually go somewhere.
+//
+// Rows are positional, and deliberately so: the board can be dragged into any
+// order, and what you folded is the row you were looking at, not whichever seats
+// happened to be in it.
+function applyRows() {{
+  const grid = document.querySelector("#rosters .grid");
+  if (!grid) return;
+  // Reading order, not markup order -- `applyOrder` has already written the
+  // `order` each card sits at, and that is what decides which row it renders in.
+  const cards = [...grid.querySelectorAll("section.card")]
+    .sort((a, b) => (+a.style.order || 0) - (+b.style.order || 0));
+  const heads = [...grid.querySelectorAll(".rowhd")];
+  const rows = Math.ceil(cards.length / GRID_COLS);
+  // A header row and a card row per row of the board, in that order -- the same
+  // interleaving `slotOrder` lays the items out in.
+  const tmpl = [];
+  let open = 0;
+  for (let r = 0; r < rows; r++) {{
+    const shut = collapsed.includes("row:" + r);
+    const mine = cards.slice(r * GRID_COLS, (r + 1) * GRID_COLS);
+    mine.forEach((c) => c.classList.toggle("collapsed", shut));
+    const head = heads[r];
+    if (head) {{
+      head.style.order = r * (GRID_COLS + 1);
+      head.classList.toggle("shut", shut);
+      // Which seats are in this row is the client's answer to give: a dragged
+      // card changes it, and the server never hears about the drag.
+      head.querySelector(".note").textContent =
+        mine.map((c) => "S" + c.dataset.seat).join(" · ");
+    }}
+    if (!shut) open++;
+    tmpl.push("auto", shut ? "auto" : "1fr");
+  }}
+  // Explicit rows, because `grid-auto-rows: minmax(0, 1fr)` would hand a folded
+  // row its full third back however little is left in it -- and would give each
+  // header bar a third of the board besides.
+  grid.style.gridTemplateRows = tmpl.join(" ");
+  grid.style.setProperty("--fs", DENSITY[open] || DENSITY[3]);
+}}
 
 function applyCollapsed() {{
   document.querySelectorAll("[data-band]").forEach((el) => {{
@@ -1270,6 +1441,14 @@ function applyCollapsed() {{
   document.querySelectorAll(".pcard").forEach((el) => {{
     el.classList.toggle("collapsed", collapsed.includes("pos:" + el.dataset.pos));
   }});
+  applyRows();
+}}
+
+// Where the nth card of the board sits in the grid's `order`, with a row header
+// taking the place ahead of every run of four. So a row of the board costs five
+// order slots: the bar, then its four cards.
+function slotOrder(pos) {{
+  return pos + Math.floor(pos / GRID_COLS) + 1;
 }}
 
 function toggleCollapsed(id) {{
@@ -1279,14 +1458,36 @@ function toggleCollapsed(id) {{
   applyCollapsed();
 }}
 
-// Double-click a band's header to fold it. Delegated from the document because
-// the pane headers and the outer band headers are both `.bandhd`, and one
-// listener beats four.
+// Double-click a header to fold what is under it: a band's on the left, a row's
+// on the right. One gesture, one kind of control, both sides of the board.
+//
+// The fold lives on the row bar rather than on the cards under it, which is what
+// keeps it clear of the drag: a card header is a grab handle, and a click that
+// ends a one-pixel drag must not put four cards away.
+//
+// Delegated from the document because every one of these headers is rebuilt
+// every two seconds, and one listener beats nine.
 document.addEventListener("dblclick", (e) => {{
   const head = e.target.closest(".bandhd");
-  if (!head) return;
-  const band = head.closest("[data-band]");
-  if (band) toggleCollapsed("band:" + band.dataset.band);
+  if (head) {{
+    const band = head.closest("[data-band]");
+    if (band) toggleCollapsed("band:" + band.dataset.band);
+    return;
+  }}
+  const rowHead = e.target.closest(".rowhd");
+  if (rowHead) toggleCollapsed("row:" + rowHead.dataset.row);
+}});
+
+// A double-click is two clicks on the *same element*, and the fragments holding
+// these headers are replaced every two seconds -- so a swap landing between the
+// two clicks eats the gesture, and the fold silently does nothing about one time
+// in ten. The board holds the swap for a moment after a press on a foldable
+// header, the same way it holds it while a card is being dragged.
+let heldAt = 0;
+document.addEventListener("mousedown", (e) => {{
+  if (e.target.closest(".rowhd") || e.target.closest(".phd")) {{
+    heldAt = Date.now();
+  }}
 }});
 
 // Seat order, dragged by hand and remembered. Presentational: the server always
@@ -1321,7 +1522,10 @@ function normalizeOrder() {{
 function applyOrder() {{
   normalizeOrder();
   document.querySelectorAll("[data-seat]").forEach((el) => {{
-    el.style.order = order.indexOf(el.dataset.seat);
+    // Gapped, to leave a place for each row bar. The pressure tiles read the
+    // same numbers and have no bars to leave room for, but they only ever care
+    // which of them comes first -- and the gaps do not change that.
+    el.style.order = slotOrder(order.indexOf(el.dataset.seat));
   }});
 }}
 
@@ -1366,6 +1570,9 @@ rosters.addEventListener("drop", (e) => {{
     order.splice(order.indexOf(target), 0, dragging);
     localStorage.setItem("draftsim.order", JSON.stringify(order));
     applyOrder();
+    // A card dragged across a row boundary changes which cards are folded --
+    // the fold belongs to the row, so the card takes the state of where it lands.
+    applyRows();
   }}
   endDrag();
 }});
@@ -1384,6 +1591,7 @@ document.getElementById("reorder").addEventListener("click", () => {{
   order = [];
   localStorage.removeItem("draftsim.order");
   applyOrder();
+  applyRows();
 }});
 
 function highlight() {{
@@ -1420,7 +1628,7 @@ async function tick() {{
     // the element in hand isn't deleted out from under it. The pressure tiles
     // freeze with them rather than on their own: they are the same seats in the
     // same order, and half of that pair moving mid-drag is worse than neither.
-    if (dragging === null) {{
+    if (dragging === null && Date.now() - heldAt > 500) {{
       rosters.innerHTML = s.rosters_html;
       document.getElementById("pressure").innerHTML = s.pressure_html;
       // Replacing the rows empties the scroller for an instant, which drops it
