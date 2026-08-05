@@ -29,6 +29,7 @@ from .live_state import (
     LeagueState,
     PositionLine,
     Seat,
+    SeatPick,
     position_summary,
 )
 from .roster import display_slots
@@ -343,7 +344,9 @@ def _pressure_card(state: LeagueState, pr: PositionPressure) -> str:
         f' title="double-click for the {_esc(pr.pos)} tier">'
         f'<div class="phd">{badge(pr.pos, light=True)}'
         f'<span class="pcount"><b>{pr.drafted}</b>/{total}</span>'
-        f'<span class="pverd">{pr.left} left</span></div>'
+        f'<span class="pverd">{pr.left} left</span>'
+        '<button class="caret" type="button" aria-label="Collapse">&#9662;</button>'
+        "</div>"
         f'<i class="plbl">{len(pr.need_seats)} teams still need {_esc(pr.pos)}</i>'
         f'<div class="tiles">{tiles}</div>'
         f"{board}"
@@ -428,6 +431,80 @@ def render_pressure(state: LeagueState) -> str:
     return f'<div class="pgrid">{cards}</div><div class="pdets">{details}</div>'
 
 
+# The pool is a shortlist, not the sheet. Past forty rows nobody is scrolling to
+# find a name mid-auction -- they are searching Sleeper for it.
+_POOL_SHOWN = 40
+
+# How far back the log is worth keeping on screen. Older than this and it is
+# history, which is what the post-mortem report is for.
+_LOG_SHOWN = 50
+
+
+def render_pool(state: LeagueState) -> str:
+    """Who is left, dearest first.
+
+    Ordered by `$PROJ` -- the same figure the nomination strip and the tier list
+    quote, so the three panes cannot disagree about what a player should cost.
+    Players with no projection sort last rather than being dropped: an unpriced
+    body is still a body somebody can nominate.
+    """
+    ranked = sorted(
+        state.available, key=lambda p: (-market_value(p), -p.points, p.name)
+    )
+    rows = "".join(
+        f'<div class="prow">{badge(player.pos, light=True)}'
+        f'<b>{_esc(_short_name(player))}</b>'
+        f'<i class="ptm">{_esc(player.team or "FA")}</i>'
+        f'<i class="ppt">{player.points:.0f}</i>'
+        f'<i class="ppr">{f"${market_value(player):.0f}" if market_value(player) else "—"}</i>'
+        "</div>"
+        for player in ranked[:_POOL_SHOWN]
+    )
+    if not rows:
+        rows = '<div class="pnone">the board is empty</div>'
+    return f'<div class="poollist">{rows}</div>'
+
+
+def _log_price(pick: SeatPick) -> str:
+    """What it went for, against what it was projected to go for.
+
+    The gap is the number worth watching -- it says whether the room is paying up
+    or the board is falling. Most of the sheet carries no `$PROJ`, and those show
+    the price alone rather than a delta against a number that isn't there.
+    """
+    proj = pick.player.proj_dollar
+    if proj is None or proj <= 0:
+        return (
+            f'<i class="lpr">${pick.price}</i>'
+            '<i class="ldl muted">—</i>'
+        )
+    diff = (pick.price - proj) / proj
+    direction = "over" if diff > 0 else "under" if diff < 0 else "even"
+    return (
+        f'<i class="lpr">${pick.price}</i>'
+        f'<i class="ldl {direction}">{diff:+.0%}</i>'
+    )
+
+
+def render_log(state: LeagueState) -> str:
+    """Every sale, newest first.
+
+    Newest first because the only rows read during a draft are the last few --
+    what just went, for how much, and whether that was over the odds.
+    """
+    rows = "".join(
+        f'<div class="lrow">'
+        f'<i class="lno">#{pick.pick_no}</i>'
+        f'<i class="lst">S{pick.slot}</i>'
+        f'<b>{_esc(_short_name(pick.player))}</b>'
+        f"{_log_price(pick)}</div>"
+        for pick in sorted(state.picks, key=lambda p: -p.pick_no)[:_LOG_SHOWN]
+    )
+    if not rows:
+        rows = '<div class="pnone">no picks yet</div>'
+    return f'<div class="loglist">{rows}</div>'
+
+
 def render_nomination(
     state: LeagueState, nom: Nomination, player: Optional[Player]
 ) -> str:
@@ -497,9 +574,36 @@ def render_page(draft_id: str) -> str:
      the block. Right: the rosters. Splitting them this way gives the grid the
      whole viewport height instead of sharing it with the chrome, which is what
      lets a full 16-man roster fit. Space under the header is left free. */
-  /* Positioned, so the tier detail can cover this column and only this one. */
-  .side {{ display: flex; flex-direction: column; min-width: 0; position: relative;
-    padding: 10px 12px; gap: 6px; border-right: 1px solid #eee; }}
+  /* Three bands down the left: what is happening now (1/5), run pressure (2/5),
+     then the pool and the log sharing the last 2/5. Flex rather than fixed grid
+     rows, because a collapsed band then hands its height to its siblings with
+     no arithmetic -- `flex: 0 0 auto` and the others simply grow. */
+  .side {{ display: flex; flex-direction: column; min-width: 0;
+    padding: 8px 10px; gap: 6px; border-right: 1px solid #eee; overflow: hidden; }}
+  .band {{ display: flex; flex-direction: column; min-height: 0; min-width: 0;
+    position: relative; }}
+  .band-live {{ flex: 1 1 0; }}
+  .band-runs {{ flex: 2 1 0; }}
+  .band-panes {{ flex: 2 1 0; }}
+  .band > .bandhd {{ display: flex; align-items: baseline; gap: 6px; flex: none;
+    padding-bottom: 2px; }}
+  .bandhd h2 {{ font-size: calc(9px * var(--fs)); margin: 0; color: #888;
+    text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }}
+  .bandhd .note {{ font-size: calc(8px * var(--fs)); color: #ccc;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+  .band > .bandbody {{ flex: 1; min-height: 0; display: flex;
+    flex-direction: column; gap: 5px; }}
+
+  /* The caret is the whole affordance, so it has to look like a control at 14px
+     and still not compete with the data beside it. */
+  .caret {{ margin-left: auto; flex: none; width: 16px; height: 14px; padding: 0;
+    font-size: 9px; line-height: 1; color: #999; border-radius: 3px;
+    background: none; border: 1px solid transparent; }}
+  .caret:hover {{ color: #1a1a1a; border-color: #ddd; background: #f6f6f6; }}
+  .collapsed > .bandbody {{ display: none; }}
+  .band.collapsed {{ flex: 0 0 auto; }}
+  .collapsed > .bandhd .caret {{ transform: rotate(-90deg); }}
+
   .side h1 {{ font-size: calc(13px * var(--fs)); margin: 0; }}
   .side .sub {{ margin: 0; font-size: calc(11px * var(--fs)); }}
 
@@ -701,14 +805,27 @@ def render_page(draft_id: str) -> str:
      aisle, in the same arrangement -- drag a roster card and these follow.
      TE is deliberately narrow: one starter, no flex claim, so its pressure is
      a pip and a number, and the width goes where a run costs you a lineup. */
-  #pressure {{ min-height: 0; overflow: hidden; }}
-  .pgrid {{ display: grid; gap: 5px; grid-template-columns: 1fr 1fr 1fr 0.55fr;
-    align-items: start; }}
+  #pressure {{ min-height: 0; flex: 1; display: flex; }}
+  /* Flex, not grid, for the same reason the bands are: a collapsed card hands
+     its width to its siblings with no arithmetic. TE rides at 0.55 because it
+     is one starter with no flex claim; collapse it and QB/RB/WR take the room,
+     which those seat tiles were tight enough to want. */
+  /* Cards size to their content and sit at the top of the band. Stretching them
+     to the band's full height just puts a hand of white space under the board
+     list and makes four short cards look like four half-empty ones. */
+  .pgrid {{ display: flex; gap: 5px; align-items: flex-start; flex: 1;
+    min-width: 0; }}
   /* zoom-in, not pointer: a single click does nothing here, and a cursor that
      promises one is a cursor that lies. */
   .pcard {{ border: 1px solid #ddd; border-radius: 6px; padding: 4px 5px 5px;
     min-width: 0; display: flex; flex-direction: column; gap: 3px;
-    cursor: zoom-in; }}
+    cursor: zoom-in; flex: 1 1 0; }}
+  .pcard.minor {{ flex: 0.55 1 0; }}
+  /* Collapsed to its header: the badge and how many are left, which is the one
+     line you would still want from a position you have stopped working on. */
+  .pcard.collapsed {{ flex: 0 0 auto; cursor: zoom-in; }}
+  .pcard.collapsed > *:not(.phd) {{ display: none; }}
+  .pcard.collapsed .pcount {{ display: none; }}
   .pcard:hover {{ border-color: #bbb; }}
   .phd {{ display: flex; align-items: center; gap: 4px; min-width: 0; }}
   .phd .badge {{ min-width: calc(20px * var(--fs)); font-size: calc(7.5px * var(--fs));
@@ -756,20 +873,18 @@ def render_page(draft_id: str) -> str:
   .pfoot {{ font-size: calc(7px * var(--fs)); color: #aaa;
     font-variant-numeric: tabular-nums; }}
 
-  /* The tier detail, opened by double-clicking a card. It covers the left
-     column and nothing else: the decision it serves is "these are the last
-     three startable QBs" next to "these four seats still have money", and a
-     modal over the whole page would hide the half you need to bid against.
+  /* The tier detail, opened by double-clicking a card. It covers its own band
+     and nothing more: what's on the block stays visible above it and the pool
+     and log stay visible below, so opening it costs you no other pane. (It used
+     to cover the whole column, which is what made it feel like leaving the
+     board rather than looking closer at part of it.)
      All four panels ship; `data-open` on #pressure picks one, and because that
      attribute lives on the container rather than the markup inside it, the
      panel survives the 2s swap and its list refreshes underneath you. */
   .pdets {{ display: none; }}
-  /* Anchored to `.side`, not to #pressure, so it covers the column whole --
-     nomination block included. #pressure's own overflow does not clip it,
-     because its containing block is an ancestor of the clipping box. */
   #pressure[data-open] .pdets {{ display: flex; flex-direction: column;
     position: absolute; inset: 0; z-index: 12; background: #fff;
-    padding: 10px 12px; }}
+    padding: 4px 2px; }}
   .pdet {{ display: none; }}
   #pressure[data-open="QB"] .pdet[data-det="QB"],
   #pressure[data-open="RB"] .pdet[data-det="RB"],
@@ -810,6 +925,51 @@ def render_page(draft_id: str) -> str:
     color: #c0392b; font-size: calc(8.5px * var(--fs)); font-weight: 700;
     text-align: center; }}
   .tcliff.none {{ border-top-color: #eee; color: #aaa; }}
+
+  /* -- pool and log, sharing the bottom band ------------------------------
+     Side by side so the two questions they answer -- who is left, and what the
+     room just paid -- can be read against each other without a switch. */
+  /* Flex, again for the collapse: fold the log away and the pool takes its
+     width, rather than leaving half the band empty. Written as a child rule so
+     it outranks the column direction every other band body gets. */
+  .band > .bandbody.panes {{ display: flex; flex-direction: row; gap: 6px;
+    flex: 1; min-height: 0; }}
+  .pane2 {{ display: flex; flex-direction: column; min-height: 0; min-width: 0;
+    flex: 1 1 0; border: 1px solid #eee; border-radius: 6px; padding: 3px 4px; }}
+  /* A collapsed pane keeps its title and its caret and drops everything else,
+     including the subtitle -- which otherwise sets the width and leaves a
+     "collapsed" pane still holding a fifth of the band. */
+  .pane2.collapsed {{ flex: 0 0 auto; }}
+  .collapsed > .bandhd .note {{ display: none; }}
+  .pane2 > .bandhd {{ flex: none; }}
+  .pane2 .listwrap {{ flex: 1; min-height: 0; overflow-y: auto;
+    scrollbar-width: thin; scrollbar-color: #ccc transparent; }}
+
+  .prow, .lrow {{ display: grid; align-items: center; gap: 5px; padding: 1px 2px;
+    font-size: calc(9px * var(--fs)); min-width: 0; }}
+  .prow {{ grid-template-columns:
+    calc(22px * var(--fs)) minmax(0, 1fr) calc(20px * var(--fs))
+    calc(22px * var(--fs)) calc(24px * var(--fs)); }}
+  .lrow {{ grid-template-columns:
+    calc(22px * var(--fs)) calc(16px * var(--fs)) minmax(0, 1fr)
+    calc(22px * var(--fs)) calc(26px * var(--fs)); }}
+  .prow:not(:last-child), .lrow:not(:last-child) {{ border-bottom: 1px solid #f7f7f7; }}
+  .prow b, .lrow b {{ font-weight: 400; min-width: 0; overflow: hidden;
+    white-space: nowrap; text-overflow: ellipsis; }}
+  .prow i, .lrow i {{ font-style: normal; font-variant-numeric: tabular-nums;
+    text-align: right; font-size: calc(8px * var(--fs)); color: #999; }}
+  .prow .badge {{ font-size: calc(7px * var(--fs)); min-width: 0; padding: 1px 0; }}
+  .prow .ptm {{ text-align: left; color: #bbb; }}
+  .prow .ppr {{ color: #1a7f37; font-weight: 700; }}
+  .lrow .lno {{ text-align: left; color: #ccc; }}
+  .lrow .lst {{ text-align: left; color: #888; font-weight: 700; }}
+  .lrow .lpr {{ color: #1a1a1a; font-weight: 700; }}
+  /* Over and under are a status pair, so they carry a sign as well as a hue --
+     the percentage is legible without the colour and vice versa. */
+  .ldl.over {{ color: #c0392b; }}
+  .ldl.under {{ color: #1a7f37; }}
+  .ldl.even {{ color: #aaa; }}
+  .pnone {{ color: #aaa; font-size: calc(9px * var(--fs)); padding: 4px 2px; }}
 
   /* Maximized: the board leaves its half and takes the viewport. Nothing is
      re-rendered -- the hidden columns and the other panes were always there. */
@@ -870,17 +1030,48 @@ def render_page(draft_id: str) -> str:
 </style></head>
 <body>
   <aside class="side">
-    <h1>Live draft board</h1>
-    <p class="sub" id="sub">connecting to draft {_esc(draft_id)}…</p>
+    <!-- Three bands. The chrome -- headings and carets -- lives here in the
+         shell rather than in the fragments, because the fragments are replaced
+         every two seconds and a control destroyed that often can hold neither
+         focus nor state. Only the insides of each band are swapped. -->
+    <section class="band band-live" data-band="live">
+      <div class="bandhd"><h2>Live draft board</h2>
+        <span class="note" id="pulsewrap"><span class="dot" id="dot"></span>
+          <span id="pulse">polling</span></span>
+        <button class="caret" type="button" aria-label="Collapse">&#9662;</button></div>
+      <div class="bandbody">
+        <p class="sub" id="sub">connecting to draft {_esc(draft_id)}…</p>
+        <div class="bar">
+          <label>Seat <select id="seat"><option value="">—</option></select></label>
+          <span id="warn" class="warn"></span>
+        </div>
+        <div id="block"></div>
+      </div>
+    </section>
 
-    <div class="bar">
-      <span><span class="dot" id="dot"></span> <span id="pulse">polling</span></span>
-      <label>Seat <select id="seat"><option value="">—</option></select></label>
-      <span id="warn" class="warn"></span>
-    </div>
+    <section class="band band-runs" data-band="runs">
+      <div class="bandhd"><h2>Run pressure</h2>
+        <span class="note">double-click a position for its tier</span>
+        <button class="caret" type="button" aria-label="Collapse">&#9662;</button></div>
+      <div class="bandbody"><div id="pressure"></div></div>
+    </section>
 
-    <div id="block"></div>
-    <div id="pressure"></div>
+    <section class="band band-panes" data-band="panes">
+      <div class="bandbody panes">
+        <div class="pane2 band" data-band="pool">
+          <div class="bandhd"><h2>Player pool</h2>
+            <span class="note">by $PROJ</span>
+            <button class="caret" type="button" aria-label="Collapse">&#9662;</button></div>
+          <div class="bandbody listwrap" id="pool"></div>
+        </div>
+        <div class="pane2 band" data-band="log">
+          <div class="bandhd"><h2>Draft log</h2>
+            <span class="note">newest first</span>
+            <button class="caret" type="button" aria-label="Collapse">&#9662;</button></div>
+          <div class="bandbody listwrap" id="log"></div>
+        </div>
+      </div>
+    </section>
   </aside>
 
   <main class="board">
@@ -984,6 +1175,46 @@ document.getElementById("rosters").addEventListener("click", (e) => {{
   views[slot] = btn.dataset.pane;
   localStorage.setItem("draftsim.views", JSON.stringify(views));
   applyViews();
+}});
+
+// What is folded away, and remembered. Three consumers -- the bands down the
+// left, the pool/log panes, and the four pressure cards -- because they are the
+// same gesture: give the room to whatever you are actually reading.
+//
+// Keyed by a stable name (`data-band`, or the position for a card) rather than
+// by index, so a collapsed thing stays collapsed even though the markup holding
+// it is thrown away and rebuilt twice a second.
+let collapsed = [];
+try {{ collapsed = JSON.parse(localStorage.getItem("draftsim.collapsed")) || []; }} catch (e) {{}}
+
+function applyCollapsed() {{
+  document.querySelectorAll("[data-band]").forEach((el) => {{
+    el.classList.toggle("collapsed", collapsed.includes("band:" + el.dataset.band));
+  }});
+  document.querySelectorAll(".pcard").forEach((el) => {{
+    el.classList.toggle("collapsed", collapsed.includes("pos:" + el.dataset.pos));
+  }});
+}}
+
+function toggleCollapsed(id) {{
+  const at = collapsed.indexOf(id);
+  if (at === -1) collapsed.push(id); else collapsed.splice(at, 1);
+  localStorage.setItem("draftsim.collapsed", JSON.stringify(collapsed));
+  applyCollapsed();
+}}
+
+// Delegated from the document, because half these carets are in markup that is
+// replaced on every tick and the other half are not -- one listener covers both.
+document.addEventListener("click", (e) => {{
+  const caret = e.target.closest(".caret");
+  if (!caret) return;
+  // The card's caret sits inside a card that opens its tier detail on
+  // double-click; without this a quick fold-unfold would also open the panel.
+  e.stopPropagation();
+  const card = caret.closest(".pcard");
+  if (card) return toggleCollapsed("pos:" + card.dataset.pos);
+  const band = caret.closest("[data-band]");
+  if (band) toggleCollapsed("band:" + band.dataset.band);
 }});
 
 // Seat order, dragged by hand and remembered. Presentational: the server always
@@ -1105,9 +1336,12 @@ async function tick() {{
     if (dragging === null) {{
       rosters.innerHTML = s.rosters_html;
       document.getElementById("pressure").innerHTML = s.pressure_html;
+      document.getElementById("pool").innerHTML = s.pool_html;
+      document.getElementById("log").innerHTML = s.log_html;
       highlight();
       applyViews();
       applyOrder();
+      applyCollapsed();
     }}
     document.getElementById("pulse").textContent = s.polled_at;
     document.getElementById("warn").textContent = s.warning || "";
@@ -1117,6 +1351,9 @@ async function tick() {{
     document.getElementById("pulse").textContent = "server unreachable";
   }}
 }}
+// Before the first fetch, so a folded band never flashes open on load -- and so
+// the fold survives a server that is down when the page opens.
+applyCollapsed();
 tick();
 setInterval(tick, 2000);
 </script>

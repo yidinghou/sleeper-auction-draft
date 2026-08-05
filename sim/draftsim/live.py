@@ -23,8 +23,10 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from .live_render import (
+    render_log,
     render_nomination,
     render_page,
+    render_pool,
     render_pressure,
     render_rosters,
 )
@@ -133,6 +135,8 @@ class DraftPoller:
             "nomination_html": render_nomination(state, nom, nominee),
             "rosters_html": render_rosters(state),
             "pressure_html": render_pressure(state),
+            "pool_html": render_pool(state),
+            "log_html": render_log(state),
             "polled_at": time.strftime("%H:%M:%S"),
             "warning": stale,
         }
@@ -169,6 +173,8 @@ class DraftPoller:
                 "nomination_html": '<div class="block idle">connecting…</div>',
                 "rosters_html": "",
                 "pressure_html": "",
+                "pool_html": "",
+                "log_html": "",
                 "polled_at": "—",
                 "warning": error or "",
             }

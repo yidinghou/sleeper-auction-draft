@@ -299,3 +299,38 @@ def test_double_click_opens_and_the_open_position_survives_a_refresh():
 def test_escape_closes_the_panel_before_it_touches_the_board():
     page = render_page("123")
     assert "if (pressureEl.dataset.open) openTier(null); else setMaxed(false);" in page
+
+
+def test_the_panel_covers_its_own_band_and_not_the_whole_column():
+    # The panel is anchored inside `.band`, which is the positioned ancestor --
+    # so the block above it and the pool/log below stay visible. It used to be
+    # anchored to `.side`, which is what made opening it feel like leaving.
+    page = render_page("123")
+    assert ".band {" in page and "position: relative;" in page
+    assert ".side {" in page
+    side = page.split(".side {")[1].split("}")[0]
+    assert "position: relative" not in side
+
+
+# -- collapsing ---------------------------------------------------------------
+
+
+def test_every_card_carries_a_caret(midway):
+    html = render_pressure(midway)
+    assert html.count('class="caret"') == len(TIERS)
+
+
+def test_a_collapsed_card_hands_its_width_to_the_others():
+    # Flex, not a grid template: that is what makes collapsing TE widen QB/RB/WR
+    # instead of leaving a narrow gap where TE was.
+    page = render_page("123")
+    assert ".pcard.collapsed { flex: 0 0 auto;" in page.replace("{{", "{")
+    assert ".pgrid { display: flex;" in page.replace("{{", "{")
+
+
+def test_the_caret_does_not_also_open_the_tier_panel():
+    # The caret sits inside a card that opens its detail on double-click; a
+    # quick fold-unfold would otherwise open the panel too.
+    page = render_page("123")
+    handler = page.split('e.target.closest(".caret")')[1].split("});")[0]
+    assert "e.stopPropagation();" in handler
