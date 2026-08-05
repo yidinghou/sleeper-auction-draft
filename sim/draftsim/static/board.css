@@ -509,9 +509,9 @@
       calc(20px * var(--fs)) calc(22px * var(--fs)); }
   .trow:not(:last-child) { border-bottom: 1px solid #f6f6f6; }
   .trow i { font-style: normal; font-variant-numeric: tabular-nums;
-    text-align: right; color: #888; font-size: calc(10px * var(--fs)); }
-  .trow .tr { text-align: left; color: #ccc; }
-  .trow .ttm { text-align: left; color: #aaa; }
+    text-align: right; color: #6b6b6b; font-size: calc(10px * var(--fs)); }
+  .trow .tr { text-align: left; color: #777; }
+  .trow .ttm { text-align: left; color: #808080; }
   .trow .tpr { color: #1a7f37; font-weight: 700; }
   /* Below the cliff is a different class of player, not merely a later one. */
   .trow.below { opacity: 0.55; }
@@ -594,24 +594,30 @@
   .prow:not(:last-child), .lrow:not(:last-child) { border-bottom: 1px solid #f7f7f7; }
   .prow b, .lrow b { font-weight: 400; min-width: 0; overflow: hidden;
     white-space: nowrap; text-overflow: ellipsis; }
+  /* These greys are floors, not preferences. At 9px on white, #999 is about
+     2.8:1 and #ccc about 1.6:1 -- printed rather than readable, which is what
+     the pick number was. Nothing secondary here goes lighter than #949494, and
+     anything carrying a fact goes to #777 or darker. The hierarchy still reads:
+     it is the gap between the name and the number that says which is which, and
+     that gap survives being moved up as a whole. */
   .prow i, .lrow i { font-style: normal; font-variant-numeric: tabular-nums;
-    text-align: right; font-size: calc(9px * var(--fs)); color: #999; }
+    text-align: right; font-size: calc(9px * var(--fs)); color: #6b6b6b; }
   .prow .badge, .lrow .badge { font-size: calc(8px * var(--fs)); min-width: 0;
     padding: 1px 0; }
-  .prow .ptm, .lrow .ltm { text-align: left; color: #bbb; }
+  .prow .ptm, .lrow .ltm { text-align: left; color: #777; }
   /* The bye sits beside the points and both are bare two- or three-digit
      numbers, so the bye is held a shade back: the points are what you read,
      the bye is what you check. The row's hover names all six. */
-  .prow .pby, .lrow .lby { color: #bbb; }
+  .prow .pby, .lrow .lby { color: #949494; }
   .prow .ppr { color: #1a7f37; font-weight: 700; }
-  .lrow .lno { text-align: left; color: #ccc; }
+  .lrow .lno { text-align: left; color: #777; }
   .lrow .lst { text-align: left; color: #888; font-weight: 700; }
   .lrow .lpr { color: #1a1a1a; font-weight: 700; }
   /* Over and under are a status pair, so they carry a sign as well as a hue --
      the percentage is legible without the colour and vice versa. */
   .ldl.over { color: #c0392b; }
   .ldl.under { color: #1a7f37; }
-  .ldl.even { color: #aaa; }
+  .ldl.even { color: #888; }
   .pnone { color: #aaa; font-size: calc(10px * var(--fs)); padding: 4px 2px; }
 
   /* Maximized: the board leaves its half and takes the viewport. Nothing is
