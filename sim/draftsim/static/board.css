@@ -551,14 +551,19 @@
 
   .prow, .lrow { display: grid; align-items: center; gap: 5px; padding: 1px 2px;
     font-size: calc(10px * var(--fs)); line-height: 1.2; min-width: 0; }
+  /* pos · name · team · bye · pts · $PROJ */
   .prow { grid-template-columns:
     calc(22px * var(--fs)) minmax(0, 1fr) calc(20px * var(--fs))
-    calc(22px * var(--fs)) calc(24px * var(--fs)); }
-  /* The log's pill is wider than the pool's: it carries a rank as well as a
+    calc(14px * var(--fs)) calc(22px * var(--fs)) calc(24px * var(--fs)); }
+  /* #no · seat · pos+rank · name · team · bye · pts · price · delta.
+     Nine columns, which the pane can afford: the sidebar is 3fr of a 3fr/2fr
+     page, so each of these two is ~400px rather than the ~230px a roster card
+     gets. The pill is wider than the pool's -- it carries a rank as well as a
      position, and "WR12" is four characters where "WR" is two. */
   .lrow { grid-template-columns:
     calc(22px * var(--fs)) calc(18px * var(--fs)) calc(28px * var(--fs))
-    minmax(0, 1fr) calc(22px * var(--fs)) calc(26px * var(--fs)); }
+    minmax(0, 1fr) calc(20px * var(--fs)) calc(14px * var(--fs))
+    calc(22px * var(--fs)) calc(22px * var(--fs)) calc(26px * var(--fs)); }
   .prow:not(:last-child), .lrow:not(:last-child) { border-bottom: 1px solid #f7f7f7; }
   .prow b, .lrow b { font-weight: 400; min-width: 0; overflow: hidden;
     white-space: nowrap; text-overflow: ellipsis; }
@@ -566,7 +571,11 @@
     text-align: right; font-size: calc(9px * var(--fs)); color: #999; }
   .prow .badge, .lrow .badge { font-size: calc(8px * var(--fs)); min-width: 0;
     padding: 1px 0; }
-  .prow .ptm { text-align: left; color: #bbb; }
+  .prow .ptm, .lrow .ltm { text-align: left; color: #bbb; }
+  /* The bye sits beside the points and both are bare two- or three-digit
+     numbers, so the bye is held a shade back: the points are what you read,
+     the bye is what you check. The row's hover names all six. */
+  .prow .pby, .lrow .lby { color: #bbb; }
   .prow .ppr { color: #1a7f37; font-weight: 700; }
   .lrow .lno { text-align: left; color: #ccc; }
   .lrow .lst { text-align: left; color: #888; font-weight: 700; }

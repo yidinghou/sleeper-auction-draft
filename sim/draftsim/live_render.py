@@ -564,6 +564,26 @@ def render_pressure(state: LeagueState) -> str:
 # kickers and third-string tight ends.
 _POOL_SHOWN = 300
 
+# ...but the pane filters by position, and three hundred names ordered by price
+# is not three hundred names *at a position*. Late on, the top 300 can hold four
+# tight ends, which makes the TE filter a pane that answers "almost nobody" when
+# the truth is "nobody worth having". This many per position are carried on top
+# of the overall cut so every filtered view is deep enough to be worth opening.
+_POOL_PER_POS = 40
+
+
+def _meta_tip(player: Player) -> str:
+    """The row's small columns, spelled out for the hover.
+
+    Team, bye and points are two or three characters each in the list, which is
+    all the room they get and rather less than they need to explain themselves.
+    """
+    bye = f"BYE {player.bye}" if player.bye else "no bye listed"
+    return (
+        f"{player.name} · {player.pos} · {player.team or 'FA'} · {bye}"
+        f" · {player.points:.0f} pts"
+    )
+
 
 def render_pool(state: LeagueState) -> str:
     """Who is left, dearest first.
@@ -578,18 +598,37 @@ def render_pool(state: LeagueState) -> str:
     name, which is more than "Christian McCaffrey" needs. It is also the pane
     where the distinction earns its keep: the pool is where two men who share a
     short name sit in the same list, and "B. Robinson" cannot tell you which.
+
+    Team, bye and points ride alongside the price because the pane is where you
+    decide who to nominate, and "another receiver on my quarterback's bye" is
+    part of that decision rather than something to go and look up.
     """
     ranked = sorted(
         state.available, key=lambda p: (-market_value(p), -p.points, p.name)
     )
+    # The overall cut, plus a floor per position so the filters have something to
+    # show. Both are taken from the one sorted list and re-read from it, so the
+    # pane stays in `$PROJ` order however the two selections overlap.
+    keep = {p.id for p in ranked[:_POOL_SHOWN]}
+    per_pos: Dict[str, int] = {}
+    for player in ranked:
+        seen = per_pos.get(player.pos, 0)
+        if seen < _POOL_PER_POS:
+            per_pos[player.pos] = seen + 1
+            keep.add(player.id)
+    shown = [p for p in ranked if p.id in keep]
+
     rows = "".join(
-        f'<div class="prow">{badge(player.pos, light=True)}'
+        f'<div class="prow" data-pos="{_esc(player.pos)}"'
+        f' title="{_esc(_meta_tip(player))}">'
+        f"{badge(player.pos, light=True)}"
         f'<b>{_esc(player.name)}</b>'
         f'<i class="ptm">{_esc(player.team or "FA")}</i>'
+        f'<i class="pby">{player.bye or "—"}</i>'
         f'<i class="ppt">{player.points:.0f}</i>'
         f'<i class="ppr">{f"${market_value(player):.0f}" if market_value(player) else "—"}</i>'
         "</div>"
-        for player in ranked[:_POOL_SHOWN]
+        for player in shown
     )
     if not rows:
         rows = '<div class="pnone">the board is empty</div>'
@@ -651,11 +690,15 @@ def render_log(state: LeagueState) -> str:
     """
     ranks = _pos_ranks(state)
     rows = "".join(
-        f'<div class="lrow">'
+        f'<div class="lrow" data-pos="{_esc(pick.player.pos)}"'
+        f' title="{_esc(_meta_tip(pick.player))} · ${pick.price}">'
         f'<i class="lno">#{pick.pick_no}</i>'
         f'<i class="lst">S{pick.slot}</i>'
         f"{badge(pick.player.pos, light=True, label=ranks.get(pick.pick_no))}"
         f'<b>{_esc(pick.player.name)}</b>'
+        f'<i class="ltm">{_esc(pick.player.team or "FA")}</i>'
+        f'<i class="lby">{pick.player.bye or "—"}</i>'
+        f'<i class="lpt">{pick.player.points:.0f}</i>'
         f"{_log_price(pick)}</div>"
         for pick in sorted(state.picks, key=lambda p: -p.pick_no)
     )
