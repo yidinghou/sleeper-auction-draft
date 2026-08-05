@@ -248,6 +248,64 @@ def test_a_position_nobody_is_short_at_recedes(finished, midway):
     assert ".pcard.done:hover { opacity: 1; }" in page
 
 
+def _health(card: str) -> list:
+    bar = card.split('class="phealth"')[1].split("</div>")[0]
+    return [float(w.split("%")[0]) for w in bar.split("width:")[1:]]
+
+
+def test_the_health_bar_is_need_answered_over_need_total(midway):
+    # The same shape the roster card's budget bar makes, so the state reads
+    # before the counter beside it is parsed. Filled is capped per seat: a fourth
+    # quarterback on one roster must not fill the bar for the eleven teams still
+    # without one -- which is exactly what makes the coloured stretch
+    # `total - wanted`, so the bar and the TIER pane cannot disagree.
+    html = render_pressure(midway)
+    grew = 0
+    for pr in pressure(midway):
+        card = html.split(f'data-pos="{pr.pos}"')[1].split("</section>")[0]
+        met, over = _health(card)
+        total = round(DRAFT_TARGETS[pr.pos] * midway.config.teams)
+        assert met == pytest.approx(100 * (total - pr.wanted) / total, abs=0.1)
+        assert met + over <= 100.0 + 1e-6
+        grew += met > 0
+    assert grew, "no position had been drafted into -- every bar was empty"
+
+
+def test_the_health_bar_greys_what_answered_nobody(midway, finished):
+    # Supply spent on somebody's fourth is gone off the board either way, so it
+    # sits inside the bar -- but grey, because it is not progress.
+    html = render_pressure(midway)
+    surplus = 0
+    for pr in pressure(midway):
+        card = html.split(f'data-pos="{pr.pos}"')[1].split("</section>")[0]
+        met, over = _health(card)
+        total = round(DRAFT_TARGETS[pr.pos] * midway.config.teams)
+        bought = sum(min(l.have, l.want) for l in pr.lines.values())
+        assert over == pytest.approx(
+            100 * min(max(0.0, pr.drafted - bought), total - bought) / total, abs=0.1
+        )
+        assert met + over <= 100.0 + 1e-6
+        surplus += over > 0
+    assert surplus, "nobody drafted past a target -- the grey was never checked"
+    # And once a position is answered the grey has nowhere to go: RB finishes at
+    # 62 bodies against a want of 30, and the bar is full rather than overrun.
+    done = render_pressure(finished).split('data-pos="RB"')[1].split("</section>")[0]
+    assert _health(done) == [100.0, 0.0]
+    page = render_page("123")
+    assert ".phealth i { display: block; height: 100%; background: var(--pos" in page
+    assert ".phealth i.over { background: #ccc; }" in page
+
+
+def test_the_health_bar_folds_away_with_the_card(midway):
+    # Three pixels squeezed onto a rail is a smear, not a reading. It is a
+    # sibling of the header rather than part of it, which is what puts it under
+    # the rule that empties a folded card.
+    page = render_page("123")
+    assert ".pcard.collapsed > *:not(.phd) { display: none; }" in page
+    card = render_pressure(midway).split('data-pos="QB"')[1].split("</section>")[0]
+    assert card.index('class="phealth"') > card.index("</div>")
+
+
 def test_the_card_says_how_many_teams_are_short(midway):
     html = render_pressure(midway)
     for pr in pressure(midway):

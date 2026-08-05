@@ -377,6 +377,36 @@ def _seat_tile(seat: Seat, line: PositionLine, color: str) -> str:
     )
 
 
+def _health_bar(pr: PositionPressure, total: int) -> str:
+    """How much of the league's want at this position is already bought.
+
+    The same bargain the roster card's budget bar makes, and drawn the same way:
+    a track with the story told in percentage widths, so the state reads before
+    the counter beside it is parsed. Filled is what actually answers somebody's
+    target -- capped per seat, so a fourth quarterback on one roster cannot fill
+    the bar for the eleven teams still without one. That makes the coloured
+    stretch exactly `total - wanted`, so the bar and the TIER pane's "N wanted"
+    can never tell different stories about the same moment.
+
+    Grey is the surplus: bodies gone off the board that answered nobody's need.
+    It is supply that is spent either way, which is why it sits inside the bar
+    rather than in the empty track, and grey rather than coloured, because it is
+    not progress.
+    """
+    if total <= 0:
+        return ""
+    # Clamped, because `total` is the rounded target and the fractional wants
+    # need not round with it -- 3.5 across eleven seats is 38.5 of a bar of 38.
+    met = min(float(total), sum(min(line.have, line.want) for line in pr.lines.values()))
+    over = min(max(0.0, pr.drafted - met), total - met)
+    return (
+        '<div class="phealth">'
+        f'<i style="width:{100 * met / total:.1f}%"></i>'
+        f'<i class="over" style="width:{100 * over / total:.1f}%"></i>'
+        "</div>"
+    )
+
+
 def _pressure_card(state: LeagueState, pr: PositionPressure) -> str:
     """One position: supply on the board over the league's fill state."""
     color = POS_COLOR_LIGHT.get(pr.pos, POS_FALLBACK_LIGHT)
@@ -435,6 +465,9 @@ def _pressure_card(state: LeagueState, pr: PositionPressure) -> str:
         '<button data-pane="runs" type="button">RUNS</button>'
         '<button data-pane="tier" type="button">TIER</button></span>'
         "</div>"
+        # Outside the header, so it folds away with the rest: three pixels
+        # squeezed onto a rail is a smear, not a reading.
+        f"{_health_bar(pr, total)}"
         f"{runs}{_pressure_detail(pr)}</section>"
     )
 

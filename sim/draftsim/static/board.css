@@ -405,6 +405,15 @@
   .sev-run { --sev: #c0392b; --sevbg: #fdecec; }
   .sev-tight { --sev: #b7791f; --sevbg: #fdf6e6; }
   .sev-safe { --sev: #1a7f37; --sevbg: #eefaf0; }
+  /* How much of the league's want at this position is bought, in the shape the
+     roster card already uses for money: colour is need answered, grey is supply
+     spent on somebody's fourth, and the track is what is still owed. It sits
+     under the header rather than in it so the fold takes it with everything
+     else -- three pixels on a rail is a smear. */
+  .phealth { height: 3px; border-radius: 2px; display: flex;
+    background: #eee; overflow: hidden; }
+  .phealth i { display: block; height: 100%; background: var(--pos, #7c90a0); }
+  .phealth i.over { background: #ccc; }
   .plbl { font-style: normal; font-size: calc(8px * var(--fs)); color: #aaa;
     text-transform: uppercase; letter-spacing: 0.03em;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
