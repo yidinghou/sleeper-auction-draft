@@ -370,6 +370,20 @@ def test_an_open_cards_width_does_not_depend_on_its_neighbours():
     assert ".pcard.collapsed { flex: 0 0 auto;" in page
 
 
+def test_a_folded_card_still_reports_the_position(midway):
+    # Badge, how much of the position is gone, how many are left. Only the pane
+    # toggle goes with the fold -- it controls something no longer on screen.
+    page = render_page("123")
+    assert ".pcard.collapsed .pseg { display: none; }" in page
+    assert ".pcard.collapsed .pcount" not in page
+    # And the count is per position, against that position's own target.
+    html = render_pressure(midway)
+    for pr in pressure(midway):
+        head = html.split(f'data-pos="{pr.pos}"')[1].split("</div>")[0]
+        total = round(DRAFT_TARGETS[pr.pos] * midway.config.teams)
+        assert f'<span class="pcount"><b>{pr.drafted}</b>/{total}</span>' in head
+
+
 def test_the_pane_toggle_does_not_fold_the_card():
     # The toggle is a button inside the header, and the header is the fold. The
     # switch has to claim the click first, or switching a pane would fold the

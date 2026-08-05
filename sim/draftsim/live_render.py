@@ -991,9 +991,11 @@ def render_page(draft_id: str) -> str:
      reads "put away" from the shape without having to read the card. */
   .pcard.collapsed {{ flex: 0 0 auto; }}
   .pcard.collapsed > *:not(.phd) {{ display: none; }}
-  /* A folded card keeps the badge and how many are left. The pane toggle goes
-     with the panes -- it is a control for something you have put away. */
-  .pcard.collapsed .pcount, .pcard.collapsed .pseg {{ display: none; }}
+  /* A folded card keeps the badge, how much of the position is gone, and how
+     many are left -- the three facts you would still want from a position you
+     have stopped working on. Only the pane toggle goes, because it is a control
+     for something that is no longer on screen. */
+  .pcard.collapsed .pseg {{ display: none; }}
   /* The pill is pushed right by `margin-left: auto` in a full-width header. On a
      rail there is no right to push to, so it hugs the badge instead. */
   .pcard.collapsed .pverd {{ margin-left: 4px; }}
