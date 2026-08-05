@@ -361,10 +361,22 @@ def _seat_tile(seat: Seat, line: PositionLine, color: str) -> str:
     """One seat's fill at one position: who, what's left, and the pips.
 
     `data-seat` is what the client's `applyOrder()` reorders on, so this tile
-    lands wherever that seat's roster card was dragged to. A seat that has met
-    its target dims: what is left standing in the grid is the live demand.
+    lands wherever that seat's roster card was dragged to.
+
+    A seat that has met its target settles: the tile fills grey and the pips give
+    way to a check. Which seats are still hunting is the one question the grid
+    exists to answer, and it used to be asked with a 0.3 opacity on 8px type --
+    a subtlety at the size the tile is actually read at. A filled shape carries
+    across the grid at a glance; a faded one has to be looked at to be seen.
+    The check is the same width as the pips it replaces, so the 4x3 grid does not
+    shuffle every time a seat fills up.
     """
     done = "" if line.need else " done"
+    body = (
+        '<span class="tfull">✓</span>'
+        if not line.need
+        else _pips(line.have, line.want, color, cap=True)
+    )
     tip = (
         f"S{seat.slot} — {line.have}/{_num(line.want)} {line.pos} · "
         + ("full" if not line.need else f"{_num(line.need)} to go")
@@ -373,7 +385,7 @@ def _seat_tile(seat: Seat, line: PositionLine, color: str) -> str:
     return (
         f'<span class="tile{done}" data-seat="{seat.slot}" title="{_esc(tip)}">'
         f'<span class="ttop"><b>S{seat.slot}</b><i>${seat.budget_left}</i></span>'
-        f"{_pips(line.have, line.want, color, cap=True)}</span>"
+        f"{body}</span>"
     )
 
 

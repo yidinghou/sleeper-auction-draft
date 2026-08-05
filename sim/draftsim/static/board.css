@@ -431,7 +431,17 @@
   .tile .pip { height: calc(4px * var(--fs)); width: 100%; }
   /* A seat that has met its target has stopped buying. Receding it leaves the
      live demand as the only thing standing in the grid, which is the read. */
-  .tile.done { opacity: 0.3; }
+  /* Settled: this seat has what it wanted here and is out of the bidding. A
+     filled grey block with a check, not a fade -- at 8px an opacity is a
+     subtlety, and which seats are still hunting is the one thing the grid is
+     for. The check occupies exactly the pips' height so the 4x3 grid holds its
+     shape as seats fill up. */
+  .tile.done { background: #e7e7e7; border-color: #dadada; }
+  .tile.done .ttop b { color: #8c8c8c; font-weight: 400; }
+  .tile.done .ttop i { color: #9a9a9a; font-weight: 400; }
+  .tfull { display: flex; align-items: center; justify-content: center;
+    height: calc(4px * var(--fs)); font-size: calc(7px * var(--fs));
+    line-height: 1; color: #8c8c8c; }
 
   .bd { display: flex; flex-direction: column; }
   .brow { display: flex; justify-content: space-between; gap: 4px;

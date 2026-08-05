@@ -193,7 +193,7 @@ def test_tiles_ship_in_seat_order_so_the_client_can_rearrange_them(midway):
     assert slots == sorted(midway.seats)
 
 
-def test_a_finished_seat_dims_out_of_the_grid(midway):
+def test_a_finished_seat_settles_out_of_the_grid(midway):
     html = render_pressure(midway)
     dimmed = 0
     for pr in pressure(midway):
@@ -203,6 +203,12 @@ def test_a_finished_seat_dims_out_of_the_grid(midway):
             assert ("done" in tile) is (not pr.lines[slot].need)
             dimmed += "done" in tile
     assert dimmed, "no seat had met a target -- the assertion above proved nothing"
+    # And it settles as a filled shape, not as a fade. At the size a tile is
+    # actually read at, a 0.3 opacity was a subtlety -- and which seats are still
+    # hunting is the one question the grid exists to answer.
+    page = render_page("123")
+    assert ".tile.done { background: #e7e7e7; border-color: #dadada; }" in page
+    assert "opacity: 0.3" not in page
 
 
 def test_every_card_carries_a_board_list_tight_end_included(midway):
@@ -219,20 +225,30 @@ def test_a_tile_never_draws_more_than_the_target_asks_for(finished):
     # Depth is a roster question. Inside a pressure tile a fourth quarterback
     # only made one of twelve tiles wider than its neighbours, and what the run
     # pane wants from that seat is that it has stopped buying -- which the
-    # dimming says. The NEED rows still draw the surplus in full
+    # settled tile says. The NEED rows still draw the surplus in full
     # (test_live_state: test_surplus_shows_as_extra_pips_outside_the_run).
     html = render_pressure(finished)
     assert "pip extra" not in html
-    deep = 0
+    deep = short = 0
     for pr in pressure(finished):
         card = html.split(f'data-pos="{pr.pos}"')[1].split("</section>")[0]
         for slot in finished.seats:
             line = pr.lines[slot]
             tile = card.split(f'data-seat="{slot}"')[1].split("</span></span>")[0]
+            if not line.need:
+                # A seat that is full draws no pips at all -- pips are what is
+                # still owed, and it owes nothing. Which also settles the depth
+                # question: every seat with a surplus is a full one, so surplus
+                # cannot reach the grid whatever it does to a roster.
+                assert 'class="tfull"' in tile
+                assert 'class="pip' not in tile
+                deep += line.have > math.ceil(line.want)
+                continue
             filled = tile.count('class="pip on"') + tile.count('class="pip half on"')
             assert filled == min(line.have, math.ceil(line.want))
-            deep += line.have > math.ceil(line.want)
+            short += 1
     assert deep, "no seat was over its target -- the assertion above proved nothing"
+    assert short, "no seat was short -- the pip count above was never checked"
 
 
 def test_a_position_nobody_is_short_at_recedes(finished, midway):
