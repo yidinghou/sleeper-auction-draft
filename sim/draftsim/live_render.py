@@ -431,13 +431,11 @@ def render_pressure(state: LeagueState) -> str:
     return f'<div class="pgrid">{cards}</div><div class="pdets">{details}</div>'
 
 
-# The pool is a shortlist, not the sheet. Past forty rows nobody is scrolling to
-# find a name mid-auction -- they are searching Sleeper for it.
-_POOL_SHOWN = 40
-
-# How far back the log is worth keeping on screen. Older than this and it is
-# history, which is what the post-mortem report is for.
-_LOG_SHOWN = 50
+# Deep enough to scroll to anyone worth a dollar. The sheet runs to thousands of
+# bodies, nearly all of them undraftable, so this is a limit on payload rather
+# than a judgment: past three hundred names ordered by price, what is left is
+# kickers and third-string tight ends.
+_POOL_SHOWN = 300
 
 
 def render_pool(state: LeagueState) -> str:
@@ -489,8 +487,11 @@ def _log_price(pick: SeatPick) -> str:
 def render_log(state: LeagueState) -> str:
     """Every sale, newest first.
 
-    Newest first because the only rows read during a draft are the last few --
-    what just went, for how much, and whether that was over the odds.
+    Newest first because the rows read *during* a draft are the last few -- what
+    just went, for how much, and whether that was over the odds. Uncapped,
+    because the rows read *between* nominations are the ones from an hour ago,
+    when you are trying to remember what a receiver went for; a draft is at most
+    a couple of hundred picks, so the whole thing is cheap to carry.
     """
     rows = "".join(
         f'<div class="lrow">'
@@ -498,7 +499,7 @@ def render_log(state: LeagueState) -> str:
         f'<i class="lst">S{pick.slot}</i>'
         f'<b>{_esc(_short_name(pick.player))}</b>'
         f"{_log_price(pick)}</div>"
-        for pick in sorted(state.picks, key=lambda p: -p.pick_no)[:_LOG_SHOWN]
+        for pick in sorted(state.picks, key=lambda p: -p.pick_no)
     )
     if not rows:
         rows = '<div class="pnone">no picks yet</div>'
@@ -1321,6 +1322,21 @@ function highlight() {{
   }});
 }}
 
+// Swap a scroller's rows without losing where you were reading.
+//
+// The log grows at the *top* -- newest first -- so a new pick would also shove
+// the rows under your eye down by one. Anchoring to the height instead of the
+// raw offset keeps the row you were looking at where it was, and a scroller
+// still at the top stays pinned there so new picks arrive in view.
+function swapKeepingScroll(id, html) {{
+  const el = document.getElementById(id);
+  const wasAtTop = el.scrollTop === 0;
+  const before = el.scrollHeight;
+  const top = el.scrollTop;
+  el.innerHTML = html;
+  el.scrollTop = wasAtTop ? 0 : top + (el.scrollHeight - before);
+}}
+
 async function tick() {{
   const dot = document.getElementById("dot");
   try {{
@@ -1336,8 +1352,12 @@ async function tick() {{
     if (dragging === null) {{
       rosters.innerHTML = s.rosters_html;
       document.getElementById("pressure").innerHTML = s.pressure_html;
-      document.getElementById("pool").innerHTML = s.pool_html;
-      document.getElementById("log").innerHTML = s.log_html;
+      // Replacing the rows empties the scroller for an instant, which drops it
+      // back to the top. Unnoticeable over forty rows; over three hundred it
+      // means you cannot read past the first screen without the board yanking
+      // you back twice a second.
+      swapKeepingScroll("pool", s.pool_html);
+      swapKeepingScroll("log", s.log_html);
       highlight();
       applyViews();
       applyOrder();

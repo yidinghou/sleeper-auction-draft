@@ -63,16 +63,18 @@ def test_the_pool_is_ordered_by_the_dollar_it_quotes(midway):
 
 
 def test_the_pool_never_shows_a_player_who_is_gone(midway):
-    # The one thing a pool pane must not do. `available` already excludes them;
-    # this guards the render from reintroducing them.
-    html = render_pool(midway)
+    # The one thing a pool pane must not do. Checked by identity rather than by
+    # name: two different players really do share a short name in this pool --
+    # Bijan Robinson is drafted while a "B. Robinson" of Atlanta is not -- so a
+    # name search would fail on a board that is perfectly correct.
     taken = {pick.player.id for pick in midway.picks}
-    for player in midway.available:
-        if player.id in taken:
-            pytest.fail("available leaked a drafted player")
-    for pick in midway.picks[:20]:
-        if pick.player.points > 200:  # a name distinctive enough to search for
-            assert f">{_short_name(pick.player)}<" not in html
+    assert not [p for p in midway.available if p.id in taken]
+
+    expected = sorted(
+        midway.available, key=lambda p: (-market_value(p), -p.points, p.name)
+    )[:_POOL_SHOWN]
+    shown = re.findall(r"<b>(.*?)</b>", render_pool(midway))
+    assert shown == [_short_name(p) for p in expected]
 
 
 def test_the_pool_is_a_shortlist_not_the_sheet(midway):
@@ -177,5 +179,14 @@ def test_collapse_is_remembered_and_reapplied_after_every_swap():
 
 def test_the_panes_are_swapped_with_everything_else():
     page = render_page("123")
-    assert 'getElementById("pool").innerHTML = s.pool_html' in page
-    assert 'getElementById("log").innerHTML = s.log_html' in page
+    assert 'swapKeepingScroll("pool", s.pool_html)' in page
+    assert 'swapKeepingScroll("log", s.log_html)' in page
+
+
+def test_a_refresh_does_not_yank_you_back_to_the_top():
+    # Both panes are deep enough to scroll now, and both are replaced wholesale
+    # every 2s. Without this you cannot read past the first screen.
+    page = render_page("123")
+    body = page.split("function swapKeepingScroll")[1].split("}")[0]
+    assert "el.scrollHeight - before" in body  # anchored to the growth, not the offset
+    assert "wasAtTop" in body                  # a pane at rest stays pinned to newest
