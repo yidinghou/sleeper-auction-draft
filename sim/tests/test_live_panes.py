@@ -122,6 +122,15 @@ def test_the_log_names_the_seat_that_bought(midway):
     assert f"${newest.price}" in top
 
 
+def test_the_log_says_what_position_went(midway):
+    # The same pill the pool uses: what the room has been paying for running
+    # backs is a question you answer by colour, not by reading fifteen names.
+    newest = max(midway.picks, key=lambda p: p.pick_no)
+    top = render_log(midway).split('class="lrow"')[1]
+    assert f'class="badge"' in top
+    assert f">{newest.player.pos}<" in top
+
+
 @pytest.mark.parametrize(
     "price,proj,direction,shown",
     [

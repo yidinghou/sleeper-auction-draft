@@ -494,7 +494,10 @@ def render_log(state: LeagueState) -> str:
     """Every sale, newest first.
 
     Newest first because the rows read *during* a draft are the last few -- what
-    just went, for how much, and whether that was over the odds. Uncapped,
+    just went, for how much, and whether that was over the odds. The position
+    rides in the same pill the pool uses, because "what has the room paid for
+    running backs" is a question about a colour, not about fifteen surnames you
+    have to recognise one at a time. Uncapped,
     because the rows read *between* nominations are the ones from an hour ago,
     when you are trying to remember what a receiver went for; a draft is at most
     a couple of hundred picks, so the whole thing is cheap to carry.
@@ -503,6 +506,7 @@ def render_log(state: LeagueState) -> str:
         f'<div class="lrow">'
         f'<i class="lno">#{pick.pick_no}</i>'
         f'<i class="lst">S{pick.slot}</i>'
+        f"{badge(pick.player.pos, light=True)}"
         f'<b>{_esc(_short_name(pick.player))}</b>'
         f"{_log_price(pick)}</div>"
         for pick in sorted(state.picks, key=lambda p: -p.pick_no)
@@ -1005,14 +1009,15 @@ def render_page(draft_id: str) -> str:
     calc(22px * var(--fs)) minmax(0, 1fr) calc(20px * var(--fs))
     calc(22px * var(--fs)) calc(24px * var(--fs)); }}
   .lrow {{ grid-template-columns:
-    calc(22px * var(--fs)) calc(18px * var(--fs)) minmax(0, 1fr)
-    calc(22px * var(--fs)) calc(26px * var(--fs)); }}
+    calc(22px * var(--fs)) calc(18px * var(--fs)) calc(20px * var(--fs))
+    minmax(0, 1fr) calc(22px * var(--fs)) calc(26px * var(--fs)); }}
   .prow:not(:last-child), .lrow:not(:last-child) {{ border-bottom: 1px solid #f7f7f7; }}
   .prow b, .lrow b {{ font-weight: 400; min-width: 0; overflow: hidden;
     white-space: nowrap; text-overflow: ellipsis; }}
   .prow i, .lrow i {{ font-style: normal; font-variant-numeric: tabular-nums;
     text-align: right; font-size: calc(9px * var(--fs)); color: #999; }}
-  .prow .badge {{ font-size: calc(8px * var(--fs)); min-width: 0; padding: 1px 0; }}
+  .prow .badge, .lrow .badge {{ font-size: calc(8px * var(--fs)); min-width: 0;
+    padding: 1px 0; }}
   .prow .ptm {{ text-align: left; color: #bbb; }}
   .prow .ppr {{ color: #1a7f37; font-weight: 700; }}
   .lrow .lno {{ text-align: left; color: #ccc; }}
