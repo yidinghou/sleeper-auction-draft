@@ -855,8 +855,6 @@ def render_page(draft_id: str) -> str:
      All four cards are the same size, TE included: one starter is still a
      position you can be run out of, and the room is there. */
   #pressure {{ min-height: 0; flex: 1; display: flex; overflow: hidden; }}
-  /* Flex, not grid, for the same reason the bands are: a collapsed card hands
-     its width to its siblings with no arithmetic. */
   /* Cards size to their content and sit at the top of the band. Stretching them
      to the band's full height just puts a hand of white space under the board
      list and makes four short cards look like four half-empty ones. */
@@ -867,16 +865,27 @@ def render_page(draft_id: str) -> str:
   /* Capped at the band's height, not stretched to it: a card sizes to whatever
      it holds, but a tier list of twenty names must scroll inside the card
      rather than growing it down over the pool and the log below. */
+  /* A fixed quarter (less the three 5px gaps), never a share of what is going.
+     Cards used to be `flex: 1 1 0` and divide the row between them, so an open
+     card was three times its usual width if its neighbours were folded and the
+     same card was a different size every time you came back to it. Pinned, an
+     open card is the width you last read it at whatever the other three do --
+     and what folding buys is quiet, not room, which is what it was for. */
   .pcard {{ border: 1px solid #ddd; border-radius: 6px; padding: 4px 5px 5px;
     min-width: 0; display: flex; flex-direction: column; gap: 3px;
-    cursor: zoom-in; flex: 1 1 0; max-height: 100%; }}
-  /* Collapsed to its header: the badge and how many are left, which is the one
-     line you would still want from a position you have stopped working on. */
+    cursor: zoom-in; flex: 0 0 calc((100% - 15px) / 4); max-height: 100%; }}
+  /* Folded, a card is its header and nothing else: the badge and how many are
+     left, which is the one line you would still want from a position you have
+     stopped working on. It shrinks to what those two need -- a rail, so the eye
+     reads "put away" from the shape without having to read the card. */
   .pcard.collapsed {{ flex: 0 0 auto; cursor: zoom-in; }}
   .pcard.collapsed > *:not(.phd) {{ display: none; }}
   /* A folded card keeps the badge and how many are left. The pane toggle goes
      with the panes -- it is a control for something you have put away. */
   .pcard.collapsed .pcount, .pcard.collapsed .pseg {{ display: none; }}
+  /* The pill is pushed right by `margin-left: auto` in a full-width header. On a
+     rail there is no right to push to, so it hugs the badge instead. */
+  .pcard.collapsed .pverd {{ margin-left: 4px; }}
   .pcard:hover {{ border-color: #bbb; }}
   .phd {{ display: flex; align-items: center; gap: 4px; min-width: 0; }}
   .phd .badge {{ min-width: calc(20px * var(--fs)); font-size: calc(8px * var(--fs));

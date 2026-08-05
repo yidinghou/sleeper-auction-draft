@@ -357,12 +357,16 @@ def test_a_folded_card_shows_nothing_but_its_header_in_either_pane():
     assert hide > page.index(".pcard.view-tier .ppane.pdet {")
 
 
-def test_a_collapsed_card_hands_its_width_to_the_others():
-    # Flex, not a grid template: that is what makes collapsing TE widen QB/RB/WR
-    # instead of leaving a narrow gap where TE was.
-    page = render_page("123")
-    assert ".pcard.collapsed { flex: 0 0 auto;" in page.replace("{{", "{")
-    assert ".pgrid { display: flex;" in page.replace("{{", "{")
+def test_an_open_cards_width_does_not_depend_on_its_neighbours():
+    # The bug this replaces: cards were `flex: 1 1 0` and divided the row between
+    # them, so opening one while the other three were folded made it three times
+    # its usual width. Pinned to a quarter, a card is the size you last read it
+    # at, and folding buys quiet rather than room.
+    page = render_page("123").replace("{{", "{")
+    assert "flex: 0 0 calc((100% - 15px) / 4);" in page
+    assert "flex: 1 1 0;" not in page.split(".pcard { border")[1].split("}")[0]
+    # Folded, a card shrinks to its own header -- a rail, not a quarter.
+    assert ".pcard.collapsed { flex: 0 0 auto;" in page
 
 
 def test_double_clicking_the_toggle_does_not_fold_the_card():
