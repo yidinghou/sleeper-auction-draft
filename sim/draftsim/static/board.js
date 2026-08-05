@@ -136,8 +136,10 @@ function applyRows() {
   // A header row and a card row per row of the board, in that order -- the same
   // interleaving `slotOrder` lays the items out in.
   const tmpl = [];
+  let shutRows = 0;
   for (let r = 0; r < rows; r++) {
     const shut = collapsed.includes("row:" + r);
+    if (shut) shutRows++;
     const mine = cards.slice(r * GRID_COLS, (r + 1) * GRID_COLS);
     mine.forEach((c) => c.classList.toggle("collapsed", shut));
     const head = heads[r];
@@ -149,12 +151,62 @@ function applyRows() {
       head.querySelector(".note").textContent =
         mine.map((c) => "S" + c.dataset.seat).join(" · ");
     }
-    tmpl.push("auto", shut ? "auto" : "1fr");
+    tmpl.push("var(--rowbar)", shut ? "auto" : "minmax(0, var(--rowfull))");
   }
+  // Seeded before the template that reads it. This grid is thrown away and
+  // rebuilt every two seconds, and the one that arrives has no `--rowfull` of
+  // its own -- so a template referencing it would be a declaration with an
+  // undefined variable in it, which CSS drops whole. `grid-auto-rows` would then
+  // size all 2N tracks evenly, and the strip height read back off them below
+  // would be a sixth of the board rather than a folded row.
+  grid.style.setProperty("--rowfull", evenRows(rows));
   // Explicit rows, because `grid-auto-rows: minmax(0, 1fr)` would hand a folded
   // row its full third back however little is left in it -- and would give each
   // header bar a third of the board besides.
   grid.style.gridTemplateRows = tmpl.join(" ");
+  // Now that the folded rows are `auto` tracks, they can say how tall a strip is.
+  grid.style.setProperty("--rowfull", rowHeight(grid, rows, shutRows));
+}
+
+// The board with nothing folded: the pane, less a bar per row and a gap between
+// every one of the 2N tracks, split N ways.
+function evenRows(rows) {
+  return `calc((100% - ${rowChrome(rows)}) / ${rows})`;
+}
+
+function rowChrome(rows) {
+  return `(${rows} * var(--rowbar) + ${2 * rows - 1} * 5px)`;
+}
+
+// How tall a folded row came out. Read back off the tracks just written, where a
+// shut row is `auto` and the browser has therefore already resolved it to the
+// height of the strip in it -- the layout engine's own answer, and the only one
+// that is not a guess about when the fold took effect. Measuring the card
+// instead reports whatever track it is stretched into, which is a stale row
+// height on the pass right after a swap.
+function stripHeight(grid, rows) {
+  const used = getComputedStyle(grid).gridTemplateRows.split(" ");
+  let tallest = 0;
+  for (let r = 0; r < rows; r++) {
+    if (!collapsed.includes("row:" + r)) continue;
+    tallest = Math.max(tallest, parseFloat(used[r * 2 + 1]) || 0);
+  }
+  return tallest;
+}
+
+// What an open row is worth. Folding is for making the rows you kept bigger, so
+// an open row takes an even share of what the folded ones gave up -- but only up
+// to the height two open rows get, which is where the growing stops. Past that
+// the type is fixed and the lineup is eight slots long, so a taller card is
+// white space, and the last row on the board would be a different object from
+// the one you were reading a moment ago.
+function rowHeight(grid, rows, shutRows) {
+  const open = rows - shutRows;
+  const s = shutRows && open ? stripHeight(grid, rows) : 0;
+  if (!s) return evenRows(rows);
+  const chrome = rowChrome(rows);
+  return `min(calc((100% - ${chrome} - ${shutRows} * ${s}px) / ${open}),` +
+    ` calc((100% - ${chrome} - ${s}px) / 2))`;
 }
 
 function applyCollapsed() {

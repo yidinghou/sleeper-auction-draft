@@ -119,13 +119,26 @@
      which is the shape the card wants now that the bench moved into its own
      pane -- a row per starter needs height, and three rows of four give each
      card a third more of it than four rows of three did. */
-  /* One density for the whole board, folded or not. The type used to step up as
-     rows were folded away, which meant putting four seats out of sight resized
-     every card still on screen -- a pressure card does not do that, and neither
-     does a row now. Rows are written as an explicit `grid-template-rows` by the
-     client when anything is folded; `grid-auto-rows` is the unfolded board. */
+  /* An open row is exactly `--rowfull` tall, and the client works that height
+     out from how many rows are folded (see `rowHeight`): folding is for making
+     the rows you kept bigger, so they share out what the folded ones gave up --
+     but the growing stops at the two-open height, and past that the freed space
+     is simply left empty. That cap is what makes the fold feel like the pressure
+     band's: the board it leaves behind is the board you were already reading,
+     one row taller, rather than a differently-sized object every time. It used
+     to hand a whole third to whoever was left and step the type up to match,
+     which resized every card on the board to put four of them away.
+
+     `--rowfull` is written by the client, which is the only side that knows how
+     many rows there are and how tall a strip came out; the arithmetic needs the
+     bar's height to be a number, which is what `--rowbar` is for.
+     `align-content: start` is the other half: with the tracks now free to sum to
+     less than the pane, the default `stretch` would blow a board of folded
+     strips back up to fill it. Rows are always written as an explicit
+     `grid-template-rows` by the client; `grid-auto-rows` is the no-JS paint. */
   #rosters { flex: 1; min-height: 0; }
   .grid { display: grid; gap: 5px; height: 100%;
+    --rowbar: 16px; align-content: start;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     grid-auto-rows: minmax(0, 1fr); }
   .card { background: #fff; border: 1px solid #ddd; border-radius: 6px;
@@ -203,10 +216,12 @@
 
      Thin: three of these are three rows' worth of chrome the cards used to have,
      so they carry one line at the smallest size on the board and no padding to
-     speak of. */
-  .rowhd { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 6px;
-    padding: 1px 6px; background: #f4f4f4; border-radius: 3px;
-    cursor: pointer; user-select: none; }
+     speak of. And `--rowbar` tall rather than as tall as its line, because the
+     height of an open row is the pane less the bars and the gaps, and that
+     subtraction has to be arithmetic CSS can do. */
+  .rowhd { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px;
+    height: var(--rowbar); padding: 0 6px; background: #f4f4f4;
+    border-radius: 3px; cursor: pointer; user-select: none; }
   .rowhd:hover { background: #ededed; }
   .rowhd h2 { font-size: calc(8.5px * var(--fs)); margin: 0; color: #666;
     text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }

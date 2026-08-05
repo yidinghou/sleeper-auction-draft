@@ -783,6 +783,53 @@ def test_folding_is_by_row_because_a_lone_card_frees_nothing():
     assert "grid.style.gridTemplateRows" in page
 
 
+def test_an_open_row_takes_what_the_folded_ones_gave_up():
+    # The point of folding a row is the room it hands the rows you kept -- an
+    # open row shares out what the folded ones freed, rather than the `1fr`
+    # scramble that also resized the type on every card to put four away.
+    page = render_page("123")
+    assert 'tmpl.push("var(--rowbar)", shut ? "auto" : "minmax(0, var(--rowfull))");' in page
+    assert '"1fr"' not in page.split("function applyRows()")[1].split("\n}")[0]
+    assert "function rowHeight(grid, rows, shutRows)" in page
+    assert "${shutRows} * ${s}px) / ${open}" in page
+    # With the tracks now free to sum to less than the pane, the default
+    # `stretch` would blow three folded strips back up to fill the whole of it.
+    assert "align-content: start;" in page
+    # The subtraction needs the bar's height as a number, not as `auto`.
+    assert "--rowbar: 16px;" in page
+    assert "height: var(--rowbar);" in page
+
+
+def test_the_row_height_is_seeded_before_the_template_that_reads_it():
+    # The grid is thrown away and rebuilt every two seconds, and the one that
+    # arrives has no `--rowfull` of its own. A template referencing it would be a
+    # declaration with an undefined variable in it, which CSS drops whole --
+    # `grid-auto-rows` would size all 2N tracks evenly, and the strip height read
+    # back off them would be a sixth of the board instead of a folded row. That
+    # is a row that settles at the wrong height a beat after every refresh.
+    page = render_page("123")
+    js = page.split("function applyRows()")[1].split("\n}")[0]
+    assert js.index('setProperty("--rowfull", evenRows(rows))') < js.index(
+        "grid.style.gridTemplateRows"
+    )
+    # And the strip is read only once the folded rows are `auto` tracks.
+    assert js.index("grid.style.gridTemplateRows") < js.index(
+        'setProperty("--rowfull", rowHeight('
+    )
+
+
+def test_an_open_row_stops_growing_at_the_two_open_height():
+    # Past that the type is fixed and the lineup is eight slots long, so a taller
+    # card is white space -- and the last row standing would be a different
+    # object from the one you were reading a moment ago.
+    page = render_page("123")
+    assert "min(calc((100% - ${chrome} - ${shutRows} * ${s}px) / ${open})," in page
+    assert "calc((100% - ${chrome} - ${s}px) / 2))" in page
+    # The board with nothing folded is the plain even split, with no cap in it.
+    assert "if (!s) return evenRows(rows);" in page
+    assert "return `calc((100% - ${rowChrome(rows)}) / ${rows})`;" in page
+
+
 def test_a_folded_row_is_positional_so_it_stays_where_you_folded_it():
     # Keyed by where the row renders, not by which seats are in it: the board
     # can be dragged into any order, and you folded the row you were looking at.
