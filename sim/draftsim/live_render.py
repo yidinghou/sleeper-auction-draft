@@ -341,11 +341,10 @@ def _pressure_card(state: LeagueState, pr: PositionPressure) -> str:
     return (
         f'<section class="pcard sev-{pr.severity}{" minor" if minor else ""}"'
         f' style="--pos:{color}" data-pos="{pr.pos}"'
-        f' title="double-click for the {_esc(pr.pos)} tier">'
+        f' title="click for the {_esc(pr.pos)} tier · double-click to fold">'
         f'<div class="phd">{badge(pr.pos, light=True)}'
         f'<span class="pcount"><b>{pr.drafted}</b>/{total}</span>'
         f'<span class="pverd">{pr.left} left</span>'
-        '<button class="caret" type="button" aria-label="Collapse">&#9662;</button>'
         "</div>"
         f'<i class="plbl">{len(pr.need_seats)} teams still need {_esc(pr.pos)}</i>'
         f'<div class="tiles">{tiles}</div>'
@@ -595,15 +594,20 @@ def render_page(draft_id: str) -> str:
   .band > .bandbody {{ flex: 1; min-height: 0; display: flex;
     flex-direction: column; gap: 5px; }}
 
-  /* The caret is the whole affordance, so it has to look like a control at 14px
-     and still not compete with the data beside it. */
-  .caret {{ margin-left: auto; flex: none; width: 16px; height: 14px; padding: 0;
-    font-size: 9px; line-height: 1; color: #999; border-radius: 3px;
-    background: none; border: 1px solid transparent; }}
-  .caret:hover {{ color: #1a1a1a; border-color: #ddd; background: #f6f6f6; }}
+  /* The header *is* the control -- double-click it to fold. No caret, because a
+     16px button is a small target to hunt for mid-auction and there are six of
+     them. The cost is that a gesture leaves nothing on screen saying it exists,
+     so the header lights up under the cursor and says what it does: the hover
+     state is the entire affordance, and without it this would be a secret. */
+  .band > .bandhd {{ cursor: pointer; user-select: none; border-radius: 3px; }}
+  .band > .bandhd:hover {{ background: #f6f6f6; }}
+  .band > .bandhd:hover h2 {{ color: #1a1a1a; }}
+  .band > .bandhd::after {{ content: "\\25BE"; margin-left: auto; flex: none;
+    font-size: 8px; color: #ddd; line-height: 1.6; }}
+  .band > .bandhd:hover::after {{ color: #888; }}
   .collapsed > .bandbody {{ display: none; }}
   .band.collapsed {{ flex: 0 0 auto; }}
-  .collapsed > .bandhd .caret {{ transform: rotate(-90deg); }}
+  .collapsed > .bandhd::after {{ transform: rotate(-90deg); }}
 
   .side h1 {{ font-size: calc(13px * var(--fs)); margin: 0; }}
   .side .sub {{ margin: 0; font-size: calc(11px * var(--fs)); }}
@@ -937,9 +941,9 @@ def render_page(draft_id: str) -> str:
     flex: 1; min-height: 0; }}
   .pane2 {{ display: flex; flex-direction: column; min-height: 0; min-width: 0;
     flex: 1 1 0; border: 1px solid #eee; border-radius: 6px; padding: 3px 4px; }}
-  /* A collapsed pane keeps its title and its caret and drops everything else,
-     including the subtitle -- which otherwise sets the width and leaves a
-     "collapsed" pane still holding a fifth of the band. */
+  /* A collapsed pane keeps its title and drops everything else, the subtitle
+     included -- that note otherwise sets the width and leaves a "collapsed"
+     pane still holding a fifth of the band. */
   .pane2.collapsed {{ flex: 0 0 auto; }}
   .collapsed > .bandhd .note {{ display: none; }}
   .pane2 > .bandhd {{ flex: none; }}
@@ -1031,15 +1035,14 @@ def render_page(draft_id: str) -> str:
 </style></head>
 <body>
   <aside class="side">
-    <!-- Three bands. The chrome -- headings and carets -- lives here in the
-         shell rather than in the fragments, because the fragments are replaced
-         every two seconds and a control destroyed that often can hold neither
-         focus nor state. Only the insides of each band are swapped. -->
+    <!-- Three bands. The chrome -- the headers you double-click to fold --
+         lives here in the shell rather than in the fragments, because the
+         fragments are replaced every two seconds and a control destroyed that
+         often can hold neither focus nor state. Only the insides are swapped. -->
     <section class="band band-live" data-band="live">
       <div class="bandhd"><h2>Live draft board</h2>
         <span class="note" id="pulsewrap"><span class="dot" id="dot"></span>
-          <span id="pulse">polling</span></span>
-        <button class="caret" type="button" aria-label="Collapse">&#9662;</button></div>
+          <span id="pulse">polling</span></span></div>
       <div class="bandbody">
         <p class="sub" id="sub">connecting to draft {_esc(draft_id)}…</p>
         <div class="bar">
@@ -1052,8 +1055,7 @@ def render_page(draft_id: str) -> str:
 
     <section class="band band-runs" data-band="runs">
       <div class="bandhd"><h2>Run pressure</h2>
-        <span class="note">double-click a position for its tier</span>
-        <button class="caret" type="button" aria-label="Collapse">&#9662;</button></div>
+        <span class="note">click a position for its tier · double-click to fold</span></div>
       <div class="bandbody"><div id="pressure"></div></div>
     </section>
 
@@ -1061,14 +1063,12 @@ def render_page(draft_id: str) -> str:
       <div class="bandbody panes">
         <div class="pane2 band" data-band="pool">
           <div class="bandhd"><h2>Player pool</h2>
-            <span class="note">by $PROJ</span>
-            <button class="caret" type="button" aria-label="Collapse">&#9662;</button></div>
+            <span class="note">by $PROJ</span></div>
           <div class="bandbody listwrap" id="pool"></div>
         </div>
         <div class="pane2 band" data-band="log">
           <div class="bandhd"><h2>Draft log</h2>
-            <span class="note">newest first</span>
-            <button class="caret" type="button" aria-label="Collapse">&#9662;</button></div>
+            <span class="note">newest first</span></div>
           <div class="bandbody listwrap" id="log"></div>
         </div>
       </div>
@@ -1127,15 +1127,30 @@ function openTier(pos) {{
   if (pos) pressureEl.dataset.open = pos; else delete pressureEl.dataset.open;
 }}
 
+// Two gestures on one card: click opens its tier, double-click folds it away.
+//
+// A double-click also fires two clicks on the way, so the open cannot happen
+// immediately or folding a card would open its tier on the way past. The click
+// is held for a beat and the double-click cancels it -- the standard bargain,
+// and the reason opening feels a fraction slower than folding.
+let clickHold = null;
+
+pressureEl.addEventListener("click", (e) => {{
+  if (e.target.closest(".pdx")) return openTier(null);
+  const card = e.target.closest(".pcard");
+  if (!card) return;
+  clearTimeout(clickHold);
+  clickHold = setTimeout(() => {{
+    // Clicking the open card again closes it -- the same gesture back out.
+    openTier(pressureEl.dataset.open === card.dataset.pos ? null : card.dataset.pos);
+  }}, 220);
+}});
+
 pressureEl.addEventListener("dblclick", (e) => {{
   const card = e.target.closest(".pcard");
   if (!card) return;
-  // Double-clicking the open card again closes it -- the same gesture back out.
-  openTier(pressureEl.dataset.open === card.dataset.pos ? null : card.dataset.pos);
-}});
-
-pressureEl.addEventListener("click", (e) => {{
-  if (e.target.closest(".pdx")) openTier(null);
+  clearTimeout(clickHold);  // the tier never opens; this was a fold all along
+  toggleCollapsed("pos:" + card.dataset.pos);
 }});
 
 document.addEventListener("keydown", (e) => {{
@@ -1204,17 +1219,13 @@ function toggleCollapsed(id) {{
   applyCollapsed();
 }}
 
-// Delegated from the document, because half these carets are in markup that is
-// replaced on every tick and the other half are not -- one listener covers both.
-document.addEventListener("click", (e) => {{
-  const caret = e.target.closest(".caret");
-  if (!caret) return;
-  // The card's caret sits inside a card that opens its tier detail on
-  // double-click; without this a quick fold-unfold would also open the panel.
-  e.stopPropagation();
-  const card = caret.closest(".pcard");
-  if (card) return toggleCollapsed("pos:" + card.dataset.pos);
-  const band = caret.closest("[data-band]");
+// Double-click a band's header to fold it. Delegated from the document because
+// the pane headers and the outer band headers are both `.bandhd`, and one
+// listener beats four.
+document.addEventListener("dblclick", (e) => {{
+  const head = e.target.closest(".bandhd");
+  if (!head) return;
+  const band = head.closest("[data-band]");
   if (band) toggleCollapsed("band:" + band.dataset.band);
 }});
 

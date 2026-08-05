@@ -315,9 +315,14 @@ def test_the_panel_covers_its_own_band_and_not_the_whole_column():
 # -- collapsing ---------------------------------------------------------------
 
 
-def test_every_card_carries_a_caret(midway):
+def test_a_card_advertises_both_of_its_gestures(midway):
+    # A gesture leaves nothing on screen saying it exists, so the title is the
+    # only place a card can admit what clicking it does.
     html = render_pressure(midway)
-    assert html.count('class="caret"') == len(TIERS)
+    for pos in TIERS:
+        tag = html.split(f'data-pos="{pos}"')[1].split(">")[0]
+        assert f"click for the {pos} tier" in tag
+        assert "double-click to fold" in tag
 
 
 def test_a_collapsed_card_hands_its_width_to_the_others():
@@ -328,9 +333,18 @@ def test_a_collapsed_card_hands_its_width_to_the_others():
     assert ".pgrid { display: flex;" in page.replace("{{", "{")
 
 
-def test_the_caret_does_not_also_open_the_tier_panel():
-    # The caret sits inside a card that opens its detail on double-click; a
-    # quick fold-unfold would otherwise open the panel too.
+def test_folding_a_card_does_not_open_its_tier_on_the_way_past():
+    # A double-click fires two clicks first. Without holding the single-click
+    # action, folding a card would open its tier panel every time.
     page = render_page("123")
-    handler = page.split('e.target.closest(".caret")')[1].split("});")[0]
-    assert "e.stopPropagation();" in handler
+    opener = page.split('pressureEl.addEventListener("click"')[1].split("});")[0]
+    assert "setTimeout(" in opener and "clearTimeout(clickHold)" in opener
+    folder = page.split('pressureEl.addEventListener("dblclick"')[1].split("});")[0]
+    assert "clearTimeout(clickHold)" in folder
+    assert 'toggleCollapsed("pos:"' in folder
+
+
+def test_a_band_header_folds_on_double_click():
+    page = render_page("123")
+    handler = page.split('e.target.closest(".bandhd")')[1].split("});")[0]
+    assert 'toggleCollapsed("band:"' in handler

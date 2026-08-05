@@ -163,10 +163,11 @@ def test_the_column_is_three_bands_and_the_chrome_is_in_the_shell():
     page = render_page("123")
     for band in ("live", "runs", "panes", "pool", "log"):
         assert f'data-band="{band}"' in page
-    # Four carets: the two outer bands and the two panes. The panes band itself
-    # has none -- collapsing it is what its two children already do, one each.
-    # The pressure cards' carets arrive with the fragment, not the shell.
-    assert page.count('class="caret"') == 4
+    # No buttons: the header itself folds on double-click. Which means the only
+    # thing telling you so is the hover state, so that rule has to exist.
+    assert "caret" not in page.split("<body>")[1]
+    assert ".band > .bandhd:hover" in page
+    assert ".band > .bandhd { cursor: pointer" in page.replace("{{", "{")
 
 
 def test_collapse_is_remembered_and_reapplied_after_every_swap():
