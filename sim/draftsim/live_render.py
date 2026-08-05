@@ -864,7 +864,14 @@ def render_page(draft_id: str) -> str:
   .pcard {{ border: 1px solid #ddd; border-radius: 6px; padding: 4px 5px 5px;
     min-width: 0; display: flex; flex-direction: column; gap: 3px;
     cursor: zoom-in; flex: 1 1 0; max-height: 100%; }}
-  .pcard.minor {{ flex: 0.55 1 0; }}
+  /* TE rides narrow because it is one starter, but its header costs the same
+     as everyone's -- badge, count, verdict, two pane buttons -- and at the
+     column's larger type 0.55 of a share stopped holding that row. */
+  .pcard.minor {{ flex: 0.7 1 0; }}
+  /* The count is what goes: the pill beside it already says how many are left
+     and the label under it says how many teams still need one. Ellipsizing
+     "3/12" down to "3." would have kept a word that no longer means anything. */
+  .pcard.minor .pcount {{ display: none; }}
   /* Collapsed to its header: the badge and how many are left, which is the one
      line you would still want from a position you have stopped working on. */
   .pcard.collapsed {{ flex: 0 0 auto; cursor: zoom-in; }}
@@ -876,8 +883,11 @@ def render_page(draft_id: str) -> str:
   .phd {{ display: flex; align-items: center; gap: 4px; min-width: 0; }}
   .phd .badge {{ min-width: calc(20px * var(--fs)); font-size: calc(8px * var(--fs));
     padding: 1px 3px; }}
+  /* The first thing in the header to give way when the card is narrow: the
+     verdict pill and the pane buttons are both worth more than "16/36". */
   .pcount {{ font-size: calc(9px * var(--fs)); color: #888;
-    font-variant-numeric: tabular-nums; white-space: nowrap; }}
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; }}
   .pcount b {{ color: #1a1a1a; }}
   /* Severity is a status, so it is never the colour alone: the pill always
      says how many are left, and the ramp only sharpens what the number says. */
@@ -944,8 +954,8 @@ def render_page(draft_id: str) -> str:
   .trow {{ display: grid; align-items: baseline; gap: 4px; padding: 1px 2px;
     font-size: calc(10px * var(--fs)); line-height: 1.2;
     grid-template-columns:
-      calc(11px * var(--fs)) minmax(0, 1fr) calc(19px * var(--fs))
-      calc(21px * var(--fs)) calc(24px * var(--fs)); }}
+      calc(12px * var(--fs)) minmax(0, 1fr) calc(18px * var(--fs))
+      calc(20px * var(--fs)) calc(22px * var(--fs)); }}
   .trow:not(:last-child) {{ border-bottom: 1px solid #f6f6f6; }}
   .trow i {{ font-style: normal; font-variant-numeric: tabular-nums;
     text-align: right; color: #888; font-size: calc(10px * var(--fs)); }}
