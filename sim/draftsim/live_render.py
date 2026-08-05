@@ -571,7 +571,8 @@ def render_page(draft_id: str) -> str:
   /* One knob for board type size: every font-size and every width that has to
      hold digits is a multiple of it, so nudging density is one edit rather
      than a dozen. Raising it eats vertical room -- re-check that a full
-     16-man roster still clears the fold. */
+     16-man roster still clears the fold. The left column overrides it on
+     `.side`, so this value is the roster board's alone. */
   :root {{ --fs: 1.17; }}
   html, body {{ height: 100%; }}
   /* 60 / 40, not half and half: the left column now carries four position cards
@@ -589,7 +590,11 @@ def render_page(draft_id: str) -> str:
      then the pool and the log sharing the last 2/5. Flex rather than fixed grid
      rows, because a collapsed band then hands its height to its siblings with
      no arithmetic -- `flex: 0 0 auto` and the others simply grow. */
-  .side {{ display: flex; flex-direction: column; min-width: 0;
+  /* The left column runs a size of its own. Its rows carry more per line than
+     the roster cards do -- five columns inside a ~230px card -- and were squeezed
+     down to 7px labels to fit. The knob is scoped here so raising it cannot move
+     a roster card by a pixel. */
+  .side {{ --fs: 1.30; display: flex; flex-direction: column; min-width: 0;
     padding: 8px 10px; gap: 6px; border-right: 1px solid #eee; overflow: hidden; }}
   /* Each band is a box, not a run of text with a heading over it. Folding is a
      double-click with no button to leave behind, so without a frame a shut band
@@ -610,9 +615,9 @@ def render_page(draft_id: str) -> str:
   .band-panes {{ flex: 2 1 0; border: none; background: none; overflow: visible; }}
   .band > .bandhd {{ display: flex; align-items: baseline; gap: 6px; flex: none;
     padding: 3px 7px; background: #f7f7f7; border-bottom: 1px solid #e8e8e8; }}
-  .bandhd h2 {{ font-size: calc(9px * var(--fs)); margin: 0; color: #555;
+  .bandhd h2 {{ font-size: calc(10px * var(--fs)); margin: 0; color: #555;
     text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }}
-  .bandhd .note {{ font-size: calc(8px * var(--fs)); color: #bbb;
+  .bandhd .note {{ font-size: calc(9px * var(--fs)); color: #bbb;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
   .band > .bandbody {{ flex: 1; min-height: 0; display: flex;
     flex-direction: column; gap: 5px; padding: 5px 6px; }}
@@ -631,14 +636,17 @@ def render_page(draft_id: str) -> str:
   .band > .bandhd:hover {{ background: #ededed; }}
   .band > .bandhd:hover h2 {{ color: #1a1a1a; }}
   .band > .bandhd::after {{ content: "\\25BE"; margin-left: auto; flex: none;
-    font-size: 8px; color: #bbb; line-height: 1.6; }}
+    font-size: calc(8px * var(--fs)); color: #bbb; line-height: 1.6; }}
   .band > .bandhd:hover::after {{ color: #888; }}
   .collapsed > .bandbody {{ display: none; }}
   .band.collapsed {{ flex: 0 0 auto; }}
   .collapsed > .bandhd::after {{ transform: rotate(-90deg); }}
 
-  .side h1 {{ font-size: calc(13px * var(--fs)); margin: 0; }}
-  .side .sub {{ margin: 0; font-size: calc(11px * var(--fs)); }}
+  /* Band 1 is the one place on the left that was never too small, so its
+     multipliers come down as the column's knob goes up: the room the bigger type
+     needs is taken from the band that did not need the size, not from the pool. */
+  .side h1 {{ font-size: calc(12px * var(--fs)); margin: 0; }}
+  .side .sub {{ margin: 0; font-size: calc(10px * var(--fs)); }}
 
   /* A column, so the menu bar takes its own height off the top and the grid
      gets exactly what's left -- the grid sizes to that, and a bar measured in
@@ -654,7 +662,7 @@ def render_page(draft_id: str) -> str:
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
 
   .bar {{ display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
-    font-size: calc(11px * var(--fs)); color: #666; }}
+    font-size: calc(10px * var(--fs)); color: #666; }}
   select {{ background: #fff; color: #1a1a1a; border: 1px solid #ddd;
     border-radius: 6px; padding: 2px 6px; font: inherit; }}
   button {{ background: #f6f6f6; color: #1a1a1a; border: 1px solid #ddd;
@@ -669,9 +677,9 @@ def render_page(draft_id: str) -> str:
   .block {{ background: #f6f6f6; border: 1px solid #ddd; border-radius: 8px;
     padding: 4px 10px; display: flex; gap: 10px;
     justify-content: space-between; align-items: center; flex-wrap: wrap; }}
-  .block.idle {{ color: #888; font-size: calc(12px * var(--fs)); }}
-  .who {{ font-size: calc(14px * var(--fs)); font-weight: 700; margin-right: 4px; }}
-  .bidamt {{ color: #1a7f37; font-weight: 700; font-size: calc(14px * var(--fs)); }}
+  .block.idle {{ color: #888; font-size: calc(11px * var(--fs)); }}
+  .who {{ font-size: calc(13px * var(--fs)); font-weight: 700; margin-right: 4px; }}
+  .bidamt {{ color: #1a7f37; font-weight: 700; font-size: calc(13px * var(--fs)); }}
   .proj {{ color: #1a7f37; font-weight: 700; }}
 
   /* Four across, three down: twelve seats, one screen, fixed positions so a
@@ -866,20 +874,20 @@ def render_page(draft_id: str) -> str:
   .pcard.collapsed .pcount, .pcard.collapsed .pseg {{ display: none; }}
   .pcard:hover {{ border-color: #bbb; }}
   .phd {{ display: flex; align-items: center; gap: 4px; min-width: 0; }}
-  .phd .badge {{ min-width: calc(20px * var(--fs)); font-size: calc(7.5px * var(--fs));
+  .phd .badge {{ min-width: calc(20px * var(--fs)); font-size: calc(8px * var(--fs));
     padding: 1px 3px; }}
-  .pcount {{ font-size: calc(8px * var(--fs)); color: #888;
+  .pcount {{ font-size: calc(9px * var(--fs)); color: #888;
     font-variant-numeric: tabular-nums; white-space: nowrap; }}
   .pcount b {{ color: #1a1a1a; }}
   /* Severity is a status, so it is never the colour alone: the pill always
      says how many are left, and the ramp only sharpens what the number says. */
-  .pverd {{ margin-left: auto; font-size: calc(7.5px * var(--fs)); font-weight: 700;
+  .pverd {{ margin-left: auto; font-size: calc(8px * var(--fs)); font-weight: 700;
     padding: 0 4px; border-radius: 3px; white-space: nowrap;
     background: var(--sevbg); color: var(--sev); }}
   .sev-run {{ --sev: #c0392b; --sevbg: #fdecec; }}
   .sev-tight {{ --sev: #b7791f; --sevbg: #fdf6e6; }}
   .sev-safe {{ --sev: #1a7f37; --sevbg: #eefaf0; }}
-  .plbl {{ font-style: normal; font-size: calc(7px * var(--fs)); color: #aaa;
+  .plbl {{ font-style: normal; font-size: calc(8px * var(--fs)); color: #aaa;
     text-transform: uppercase; letter-spacing: 0.03em;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
 
@@ -889,8 +897,8 @@ def render_page(draft_id: str) -> str:
   .tile {{ border: 1px solid #eee; border-radius: 3px; padding: 1px 3px 2px;
     min-width: 0; display: flex; flex-direction: column; gap: 2px; }}
   .ttop {{ display: flex; align-items: baseline; gap: 2px; min-width: 0; }}
-  .ttop b {{ font-size: calc(7px * var(--fs)); font-weight: 700; color: #444; }}
-  .ttop i {{ font-style: normal; margin-left: auto; font-size: calc(6.5px * var(--fs));
+  .ttop b {{ font-size: calc(8px * var(--fs)); font-weight: 700; color: #444; }}
+  .ttop i {{ font-style: normal; margin-left: auto; font-size: calc(8px * var(--fs));
     color: #1a7f37; font-weight: 700; font-variant-numeric: tabular-nums; }}
   .tile .pips {{ gap: 1px; }}
   .tile .pip {{ height: calc(4px * var(--fs)); width: 100%; }}
@@ -901,14 +909,14 @@ def render_page(draft_id: str) -> str:
 
   .bd {{ display: flex; flex-direction: column; }}
   .brow {{ display: flex; justify-content: space-between; gap: 4px;
-    font-size: calc(8px * var(--fs)); color: #444; }}
+    font-size: calc(9px * var(--fs)); line-height: 1.2; color: #444; }}
   .brow:not(:last-child) {{ border-bottom: 1px solid #f4f4f4; }}
   .brow b {{ font-weight: 400; white-space: nowrap; overflow: hidden;
     text-overflow: ellipsis; }}
   .brow i {{ font-style: normal; color: #aaa; font-variant-numeric: tabular-nums; }}
   .brow.empty {{ color: #c0392b; }}
-  .bmore {{ font-size: calc(7px * var(--fs)); color: #1a7f37; font-weight: 700; }}
-  .pfoot {{ font-size: calc(7px * var(--fs)); color: #aaa;
+  .bmore {{ font-size: calc(8px * var(--fs)); color: #1a7f37; font-weight: 700; }}
+  .pfoot {{ font-size: calc(8px * var(--fs)); color: #aaa;
     font-variant-numeric: tabular-nums; }}
 
   /* Two panes over one position, switched by the card's own RUNS/TIER buttons.
@@ -921,7 +929,7 @@ def render_page(draft_id: str) -> str:
   .pcard.view-tier .ppane.runs {{ display: none; }}
   .pcard.view-tier .ppane.pdet {{ display: flex; flex: 1; }}
   .pseg {{ margin-left: 0; }}
-  .pseg button {{ padding: 0 3px; font-size: calc(6.5px * var(--fs)); }}
+  .pseg button {{ padding: 0 3px; font-size: calc(8px * var(--fs)); }}
   .pdbody {{ overflow-y: auto; scrollbar-width: thin;
     scrollbar-color: #ccc transparent; min-height: 0; flex: 1; }}
 
@@ -931,14 +939,16 @@ def render_page(draft_id: str) -> str:
      Tight gaps and narrow numerals because this now lives inside a ~230px card
      rather than a 340px panel: at the old spacing the fixed columns ate 149px
      and left the name 73px, which is where "M. Stafford" starts losing its. */
+  /* Leading tighter than the page's 1.4: the type went up a size and the row
+     stayed where it was, so the list reads bigger without showing fewer names. */
   .trow {{ display: grid; align-items: baseline; gap: 4px; padding: 1px 2px;
-    font-size: calc(9px * var(--fs));
+    font-size: calc(10px * var(--fs)); line-height: 1.2;
     grid-template-columns:
       calc(11px * var(--fs)) minmax(0, 1fr) calc(19px * var(--fs))
       calc(21px * var(--fs)) calc(24px * var(--fs)); }}
   .trow:not(:last-child) {{ border-bottom: 1px solid #f6f6f6; }}
   .trow i {{ font-style: normal; font-variant-numeric: tabular-nums;
-    text-align: right; color: #888; font-size: calc(9px * var(--fs)); }}
+    text-align: right; color: #888; font-size: calc(10px * var(--fs)); }}
   .trow .tr {{ text-align: left; color: #ccc; }}
   .trow .ttm {{ text-align: left; color: #aaa; }}
   .trow .tpr {{ color: #1a7f37; font-weight: 700; }}
@@ -946,7 +956,7 @@ def render_page(draft_id: str) -> str:
   .trow.below {{ opacity: 0.55; }}
   .trow.gone {{ display: block; color: #c0392b; }}
   .tcliff {{ margin: 5px 0; padding-top: 4px; border-top: 2px dotted #e0a89f;
-    color: #c0392b; font-size: calc(8.5px * var(--fs)); font-weight: 700;
+    color: #c0392b; font-size: calc(9px * var(--fs)); font-weight: 700;
     text-align: center; }}
   .tcliff.none {{ border-top-color: #eee; color: #aaa; }}
 
@@ -972,7 +982,7 @@ def render_page(draft_id: str) -> str:
     scrollbar-width: thin; scrollbar-color: #ccc transparent; }}
 
   .prow, .lrow {{ display: grid; align-items: center; gap: 5px; padding: 1px 2px;
-    font-size: calc(9px * var(--fs)); min-width: 0; }}
+    font-size: calc(10px * var(--fs)); line-height: 1.2; min-width: 0; }}
   .prow {{ grid-template-columns:
     calc(22px * var(--fs)) minmax(0, 1fr) calc(20px * var(--fs))
     calc(22px * var(--fs)) calc(24px * var(--fs)); }}
@@ -983,8 +993,8 @@ def render_page(draft_id: str) -> str:
   .prow b, .lrow b {{ font-weight: 400; min-width: 0; overflow: hidden;
     white-space: nowrap; text-overflow: ellipsis; }}
   .prow i, .lrow i {{ font-style: normal; font-variant-numeric: tabular-nums;
-    text-align: right; font-size: calc(8px * var(--fs)); color: #999; }}
-  .prow .badge {{ font-size: calc(7px * var(--fs)); min-width: 0; padding: 1px 0; }}
+    text-align: right; font-size: calc(9px * var(--fs)); color: #999; }}
+  .prow .badge {{ font-size: calc(8px * var(--fs)); min-width: 0; padding: 1px 0; }}
   .prow .ptm {{ text-align: left; color: #bbb; }}
   .prow .ppr {{ color: #1a7f37; font-weight: 700; }}
   .lrow .lno {{ text-align: left; color: #ccc; }}
@@ -995,7 +1005,7 @@ def render_page(draft_id: str) -> str:
   .ldl.over {{ color: #c0392b; }}
   .ldl.under {{ color: #1a7f37; }}
   .ldl.even {{ color: #aaa; }}
-  .pnone {{ color: #aaa; font-size: calc(9px * var(--fs)); padding: 4px 2px; }}
+  .pnone {{ color: #aaa; font-size: calc(10px * var(--fs)); padding: 4px 2px; }}
 
   /* Maximized: the board leaves its half and takes the viewport. Nothing is
      re-rendered -- the hidden columns and the other panes were always there. */
