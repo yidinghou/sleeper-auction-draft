@@ -338,18 +338,28 @@ def _pressure_card(state: LeagueState, pr: PositionPressure) -> str:
     # The cliff is what makes the tier count mean something -- "3 left" is only
     # frightening next to what the fourth-best is worth.
     foot = f"−{pr.cliff_drop} cliff" if pr.cliff_drop else "no tier below"
-    return (
-        f'<section class="pcard sev-{pr.severity}{" minor" if minor else ""}"'
-        f' style="--pos:{color}" data-pos="{pr.pos}"'
-        f' title="click for the {_esc(pr.pos)} tier · double-click to fold">'
-        f'<div class="phd">{badge(pr.pos, light=True)}'
-        f'<span class="pcount"><b>{pr.drafted}</b>/{total}</span>'
-        f'<span class="pverd">{pr.left} left</span>'
-        "</div>"
+    runs = (
+        f'<div class="ppane runs">'
         f'<i class="plbl">{len(pr.need_seats)} teams still need {_esc(pr.pos)}</i>'
         f'<div class="tiles">{tiles}</div>'
         f"{board}"
-        f'<div class="pfoot">{foot}</div></section>'
+        f'<div class="pfoot">{foot}</div></div>'
+    )
+    # Both panes ship and CSS shows one, so switching costs no fetch and the two
+    # can never describe different moments of the draft -- the same bargain the
+    # roster cards make with LINEUP / BN / NEED.
+    return (
+        f'<section class="pcard sev-{pr.severity}{" minor" if minor else ""}"'
+        f' style="--pos:{color}" data-pos="{pr.pos}"'
+        ' title="double-click to fold">'
+        f'<div class="phd">{badge(pr.pos, light=True)}'
+        f'<span class="pcount"><b>{pr.drafted}</b>/{total}</span>'
+        f'<span class="pverd">{pr.left} left</span>'
+        '<span class="seg pseg">'
+        '<button data-pane="runs" type="button">RUNS</button>'
+        '<button data-pane="tier" type="button">TIER</button></span>'
+        "</div>"
+        f"{runs}{_pressure_detail(pr)}</section>"
     )
 
 
@@ -402,12 +412,11 @@ def _pressure_detail(pr: PositionPressure) -> str:
         below = ""
 
     short = f"{len(pr.need_seats)} teams short" if pr.need_seats else "nobody short"
+    # No close button: the card's own RUNS/TIER toggle is what closes this, and a
+    # second control doing the same job is a second thing to explain.
     return (
-        f'<div class="pdet" data-det="{pr.pos}">'
-        f'<div class="pdhd">{badge(pr.pos, light=True)}'
-        f'<b>{pr.left} left</b>'
-        f'<span class="pdsub">{_num(round(pr.wanted, 1))} wanted · {short}</span>'
-        '<button class="pdx" type="button" aria-label="Close">&times;</button></div>'
+        f'<div class="ppane pdet" data-det="{pr.pos}">'
+        f'<i class="plbl">{_num(round(pr.wanted, 1))} wanted · {short}</i>'
         f'<div class="pdbody">{rows}{divider}{below}</div></div>'
     )
 
@@ -419,15 +428,13 @@ def render_pressure(state: LeagueState) -> str:
     seat order: a card that reshuffles itself the moment a run starts is a card
     you have to hunt for at exactly the moment you needed it.
 
-    Every card's detail panel ships alongside it and CSS shows at most one -- the
-    same bargain the card panes and the maximize toggle make, so opening one
-    costs no fetch and cannot show a different moment of the draft than the card
-    behind it.
+    All four are always on screen, whatever state each is in: a card can be
+    showing its pressure view or its tier, and can be folded, without any of that
+    costing you sight of the other three. Comparing positions is the whole point
+    of putting them side by side, so nothing here is allowed to cover them.
     """
-    state_pressure = pressure(state)
-    cards = "".join(_pressure_card(state, pr) for pr in state_pressure)
-    details = "".join(_pressure_detail(pr) for pr in state_pressure)
-    return f'<div class="pgrid">{cards}</div><div class="pdets">{details}</div>'
+    cards = "".join(_pressure_card(state, pr) for pr in pressure(state))
+    return f'<div class="pgrid">{cards}</div>'
 
 
 # Deep enough to scroll to anyone worth a dollar. The sheet runs to thousands of
@@ -567,8 +574,12 @@ def render_page(draft_id: str) -> str:
      16-man roster still clears the fold. */
   :root {{ --fs: 1.17; }}
   html, body {{ height: 100%; }}
+  /* 60 / 40, not half and half: the left column now carries four position cards
+     that each hold a tier list, and that needs the room more than a twelfth
+     roster column does. The rosters stay four across -- names ellipsize at this
+     width, which is the price paid for the tier being readable. */
   body {{ margin: 0; padding: 0; overflow: hidden;
-    display: grid; grid-template-columns: 1fr 1fr; }}
+    display: grid; grid-template-columns: 3fr 2fr; }}
 
   /* Left: what is happening right now -- the draft's state and whatever is on
      the block. Right: the rosters. Splitting them this way gives the grid the
@@ -810,7 +821,7 @@ def render_page(draft_id: str) -> str:
      aisle, in the same arrangement -- drag a roster card and these follow.
      TE is deliberately narrow: one starter, no flex claim, so its pressure is
      a pip and a number, and the width goes where a run costs you a lineup. */
-  #pressure {{ min-height: 0; flex: 1; display: flex; }}
+  #pressure {{ min-height: 0; flex: 1; display: flex; overflow: hidden; }}
   /* Flex, not grid, for the same reason the bands are: a collapsed card hands
      its width to its siblings with no arithmetic. TE rides at 0.55 because it
      is one starter with no flex claim; collapse it and QB/RB/WR take the room,
@@ -822,15 +833,20 @@ def render_page(draft_id: str) -> str:
     min-width: 0; }}
   /* zoom-in, not pointer: a single click does nothing here, and a cursor that
      promises one is a cursor that lies. */
+  /* Capped at the band's height, not stretched to it: a card sizes to whatever
+     it holds, but a tier list of twenty names must scroll inside the card
+     rather than growing it down over the pool and the log below. */
   .pcard {{ border: 1px solid #ddd; border-radius: 6px; padding: 4px 5px 5px;
     min-width: 0; display: flex; flex-direction: column; gap: 3px;
-    cursor: zoom-in; flex: 1 1 0; }}
+    cursor: zoom-in; flex: 1 1 0; max-height: 100%; }}
   .pcard.minor {{ flex: 0.55 1 0; }}
   /* Collapsed to its header: the badge and how many are left, which is the one
      line you would still want from a position you have stopped working on. */
   .pcard.collapsed {{ flex: 0 0 auto; cursor: zoom-in; }}
   .pcard.collapsed > *:not(.phd) {{ display: none; }}
-  .pcard.collapsed .pcount {{ display: none; }}
+  /* A folded card keeps the badge and how many are left. The pane toggle goes
+     with the panes -- it is a control for something you have put away. */
+  .pcard.collapsed .pcount, .pcard.collapsed .pseg {{ display: none; }}
   .pcard:hover {{ border-color: #bbb; }}
   .phd {{ display: flex; align-items: center; gap: 4px; min-width: 0; }}
   .phd .badge {{ min-width: calc(20px * var(--fs)); font-size: calc(7.5px * var(--fs));
@@ -878,45 +894,31 @@ def render_page(draft_id: str) -> str:
   .pfoot {{ font-size: calc(7px * var(--fs)); color: #aaa;
     font-variant-numeric: tabular-nums; }}
 
-  /* The tier detail, opened by double-clicking a card. It covers its own band
-     and nothing more: what's on the block stays visible above it and the pool
-     and log stay visible below, so opening it costs you no other pane. (It used
-     to cover the whole column, which is what made it feel like leaving the
-     board rather than looking closer at part of it.)
-     All four panels ship; `data-open` on #pressure picks one, and because that
-     attribute lives on the container rather than the markup inside it, the
-     panel survives the 2s swap and its list refreshes underneath you. */
-  .pdets {{ display: none; }}
-  #pressure[data-open] .pdets {{ display: flex; flex-direction: column;
-    position: absolute; inset: 0; z-index: 12; background: #fff;
-    padding: 4px 2px; }}
-  .pdet {{ display: none; }}
-  #pressure[data-open="QB"] .pdet[data-det="QB"],
-  #pressure[data-open="RB"] .pdet[data-det="RB"],
-  #pressure[data-open="WR"] .pdet[data-det="WR"],
-  #pressure[data-open="TE"] .pdet[data-det="TE"] {{ display: flex;
-    flex-direction: column; min-height: 0; flex: 1; }}
-  .pdhd {{ display: flex; align-items: baseline; gap: 6px; flex: none;
-    width: 100%; max-width: calc(340px * var(--fs));
-    padding-bottom: 5px; border-bottom: 1px solid #eee; }}
-  .pdhd b {{ font-size: calc(12px * var(--fs)); }}
-  .pdsub {{ font-size: calc(9px * var(--fs)); color: #888; }}
-  .pdx {{ margin-left: auto; width: 22px; height: 22px; padding: 0;
-    border-radius: 50%; font-size: 15px; line-height: 1; color: #666; }}
-  /* Capped rather than filling the column. A row stretched across 900px puts a
-     hand's width of nothing between the name and its price, and the eye has to
-     travel it for every line. */
-  .pdbody {{ overflow-y: auto; scrollbar-width: thin; min-height: 0; flex: 1;
-    width: 100%; max-width: calc(340px * var(--fs)); }}
+  /* Two panes over one position, switched by the card's own RUNS/TIER buttons.
+     Both ship in every card and CSS shows one -- so switching costs no fetch,
+     the two can never describe different moments of the draft, and above all
+     the other three positions stay on screen. The tier used to be an overlay
+     that covered them, which is precisely when you want to compare. */
+  .ppane {{ display: none; flex-direction: column; gap: 3px; min-height: 0; }}
+  .pcard .ppane.runs {{ display: flex; }}
+  .pcard.view-tier .ppane.runs {{ display: none; }}
+  .pcard.view-tier .ppane.pdet {{ display: flex; flex: 1; }}
+  .pseg {{ margin-left: 0; }}
+  .pseg button {{ padding: 0 3px; font-size: calc(6.5px * var(--fs)); }}
+  .pdbody {{ overflow-y: auto; scrollbar-width: thin;
+    scrollbar-color: #ccc transparent; min-height: 0; flex: 1; }}
 
   /* Rank, name, team, points, $PROJ -- the same five things in the same order
      as the maximized roster row, so the eye does not have to re-learn a table
-     between the two halves of the screen. */
-  .trow {{ display: grid; align-items: baseline; gap: 7px; padding: 2px 3px;
-    font-size: calc(10px * var(--fs));
+     between the two halves of the screen.
+     Tight gaps and narrow numerals because this now lives inside a ~230px card
+     rather than a 340px panel: at the old spacing the fixed columns ate 149px
+     and left the name 73px, which is where "M. Stafford" starts losing its. */
+  .trow {{ display: grid; align-items: baseline; gap: 4px; padding: 1px 2px;
+    font-size: calc(9px * var(--fs));
     grid-template-columns:
-      calc(16px * var(--fs)) minmax(0, 1fr) calc(24px * var(--fs))
-      calc(28px * var(--fs)) calc(30px * var(--fs)); }}
+      calc(11px * var(--fs)) minmax(0, 1fr) calc(19px * var(--fs))
+      calc(21px * var(--fs)) calc(24px * var(--fs)); }}
   .trow:not(:last-child) {{ border-bottom: 1px solid #f6f6f6; }}
   .trow i {{ font-style: normal; font-variant-numeric: tabular-nums;
     text-align: right; color: #888; font-size: calc(9px * var(--fs)); }}
@@ -1055,7 +1057,7 @@ def render_page(draft_id: str) -> str:
 
     <section class="band band-runs" data-band="runs">
       <div class="bandhd"><h2>Run pressure</h2>
-        <span class="note">click a position for its tier · double-click to fold</span></div>
+        <span class="note">RUNS / TIER per card · double-click to fold</span></div>
       <div class="bandbody"><div id="pressure"></div></div>
     </section>
 
@@ -1113,51 +1115,46 @@ maxBtn.addEventListener("click", () => {{
 }});
 document.getElementById("close").addEventListener("click", () => setMaxed(false));
 
-// The tier detail: which players are actually left at a position, and what you
-// drop to if you wait. Opened by double-click -- a single click on a card that
-// is mostly a grid of small targets is too easy to trigger by accident while
-// reading it.
-//
-// The open position lives on #pressure itself, not in the markup it holds: that
-// markup is replaced every 2s, so anything stored inside it would close the
-// panel twice a second. Both handlers are delegated for the same reason.
 const pressureEl = document.getElementById("pressure");
 
-function openTier(pos) {{
-  if (pos) pressureEl.dataset.open = pos; else delete pressureEl.dataset.open;
+// Which pane each position card is showing. The twin of `views` above: that one
+// is keyed by seat, this one by position, and both exist because the markup they
+// describe is thrown away and rebuilt every two seconds.
+const PVIEWS = ["runs", "tier"];
+let pviews = {{}};
+try {{ pviews = JSON.parse(localStorage.getItem("draftsim.pviews")) || {{}}; }} catch (e) {{}}
+
+function applyPViews() {{
+  document.querySelectorAll(".pcard").forEach((card) => {{
+    const view = PVIEWS.includes(pviews[card.dataset.pos])
+      ? pviews[card.dataset.pos] : PVIEWS[0];
+    card.classList.toggle("view-tier", view === "tier");
+    card.querySelectorAll(".pseg button").forEach((b) => {{
+      b.setAttribute("aria-pressed", String(b.dataset.pane === view));
+    }});
+  }});
 }}
 
-// Two gestures on one card: click opens its tier, double-click folds it away.
-//
-// A double-click also fires two clicks on the way, so the open cannot happen
-// immediately or folding a card would open its tier on the way past. The click
-// is held for a beat and the double-click cancels it -- the standard bargain,
-// and the reason opening feels a fraction slower than folding.
-let clickHold = null;
-
 pressureEl.addEventListener("click", (e) => {{
-  if (e.target.closest(".pdx")) return openTier(null);
-  const card = e.target.closest(".pcard");
-  if (!card) return;
-  clearTimeout(clickHold);
-  clickHold = setTimeout(() => {{
-    // Clicking the open card again closes it -- the same gesture back out.
-    openTier(pressureEl.dataset.open === card.dataset.pos ? null : card.dataset.pos);
-  }}, 220);
+  const btn = e.target.closest(".pseg button");
+  if (!btn) return;
+  pviews[btn.closest(".pcard").dataset.pos] = btn.dataset.pane;
+  localStorage.setItem("draftsim.pviews", JSON.stringify(pviews));
+  applyPViews();
 }});
 
+// One gesture, one meaning: double-clicking a card folds it. The toggle is a
+// button and is exempt -- double-clicking it would otherwise switch the pane and
+// then fold the card you were switching.
 pressureEl.addEventListener("dblclick", (e) => {{
+  if (e.target.closest(".pseg")) return;
   const card = e.target.closest(".pcard");
-  if (!card) return;
-  clearTimeout(clickHold);  // the tier never opens; this was a fold all along
-  toggleCollapsed("pos:" + card.dataset.pos);
+  if (card) toggleCollapsed("pos:" + card.dataset.pos);
 }});
 
+// Nothing on this page covers anything any more, so Escape has one job again.
 document.addEventListener("keydown", (e) => {{
-  if (e.key !== "Escape") return;
-  // One key, one job at a time: dismiss the panel that is actually in front of
-  // you, and only fall through to the board when nothing is over it.
-  if (pressureEl.dataset.open) openTier(null); else setMaxed(false);
+  if (e.key === "Escape") setMaxed(false);
 }});
 
 // Per-card pane. "lineup" first: it is what the board loads on, and it is the
@@ -1371,6 +1368,7 @@ async function tick() {{
       swapKeepingScroll("log", s.log_html);
       highlight();
       applyViews();
+      applyPViews();
       applyOrder();
       applyCollapsed();
     }}
@@ -1385,6 +1383,7 @@ async function tick() {{
 // Before the first fetch, so a folded band never flashes open on load -- and so
 // the fold survives a server that is down when the page opens.
 applyCollapsed();
+applyPViews();
 tick();
 setInterval(tick, 2000);
 </script>

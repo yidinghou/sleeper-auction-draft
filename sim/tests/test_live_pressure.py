@@ -221,6 +221,11 @@ def _detail(html: str, pos: str) -> str:
     return html.split(f'data-det="{pos}"')[1].split("</div></div>")[0]
 
 
+def _card(html: str, pos: str) -> str:
+    """One card's markup, from its data-pos to the start of the next card."""
+    return html.split(f'data-pos="{pos}"')[1].split("<section")[0]
+
+
 def test_every_position_ships_a_detail_panel(midway):
     # All four ship and CSS shows one, so opening a panel costs no fetch and
     # cannot show a different moment of the draft than the card behind it.
@@ -285,43 +290,54 @@ def test_the_panel_lists_more_than_the_card_does(midway):
     assert _short_name(deep.next_tier[6]) in _detail(render_pressure(midway), deep.pos)
 
 
-# -- opening and closing ------------------------------------------------------
+# -- two panes per card -------------------------------------------------------
 
 
-def test_double_click_opens_and_the_open_position_survives_a_refresh():
+def test_every_card_ships_both_panes_and_a_toggle(midway):
+    html = render_pressure(midway)
+    for pos in TIERS:
+        card = _card(html, pos)
+        assert 'class="ppane runs"' in card
+        assert f'data-det="{pos}"' in card
+        assert '<button data-pane="runs"' in card
+        assert '<button data-pane="tier"' in card
+
+
+def test_all_four_stay_on_screen_whatever_state_they_are_in(midway):
+    # The promise the overlay broke: comparing positions is the point of putting
+    # them side by side, so nothing may cover them. There is no longer any
+    # element that could -- the tier is inside its own card.
+    html = render_pressure(midway)
+    assert html.count('class="pcard') == len(TIERS)
+    assert "pdets" not in html
+    assert "position: absolute" not in html
+
+
+def test_the_pane_choice_is_remembered_per_position():
+    # The twin of `views`: that one is keyed by seat, this by position, and both
+    # exist because the markup they describe is rebuilt every two seconds.
     page = render_page("123")
-    assert 'pressureEl.addEventListener("dblclick"' in page
-    # On the container, not in the markup it holds -- that markup is replaced
-    # every 2s, and state stored inside it would close the panel twice a second.
-    assert "pressureEl.dataset.open = pos" in page
+    assert "draftsim.pviews" in page
+    assert 'PVIEWS = ["runs", "tier"]' in page
+    assert "applyPViews();" in page
 
 
-def test_escape_closes_the_panel_before_it_touches_the_board():
+def test_escape_has_one_job_again():
+    # Nothing covers anything now, so Escape means "leave the maximized board".
     page = render_page("123")
-    assert "if (pressureEl.dataset.open) openTier(null); else setMaxed(false);" in page
-
-
-def test_the_panel_covers_its_own_band_and_not_the_whole_column():
-    # The panel is anchored inside `.band`, which is the positioned ancestor --
-    # so the block above it and the pool/log below stay visible. It used to be
-    # anchored to `.side`, which is what made opening it feel like leaving.
-    page = render_page("123")
-    assert ".band {" in page and "position: relative;" in page
-    assert ".side {" in page
-    side = page.split(".side {")[1].split("}")[0]
-    assert "position: relative" not in side
+    assert 'if (e.key === "Escape") setMaxed(false);' in page
+    assert "openTier" not in page
 
 
 # -- collapsing ---------------------------------------------------------------
 
 
-def test_a_card_advertises_both_of_its_gestures(midway):
+def test_a_card_advertises_its_gesture(midway):
     # A gesture leaves nothing on screen saying it exists, so the title is the
-    # only place a card can admit what clicking it does.
+    # only place the card can admit what double-clicking it does.
     html = render_pressure(midway)
     for pos in TIERS:
         tag = html.split(f'data-pos="{pos}"')[1].split(">")[0]
-        assert f"click for the {pos} tier" in tag
         assert "double-click to fold" in tag
 
 
@@ -333,15 +349,15 @@ def test_a_collapsed_card_hands_its_width_to_the_others():
     assert ".pgrid { display: flex;" in page.replace("{{", "{")
 
 
-def test_folding_a_card_does_not_open_its_tier_on_the_way_past():
-    # A double-click fires two clicks first. Without holding the single-click
-    # action, folding a card would open its tier panel every time.
+def test_double_clicking_the_toggle_does_not_fold_the_card():
+    # The toggle is a button inside the card. Without the exemption, double-
+    # clicking it would switch the pane and then fold what you just switched.
     page = render_page("123")
-    opener = page.split('pressureEl.addEventListener("click"')[1].split("});")[0]
-    assert "setTimeout(" in opener and "clearTimeout(clickHold)" in opener
     folder = page.split('pressureEl.addEventListener("dblclick"')[1].split("});")[0]
-    assert "clearTimeout(clickHold)" in folder
+    assert 'if (e.target.closest(".pseg")) return;' in folder
     assert 'toggleCollapsed("pos:"' in folder
+    # And no click-hold anywhere: one gesture per action means nothing to debounce.
+    assert "clickHold" not in page
 
 
 def test_a_band_header_folds_on_double_click():

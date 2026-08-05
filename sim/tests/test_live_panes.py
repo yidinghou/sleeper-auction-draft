@@ -174,8 +174,9 @@ def test_collapse_is_remembered_and_reapplied_after_every_swap():
     page = render_page("123")
     assert "draftsim.collapsed" in page
     assert "applyCollapsed();" in page
-    # Applied before the first fetch too, so a folded band never flashes open.
-    assert page.index("applyCollapsed();\ntick();") > 0
+    # Applied before the first fetch too, so a folded band never flashes open
+    # and a card never shows the wrong pane for a beat.
+    assert "applyCollapsed();\napplyPViews();\ntick();" in page
 
 
 def test_the_panes_are_swapped_with_everything_else():
