@@ -334,12 +334,13 @@ def test_escape_has_one_job_again():
 
 
 def test_a_card_advertises_its_gesture(midway):
-    # A gesture leaves nothing on screen saying it exists, so the title is the
-    # only place the card can admit what double-clicking it does.
+    # The fold is a click on the header, and the header is where the card has to
+    # say so -- a title on the whole card promised it worked anywhere on it.
     html = render_pressure(midway)
     for pos in TIERS:
-        tag = html.split(f'data-pos="{pos}"')[1].split(">")[0]
-        assert "double-click to fold" in tag
+        card = html.split(f'data-pos="{pos}"')[1]
+        head = card.split('class="phd"')[1].split(">")[0]
+        assert "click to fold" in head
 
 
 def test_a_folded_card_shows_nothing_but_its_header_in_either_pane():
@@ -369,15 +370,17 @@ def test_an_open_cards_width_does_not_depend_on_its_neighbours():
     assert ".pcard.collapsed { flex: 0 0 auto;" in page
 
 
-def test_double_clicking_the_toggle_does_not_fold_the_card():
-    # The toggle is a button inside the card. Without the exemption, double-
-    # clicking it would switch the pane and then fold what you just switched.
+def test_the_pane_toggle_does_not_fold_the_card():
+    # The toggle is a button inside the header, and the header is the fold. The
+    # switch has to claim the click first, or switching a pane would fold the
+    # card you were switching.
     page = render_page("123")
-    folder = page.split('pressureEl.addEventListener("dblclick"')[1].split("});")[0]
-    assert 'if (e.target.closest(".pseg")) return;' in folder
-    assert 'toggleCollapsed("pos:"' in folder
-    # And no click-hold anywhere: one gesture per action means nothing to debounce.
-    assert "clickHold" not in page
+    handler = page.split('pressureEl.addEventListener("click"')[1].split("\n});")[0]
+    assert handler.index('closest(".pseg button")') < handler.index('closest(".phd")')
+    assert 'if (e.target.closest(".pseg")) return;' in handler
+    assert 'toggleCollapsed("pos:"' in handler
+    # One gesture per action: the card no longer answers a double-click at all.
+    assert 'pressureEl.addEventListener("dblclick"' not in page
 
 
 def test_a_band_header_folds_on_double_click():

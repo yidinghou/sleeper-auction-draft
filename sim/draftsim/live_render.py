@@ -399,9 +399,10 @@ def _pressure_card(state: LeagueState, pr: PositionPressure) -> str:
     # roster cards make with LINEUP / BN / NEED.
     return (
         f'<section class="pcard sev-{pr.severity}"'
-        f' style="--pos:{color}" data-pos="{pr.pos}"'
-        ' title="double-click to fold">'
-        f'<div class="phd">{badge(pr.pos, light=True)}'
+        f' style="--pos:{color}" data-pos="{pr.pos}">'
+        # The header is the fold control, so it is the header that says so --
+        # a title on the whole card promised the gesture worked anywhere on it.
+        f'<div class="phd" title="click to fold">{badge(pr.pos, light=True)}'
         f'<span class="pcount"><b>{pr.drafted}</b>/{total}</span>'
         f'<span class="pverd">{pr.left} left</span>'
         '<span class="seg pseg">'
@@ -972,8 +973,6 @@ def render_page(draft_id: str) -> str:
      list and makes four short cards look like four half-empty ones. */
   .pgrid {{ display: flex; gap: 5px; align-items: flex-start; flex: 1;
     min-width: 0; }}
-  /* zoom-in, not pointer: a single click does nothing here, and a cursor that
-     promises one is a cursor that lies. */
   /* Capped at the band's height, not stretched to it: a card sizes to whatever
      it holds, but a tier list of twenty names must scroll inside the card
      rather than growing it down over the pool and the log below. */
@@ -985,12 +984,12 @@ def render_page(draft_id: str) -> str:
      and what folding buys is quiet, not room, which is what it was for. */
   .pcard {{ border: 1px solid #ddd; border-radius: 6px; padding: 4px 5px 5px;
     min-width: 0; display: flex; flex-direction: column; gap: 3px;
-    cursor: zoom-in; flex: 0 0 calc((100% - 15px) / 4); max-height: 100%; }}
+    flex: 0 0 calc((100% - 15px) / 4); max-height: 100%; }}
   /* Folded, a card is its header and nothing else: the badge and how many are
      left, which is the one line you would still want from a position you have
      stopped working on. It shrinks to what those two need -- a rail, so the eye
      reads "put away" from the shape without having to read the card. */
-  .pcard.collapsed {{ flex: 0 0 auto; cursor: zoom-in; }}
+  .pcard.collapsed {{ flex: 0 0 auto; }}
   .pcard.collapsed > *:not(.phd) {{ display: none; }}
   /* A folded card keeps the badge and how many are left. The pane toggle goes
      with the panes -- it is a control for something you have put away. */
@@ -999,7 +998,13 @@ def render_page(draft_id: str) -> str:
      rail there is no right to push to, so it hugs the badge instead. */
   .pcard.collapsed .pverd {{ margin-left: 4px; }}
   .pcard:hover {{ border-color: #bbb; }}
-  .phd {{ display: flex; align-items: center; gap: 4px; min-width: 0; }}
+  /* The header is the fold, one single click, the same gesture on all four. No
+     caret: the hover state is the affordance, as it is on the band headers. */
+  .phd {{ display: flex; align-items: center; gap: 4px; min-width: 0;
+    cursor: pointer; user-select: none; border-radius: 3px; }}
+  .phd:hover {{ background: #f2f2f2; }}
+  /* The buttons inside the header are not the fold and must not look like it. */
+  .phd .pseg {{ cursor: default; }}
   .phd .badge {{ min-width: calc(20px * var(--fs)); font-size: calc(8px * var(--fs));
     padding: 1px 3px; }}
   /* The first thing in the header to give way when the card is narrow: the
@@ -1232,7 +1237,7 @@ def render_page(draft_id: str) -> str:
 
     <section class="band band-runs" data-band="runs">
       <div class="bandhd"><h2>Run pressure</h2>
-        <span class="note">RUNS / TIER per card · double-click to fold</span></div>
+        <span class="note">RUNS / TIER per card · click a card header to fold</span></div>
       <div class="bandbody"><div id="pressure"></div></div>
     </section>
 
@@ -1311,21 +1316,24 @@ function applyPViews() {{
   }});
 }}
 
+// One listener, two jobs, in the order that keeps them apart: the RUNS/TIER
+// buttons sit inside the header, so the pane switch has to claim the click
+// before the fold does -- otherwise switching a pane would fold the card you
+// were switching. Everywhere else on the header is the fold, single click.
+//
+// Single, not double, unlike the roster rows: nothing here is a drag handle, so
+// there is no gesture for a click to be mistaken for.
 pressureEl.addEventListener("click", (e) => {{
   const btn = e.target.closest(".pseg button");
-  if (!btn) return;
-  pviews[btn.closest(".pcard").dataset.pos] = btn.dataset.pane;
-  localStorage.setItem("draftsim.pviews", JSON.stringify(pviews));
-  applyPViews();
-}});
-
-// One gesture, one meaning: double-clicking a card folds it. The toggle is a
-// button and is exempt -- double-clicking it would otherwise switch the pane and
-// then fold the card you were switching.
-pressureEl.addEventListener("dblclick", (e) => {{
+  if (btn) {{
+    pviews[btn.closest(".pcard").dataset.pos] = btn.dataset.pane;
+    localStorage.setItem("draftsim.pviews", JSON.stringify(pviews));
+    applyPViews();
+    return;
+  }}
   if (e.target.closest(".pseg")) return;
-  const card = e.target.closest(".pcard");
-  if (card) toggleCollapsed("pos:" + card.dataset.pos);
+  const head = e.target.closest(".phd");
+  if (head) toggleCollapsed("pos:" + head.closest(".pcard").dataset.pos);
 }});
 
 // Nothing on this page covers anything any more, so Escape has one job again.
