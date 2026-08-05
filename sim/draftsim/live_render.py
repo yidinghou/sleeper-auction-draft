@@ -591,8 +591,13 @@ def render_page(draft_id: str) -> str:
      no arithmetic -- `flex: 0 0 auto` and the others simply grow. */
   .side {{ display: flex; flex-direction: column; min-width: 0;
     padding: 8px 10px; gap: 6px; border-right: 1px solid #eee; overflow: hidden; }}
+  /* Each band is a box, not a run of text with a heading over it. Folding is a
+     double-click with no button to leave behind, so without a frame a shut band
+     would vanish into the gap between its neighbours -- the border and the
+     tinted header strip are what stay on screen to say it is still there. */
   .band {{ display: flex; flex-direction: column; min-height: 0; min-width: 0;
-    position: relative; }}
+    position: relative; border: 1px solid #e0e0e0; border-radius: 8px;
+    background: #fff; overflow: hidden; }}
   /* Sized to its content, not to a share. Band 1 holds three fixed things -- the
      league line, the seat picker, the block -- so a share only parked white space
      under them, and worse: folding a band below handed this one a third of the
@@ -600,15 +605,22 @@ def render_page(draft_id: str) -> str:
      pixels down the screen. Content-sized, it never moves and never takes. */
   .band-live {{ flex: 0 0 auto; }}
   .band-runs {{ flex: 2 1 0; }}
-  .band-panes {{ flex: 2 1 0; }}
+  /* A wrapper, not a section: the pool and the log carry their own headers and
+     their own frames, and a box around the pair would only double every line. */
+  .band-panes {{ flex: 2 1 0; border: none; background: none; overflow: visible; }}
   .band > .bandhd {{ display: flex; align-items: baseline; gap: 6px; flex: none;
-    padding-bottom: 2px; }}
-  .bandhd h2 {{ font-size: calc(9px * var(--fs)); margin: 0; color: #888;
+    padding: 3px 7px; background: #f7f7f7; border-bottom: 1px solid #e8e8e8; }}
+  .bandhd h2 {{ font-size: calc(9px * var(--fs)); margin: 0; color: #555;
     text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }}
-  .bandhd .note {{ font-size: calc(8px * var(--fs)); color: #ccc;
+  .bandhd .note {{ font-size: calc(8px * var(--fs)); color: #bbb;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
   .band > .bandbody {{ flex: 1; min-height: 0; display: flex;
-    flex-direction: column; gap: 5px; }}
+    flex-direction: column; gap: 5px; padding: 5px 6px; }}
+  /* Shut, a band is its title bar and nothing else -- so the strip stops being a
+     lid and becomes the whole box, and the fill says at a glance which of the
+     four you have put away. */
+  .band.collapsed {{ background: #fafafa; }}
+  .band.collapsed > .bandhd {{ border-bottom: none; }}
 
   /* The header *is* the control -- double-click it to fold. No caret, because a
      16px button is a small target to hunt for mid-auction and there are six of
@@ -616,10 +628,10 @@ def render_page(draft_id: str) -> str:
      so the header lights up under the cursor and says what it does: the hover
      state is the entire affordance, and without it this would be a secret. */
   .band > .bandhd {{ cursor: pointer; user-select: none; border-radius: 3px; }}
-  .band > .bandhd:hover {{ background: #f6f6f6; }}
+  .band > .bandhd:hover {{ background: #ededed; }}
   .band > .bandhd:hover h2 {{ color: #1a1a1a; }}
   .band > .bandhd::after {{ content: "\\25BE"; margin-left: auto; flex: none;
-    font-size: 8px; color: #ddd; line-height: 1.6; }}
+    font-size: 8px; color: #bbb; line-height: 1.6; }}
   .band > .bandhd:hover::after {{ color: #888; }}
   .collapsed > .bandbody {{ display: none; }}
   .band.collapsed {{ flex: 0 0 auto; }}
@@ -945,9 +957,11 @@ def render_page(draft_id: str) -> str:
      width, rather than leaving half the band empty. Written as a child rule so
      it outranks the column direction every other band body gets. */
   .band > .bandbody.panes {{ display: flex; flex-direction: row; gap: 6px;
-    flex: 1; min-height: 0; }}
+    flex: 1; min-height: 0; padding: 0; }}
+  /* Border and padding come from `.band` -- a pane is one of the four foldable
+     sections and is framed like the other three, not like a lesser inset. */
   .pane2 {{ display: flex; flex-direction: column; min-height: 0; min-width: 0;
-    flex: 1 1 0; border: 1px solid #eee; border-radius: 6px; padding: 3px 4px; }}
+    flex: 1 1 0; }}
   /* A collapsed pane keeps its title and drops everything else, the subtitle
      included -- that note otherwise sets the width and leaves a "collapsed"
      pane still holding a fifth of the band. */
