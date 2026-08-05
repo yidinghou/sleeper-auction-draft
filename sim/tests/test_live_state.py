@@ -656,6 +656,20 @@ def test_surplus_shows_as_extra_pips_outside_the_run(finished):
     assert "pip extra" in need  # a finished roster is deep somewhere
 
 
+def test_an_unfilled_pip_is_neutral_not_a_tint_of_the_position():
+    # Tinted, a slot you do not own was still QB pink or WR blue, and the two
+    # ends of a row differed by saturation -- which reads as "a bit filled", and
+    # reads differently at each position, because the four are not equally light.
+    # The position colour now means one thing: you own this one.
+    page = render_page("123")
+    base = page.split("  .pip {")[1].split("}")[0]
+    assert "background: #ececec;" in base
+    assert "var(--pos" not in base
+    assert ".pip.on { background: var(--pos, #7c90a0); box-shadow: none; }" in page
+    # Surplus is a slot you own, so it keeps the accent -- outlined, past the run.
+    assert "var(--pos" in page.split("  .pip.extra {")[1].split("}")[0]
+
+
 def test_the_need_pane_ends_with_the_spending_pace(midway):
     # $37 across three slots and $37 across twelve are different seats, and the
     # balance alone does not say which one you are looking at.

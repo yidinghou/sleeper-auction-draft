@@ -325,11 +325,17 @@
   .nrow.short .nct { color: #c0392b; }
   /* One pip per whole starter the target asks for, the half-slot drawn half as
      wide, so the row's own length is the requirement -- 2.5 is visible rather
-     than merely readable. Surplus sits outside the run, outlined. */
+     than merely readable. Surplus sits outside the run, outlined.
+
+     An empty slot is neutral grey, never a tint of the position. Tinted, a slot
+     you do not own was still QB pink or WR blue, and the difference between the
+     two ends of a row came down to saturation -- which reads as "a bit filled"
+     rather than "not filled", and reads differently at every position because
+     the four colours are not equally light. The position colour now means one
+     thing only: you own this one. */
   .pips { display: flex; align-items: center; gap: 2px; }
   .pip { height: calc(6px * var(--fs)); width: calc(8px * var(--fs)); border-radius: 2px;
-    background: color-mix(in srgb, var(--pos, #7c90a0) 22%, #fff);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pos, #7c90a0) 35%, #fff); }
+    background: #ececec; box-shadow: inset 0 0 0 1px #e0e0e0; }
   .pip.half { width: calc(4px * var(--fs)); }
   .pip.on { background: var(--pos, #7c90a0); box-shadow: none; }
   .pip.extra { background: none; width: calc(5px * var(--fs));
@@ -361,15 +367,15 @@
   /* Capped at the band's height, not stretched to it: a card sizes to whatever
      it holds, but a tier list of twenty names must scroll inside the card
      rather than growing it down over the pool and the log below. */
-  /* A fixed quarter (less the three 5px gaps), never a share of what is going.
-     Cards used to be `flex: 1 1 0` and divide the row between them, so an open
-     card was three times its usual width if its neighbours were folded and the
-     same card was a different size every time you came back to it. Pinned, an
-     open card is the width you last read it at whatever the other three do --
-     and what folding buys is quiet, not room, which is what it was for. */
+  /* Open cards divide the row between them, so folding one hands its width to
+     the ones you are still reading. Pinned to a fixed quarter, folding bought
+     quiet and nothing else: three rails and a quarter-width card with half the
+     band standing empty beside it. The tier list and the board list are both
+     name columns that ellipsize, and width is the only thing that helps them --
+     so the room a folded card gives up should go where you are looking. */
   .pcard { border: 1px solid #ddd; border-radius: 6px; padding: 4px 5px 5px;
     min-width: 0; display: flex; flex-direction: column; gap: 3px;
-    flex: 0 0 calc((100% - 15px) / 4); max-height: 100%; }
+    flex: 1 1 0; max-height: 100%; }
   /* Folded, a card is its header and nothing else: the badge and how many are
      left, which is the one line you would still want from a position you have
      stopped working on. It shrinks to what those two need -- a rail, so the eye
@@ -414,6 +420,15 @@
   .sev-run { --sev: #c0392b; --sevbg: #fdecec; }
   .sev-tight { --sev: #b7791f; --sevbg: #fdf6e6; }
   .sev-safe { --sev: #1a7f37; --sevbg: #eefaf0; }
+  /* How much of the league's want at this position is bought, in the shape the
+     roster card already uses for money: colour is need answered, grey is supply
+     spent on somebody's fourth, and the track is what is still owed. It sits
+     under the header rather than in it so the fold takes it with everything
+     else -- three pixels on a rail is a smear. */
+  .phealth { height: 3px; border-radius: 2px; display: flex;
+    background: #eee; overflow: hidden; }
+  .phealth i { display: block; height: 100%; background: var(--pos, #7c90a0); }
+  .phealth i.over { background: #ccc; }
   .plbl { font-style: normal; font-size: calc(8px * var(--fs)); color: #aaa;
     text-transform: uppercase; letter-spacing: 0.03em;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -431,7 +446,17 @@
   .tile .pip { height: calc(4px * var(--fs)); width: 100%; }
   /* A seat that has met its target has stopped buying. Receding it leaves the
      live demand as the only thing standing in the grid, which is the read. */
-  .tile.done { opacity: 0.3; }
+  /* Settled: this seat has what it wanted here and is out of the bidding. A
+     filled grey block with a check, not a fade -- at 8px an opacity is a
+     subtlety, and which seats are still hunting is the one thing the grid is
+     for. The check occupies exactly the pips' height so the 4x3 grid holds its
+     shape as seats fill up. */
+  .tile.done { background: #e7e7e7; border-color: #dadada; }
+  .tile.done .ttop b { color: #8c8c8c; font-weight: 400; }
+  .tile.done .ttop i { color: #9a9a9a; font-weight: 400; }
+  .tfull { display: flex; align-items: center; justify-content: center;
+    height: calc(4px * var(--fs)); font-size: calc(7px * var(--fs));
+    line-height: 1; color: #8c8c8c; }
 
   .bd { display: flex; flex-direction: column; }
   .brow { display: flex; justify-content: space-between; gap: 4px;

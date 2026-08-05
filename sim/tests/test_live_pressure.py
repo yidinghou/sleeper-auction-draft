@@ -193,7 +193,7 @@ def test_tiles_ship_in_seat_order_so_the_client_can_rearrange_them(midway):
     assert slots == sorted(midway.seats)
 
 
-def test_a_finished_seat_dims_out_of_the_grid(midway):
+def test_a_finished_seat_settles_out_of_the_grid(midway):
     html = render_pressure(midway)
     dimmed = 0
     for pr in pressure(midway):
@@ -203,6 +203,12 @@ def test_a_finished_seat_dims_out_of_the_grid(midway):
             assert ("done" in tile) is (not pr.lines[slot].need)
             dimmed += "done" in tile
     assert dimmed, "no seat had met a target -- the assertion above proved nothing"
+    # And it settles as a filled shape, not as a fade. At the size a tile is
+    # actually read at, a 0.3 opacity was a subtlety -- and which seats are still
+    # hunting is the one question the grid exists to answer.
+    page = render_page("123")
+    assert ".tile.done { background: #e7e7e7; border-color: #dadada; }" in page
+    assert "opacity: 0.3" not in page
 
 
 def test_every_card_carries_a_board_list_tight_end_included(midway):
@@ -219,20 +225,30 @@ def test_a_tile_never_draws_more_than_the_target_asks_for(finished):
     # Depth is a roster question. Inside a pressure tile a fourth quarterback
     # only made one of twelve tiles wider than its neighbours, and what the run
     # pane wants from that seat is that it has stopped buying -- which the
-    # dimming says. The NEED rows still draw the surplus in full
+    # settled tile says. The NEED rows still draw the surplus in full
     # (test_live_state: test_surplus_shows_as_extra_pips_outside_the_run).
     html = render_pressure(finished)
     assert "pip extra" not in html
-    deep = 0
+    deep = short = 0
     for pr in pressure(finished):
         card = html.split(f'data-pos="{pr.pos}"')[1].split("</section>")[0]
         for slot in finished.seats:
             line = pr.lines[slot]
             tile = card.split(f'data-seat="{slot}"')[1].split("</span></span>")[0]
+            if not line.need:
+                # A seat that is full draws no pips at all -- pips are what is
+                # still owed, and it owes nothing. Which also settles the depth
+                # question: every seat with a surplus is a full one, so surplus
+                # cannot reach the grid whatever it does to a roster.
+                assert 'class="tfull"' in tile
+                assert 'class="pip' not in tile
+                deep += line.have > math.ceil(line.want)
+                continue
             filled = tile.count('class="pip on"') + tile.count('class="pip half on"')
             assert filled == min(line.have, math.ceil(line.want))
-            deep += line.have > math.ceil(line.want)
+            short += 1
     assert deep, "no seat was over its target -- the assertion above proved nothing"
+    assert short, "no seat was short -- the pip count above was never checked"
 
 
 def test_a_position_nobody_is_short_at_recedes(finished, midway):
@@ -246,6 +262,64 @@ def test_a_position_nobody_is_short_at_recedes(finished, midway):
     page = render_page("123")
     assert ".pcard.done { opacity: 0.55; }" in page
     assert ".pcard.done:hover { opacity: 1; }" in page
+
+
+def _health(card: str) -> list:
+    bar = card.split('class="phealth"')[1].split("</div>")[0]
+    return [float(w.split("%")[0]) for w in bar.split("width:")[1:]]
+
+
+def test_the_health_bar_is_need_answered_over_need_total(midway):
+    # The same shape the roster card's budget bar makes, so the state reads
+    # before the counter beside it is parsed. Filled is capped per seat: a fourth
+    # quarterback on one roster must not fill the bar for the eleven teams still
+    # without one -- which is exactly what makes the coloured stretch
+    # `total - wanted`, so the bar and the TIER pane cannot disagree.
+    html = render_pressure(midway)
+    grew = 0
+    for pr in pressure(midway):
+        card = html.split(f'data-pos="{pr.pos}"')[1].split("</section>")[0]
+        met, over = _health(card)
+        total = round(DRAFT_TARGETS[pr.pos] * midway.config.teams)
+        assert met == pytest.approx(100 * (total - pr.wanted) / total, abs=0.1)
+        assert met + over <= 100.0 + 1e-6
+        grew += met > 0
+    assert grew, "no position had been drafted into -- every bar was empty"
+
+
+def test_the_health_bar_greys_what_answered_nobody(midway, finished):
+    # Supply spent on somebody's fourth is gone off the board either way, so it
+    # sits inside the bar -- but grey, because it is not progress.
+    html = render_pressure(midway)
+    surplus = 0
+    for pr in pressure(midway):
+        card = html.split(f'data-pos="{pr.pos}"')[1].split("</section>")[0]
+        met, over = _health(card)
+        total = round(DRAFT_TARGETS[pr.pos] * midway.config.teams)
+        bought = sum(min(l.have, l.want) for l in pr.lines.values())
+        assert over == pytest.approx(
+            100 * min(max(0.0, pr.drafted - bought), total - bought) / total, abs=0.1
+        )
+        assert met + over <= 100.0 + 1e-6
+        surplus += over > 0
+    assert surplus, "nobody drafted past a target -- the grey was never checked"
+    # And once a position is answered the grey has nowhere to go: RB finishes at
+    # 62 bodies against a want of 30, and the bar is full rather than overrun.
+    done = render_pressure(finished).split('data-pos="RB"')[1].split("</section>")[0]
+    assert _health(done) == [100.0, 0.0]
+    page = render_page("123")
+    assert ".phealth i { display: block; height: 100%; background: var(--pos" in page
+    assert ".phealth i.over { background: #ccc; }" in page
+
+
+def test_the_health_bar_folds_away_with_the_card(midway):
+    # Three pixels squeezed onto a rail is a smear, not a reading. It is a
+    # sibling of the header rather than part of it, which is what puts it under
+    # the rule that empties a folded card.
+    page = render_page("123")
+    assert ".pcard.collapsed > *:not(.phd) { display: none; }" in page
+    card = render_pressure(midway).split('data-pos="QB"')[1].split("</section>")[0]
+    assert card.index('class="phealth"') > card.index("</div>")
 
 
 def test_the_card_says_how_many_teams_are_short(midway):
@@ -398,15 +472,17 @@ def test_a_folded_card_shows_nothing_but_its_header_in_either_pane():
     assert hide > page.index(".pcard.view-tier .ppane.pdet {")
 
 
-def test_an_open_cards_width_does_not_depend_on_its_neighbours():
-    # The bug this replaces: cards were `flex: 1 1 0` and divided the row between
-    # them, so opening one while the other three were folded made it three times
-    # its usual width. Pinned to a quarter, a card is the size you last read it
-    # at, and folding buys quiet rather than room.
+def test_folding_a_card_hands_its_width_to_the_ones_you_kept():
+    # Pinned to a fixed quarter, folding three cards bought quiet and nothing
+    # else: three rails and a quarter-width card with half the band empty beside
+    # it. The tier and board lists are name columns that ellipsize, and width is
+    # the only thing that helps them.
     page = render_page("123")
-    assert "flex: 0 0 calc((100% - 15px) / 4);" in page
-    assert "flex: 1 1 0;" not in page.split(".pcard { border")[1].split("}")[0]
-    # Folded, a card shrinks to its own header -- a rail, not a quarter.
+    rule = page.split(".pcard { border")[1].split("}")[0]
+    assert "flex: 1 1 0;" in rule
+    assert "calc((100% - 15px) / 4)" not in page
+    # Folded, a card shrinks to its own header -- a rail, and the room it gives
+    # up is what the open cards divide.
     assert ".pcard.collapsed { flex: 0 0 auto;" in page
 
 
