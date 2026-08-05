@@ -310,11 +310,17 @@
   .nrow.short .nct { color: #c0392b; }
   /* One pip per whole starter the target asks for, the half-slot drawn half as
      wide, so the row's own length is the requirement -- 2.5 is visible rather
-     than merely readable. Surplus sits outside the run, outlined. */
+     than merely readable. Surplus sits outside the run, outlined.
+
+     An empty slot is neutral grey, never a tint of the position. Tinted, a slot
+     you do not own was still QB pink or WR blue, and the difference between the
+     two ends of a row came down to saturation -- which reads as "a bit filled"
+     rather than "not filled", and reads differently at every position because
+     the four colours are not equally light. The position colour now means one
+     thing only: you own this one. */
   .pips { display: flex; align-items: center; gap: 2px; }
   .pip { height: calc(6px * var(--fs)); width: calc(8px * var(--fs)); border-radius: 2px;
-    background: color-mix(in srgb, var(--pos, #7c90a0) 22%, #fff);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pos, #7c90a0) 35%, #fff); }
+    background: #ececec; box-shadow: inset 0 0 0 1px #e0e0e0; }
   .pip.half { width: calc(4px * var(--fs)); }
   .pip.on { background: var(--pos, #7c90a0); box-shadow: none; }
   .pip.extra { background: none; width: calc(5px * var(--fs));
