@@ -334,14 +334,14 @@ def test_page_shell_is_a_full_html_document():
 def test_every_seat_gets_a_roster_card(midway):
     html = render_rosters(midway)
     for slot in midway.seats:
-        assert f'data-roster="{slot}"' in html
+        assert f'data-seat="{slot}"' in html
 
 
 def test_cards_are_in_seat_order_not_reach_order(midway):
     # The table sorts by reach; these are read to look a seat up, and a grid
     # that reshuffles on every bid is useless for that.
     html = render_rosters(midway)
-    order = [int(c.split('"')[0]) for c in html.split('data-roster="')[1:]]
+    order = [int(c.split('"')[0]) for c in html.split('data-seat="')[1:]]
     assert order == sorted(midway.seats)
 
 
@@ -406,7 +406,7 @@ def test_unfilled_starter_slots_are_shown(midway):
 def test_empty_rosters_still_render_their_shape(mock_config, pool):
     state = reconstruct([], mock_config, pool)
     html = render_rosters(state)
-    assert html.count("data-roster=") == mock_config.teams
+    assert html.count("data-seat=") == mock_config.teams
     # Every seat shows the full lineup shape, all of it empty.
     assert html.count('class="ln open"') == mock_config.teams * len(
         [s for s in mock_config.roster_slots if s != "BN"]
@@ -550,7 +550,7 @@ def test_page_splits_state_left_from_rosters_right():
 
 
 def _card(state, slot):
-    card = render_rosters(state).split('data-roster="%d"' % slot)[1]
+    card = render_rosters(state).split('data-seat="%d"' % slot)[1]
     return card.split("</section>")[0]
 
 
@@ -700,9 +700,12 @@ def test_dragging_does_not_change_what_the_server_sends(midway):
     # order, so the server has no idea the board was rearranged and seat order
     # is always recoverable.
     page = render_page("123")
-    assert "card.style.order" in page
+    # Applied by attribute, not by card class: the roster cards and the pressure
+    # tiles are both keyed by seat, and one array has to move both.
+    assert 'querySelectorAll("[data-seat]")' in page
+    assert "el.style.order" in page
     assert "draftsim.order" in page
-    order = [int(c.split('"')[0]) for c in render_rosters(midway).split('data-roster="')[1:]]
+    order = [int(c.split('"')[0]) for c in render_rosters(midway).split('data-seat="')[1:]]
     assert order == sorted(midway.seats)
 
 
@@ -766,7 +769,7 @@ def test_a_one_word_name_is_left_alone():
 
 def test_cards_carry_both_name_forms_so_maximizing_needs_no_refetch(midway):
     seat = next(s for s in midway.seats.values() if s.roster)
-    card = render_rosters(midway).split('data-roster="%d"' % seat.slot)[1]
+    card = render_rosters(midway).split('data-seat="%d"' % seat.slot)[1]
     card = card.split("</section>")[0]
     player = seat.picks[0].player
     assert f'class="mn">{_short_name(player)}<' in card
@@ -782,7 +785,7 @@ def _esc_name(name):
 def test_cards_label_their_numeric_columns(midway):
     # The labels ship in every card but only show when maximized, where there
     # is room for the bye and points columns they name.
-    card = render_rosters(midway).split('data-roster="1"')[1]
+    card = render_rosters(midway).split('data-seat="1"')[1]
     assert ">BYE<" in card
     assert ">PTS<" in card
     assert 'class="ln colhead"' in card

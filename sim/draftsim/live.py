@@ -22,7 +22,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from .live_render import render_nomination, render_page, render_rosters
+from .live_render import (
+    render_nomination,
+    render_page,
+    render_pressure,
+    render_rosters,
+)
 from .live_state import LeagueState, reconstruct
 from .sleeper import (
     SleeperError,
@@ -127,6 +132,7 @@ class DraftPoller:
             ),
             "nomination_html": render_nomination(state, nom, nominee),
             "rosters_html": render_rosters(state),
+            "pressure_html": render_pressure(state),
             "polled_at": time.strftime("%H:%M:%S"),
             "warning": stale,
         }
@@ -162,6 +168,7 @@ class DraftPoller:
                 "subtitle": error or "waiting for the first poll…",
                 "nomination_html": '<div class="block idle">connecting…</div>',
                 "rosters_html": "",
+                "pressure_html": "",
                 "polled_at": "—",
                 "warning": error or "",
             }

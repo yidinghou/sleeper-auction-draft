@@ -23,7 +23,14 @@ import math
 from typing import Optional
 
 from .config import BENCH
-from .live_state import LeagueState, PositionLine, Seat, position_summary
+from .live_pressure import PositionPressure, pressure
+from .live_state import (
+    DRAFT_TARGETS,
+    LeagueState,
+    PositionLine,
+    Seat,
+    position_summary,
+)
 from .roster import display_slots
 from .sleeper import Nomination
 from .theme import (
@@ -241,7 +248,7 @@ def _roster_card(state: LeagueState, seat: Seat) -> str:
 
     broke = " broke" if seat.max_bid <= _OUT_OF_MARKET else ""
     return (
-        f'<section class="card{broke}" data-roster="{seat.slot}"'
+        f'<section class="card{broke}" data-seat="{seat.slot}"'
         ' draggable="true">'
         f"{_card_header(state, seat)}"
         '<div class="body">'
@@ -268,6 +275,90 @@ def render_rosters(state: LeagueState) -> str:
         _roster_card(state, state.seats[slot]) for slot in sorted(state.seats)
     )
     return f'<div class="grid">{cards}</div>'
+
+
+# TE gets a narrow card. It is one starter with no flex claim, so its pressure
+# is a single pip per seat and a number -- and the width that buys goes to the
+# three positions where a run actually costs you a lineup.
+_MINOR = ("TE",)
+
+# Enough supply to see whether the tier is a tier or a rump, without the card
+# turning into a player list. The detail panel has the rest.
+_BOARD_SHOWN = 3
+
+
+def _seat_tile(seat: Seat, line: PositionLine, color: str) -> str:
+    """One seat's fill at one position: who, what's left, and the pips.
+
+    `data-seat` is what the client's `applyOrder()` reorders on, so this tile
+    lands wherever that seat's roster card was dragged to. A seat that has met
+    its target dims: what is left standing in the grid is the live demand.
+    """
+    done = "" if line.need else " done"
+    tip = (
+        f"S{seat.slot} — {line.have}/{_num(line.want)} {line.pos} · "
+        + ("full" if not line.need else f"{_num(line.need)} to go")
+        + f" · ${seat.budget_left} left, max ${seat.max_bid}"
+    )
+    return (
+        f'<span class="tile{done}" data-seat="{seat.slot}" title="{_esc(tip)}">'
+        f'<span class="ttop"><b>S{seat.slot}</b><i>${seat.budget_left}</i></span>'
+        f"{_pips(line.have, line.want, color)}</span>"
+    )
+
+
+def _pressure_card(state: LeagueState, pr: PositionPressure) -> str:
+    """One position: supply on the board over the league's fill state."""
+    color = POS_COLOR_LIGHT.get(pr.pos, POS_FALLBACK_LIGHT)
+    minor = pr.pos in _MINOR
+    total = round(DRAFT_TARGETS.get(pr.pos, 0.0) * state.config.teams)
+
+    tiles = "".join(
+        _seat_tile(state.seats[slot], pr.lines[slot], color)
+        for slot in sorted(state.seats)
+    )
+
+    board = ""
+    if not minor:
+        rows = "".join(
+            f'<div class="brow"><b>{_esc(_short_name(p))}</b>'
+            f'<i>{p.points:.0f}</i></div>'
+            for p in pr.avail[:_BOARD_SHOWN]
+        )
+        if not rows:
+            rows = '<div class="brow empty">tier is gone</div>'
+        more = (
+            f'<div class="bmore">+{len(pr.avail) - _BOARD_SHOWN} more</div>'
+            if len(pr.avail) > _BOARD_SHOWN
+            else ""
+        )
+        board = f'<i class="plbl">on the board</i><div class="bd">{rows}{more}</div>'
+
+    # The cliff is what makes the tier count mean something -- "3 left" is only
+    # frightening next to what the fourth-best is worth.
+    foot = f"−{pr.cliff_drop} cliff" if pr.cliff_drop else "no tier below"
+    return (
+        f'<section class="pcard sev-{pr.severity}{" minor" if minor else ""}"'
+        f' style="--pos:{color}" data-pos="{pr.pos}">'
+        f'<div class="phd">{badge(pr.pos, light=True)}'
+        f'<span class="pcount"><b>{pr.drafted}</b>/{total}</span>'
+        f'<span class="pverd">{pr.left} left</span></div>'
+        f'<i class="plbl">{len(pr.need_seats)} teams still need {_esc(pr.pos)}</i>'
+        f'<div class="tiles">{tiles}</div>'
+        f"{board}"
+        f'<div class="pfoot">{foot}</div></section>'
+    )
+
+
+def render_pressure(state: LeagueState) -> str:
+    """Run pressure, one card per position, in `TIERS` order.
+
+    Fixed order and fixed positions, for the same reason the roster cards are in
+    seat order: a card that reshuffles itself the moment a run starts is a card
+    you have to hunt for at exactly the moment you needed it.
+    """
+    cards = "".join(_pressure_card(state, pr) for pr in pressure(state))
+    return f'<div class="pgrid">{cards}</div>'
 
 
 def render_nomination(
@@ -535,6 +626,66 @@ def render_page(draft_id: str) -> str:
     font-variant-numeric: tabular-nums; }}
   .pace b {{ color: #1a1a1a; font-weight: 700; }}
 
+  /* -- Run pressure -------------------------------------------------------
+     One card per position, in the left column under the block. The card is
+     supply (what's left in the tier) over demand (which seats still want one),
+     and the twelve tiles are the same twelve seats as the board across the
+     aisle, in the same arrangement -- drag a roster card and these follow.
+     TE is deliberately narrow: one starter, no flex claim, so its pressure is
+     a pip and a number, and the width goes where a run costs you a lineup. */
+  #pressure {{ min-height: 0; overflow: hidden; }}
+  .pgrid {{ display: grid; gap: 5px; grid-template-columns: 1fr 1fr 1fr 0.55fr;
+    align-items: start; }}
+  .pcard {{ border: 1px solid #ddd; border-radius: 6px; padding: 4px 5px 5px;
+    min-width: 0; display: flex; flex-direction: column; gap: 3px;
+    cursor: pointer; }}
+  .pcard:hover {{ border-color: #bbb; }}
+  .phd {{ display: flex; align-items: center; gap: 4px; min-width: 0; }}
+  .phd .badge {{ min-width: calc(20px * var(--fs)); font-size: calc(7.5px * var(--fs));
+    padding: 1px 3px; }}
+  .pcount {{ font-size: calc(8px * var(--fs)); color: #888;
+    font-variant-numeric: tabular-nums; white-space: nowrap; }}
+  .pcount b {{ color: #1a1a1a; }}
+  /* Severity is a status, so it is never the colour alone: the pill always
+     says how many are left, and the ramp only sharpens what the number says. */
+  .pverd {{ margin-left: auto; font-size: calc(7.5px * var(--fs)); font-weight: 700;
+    padding: 0 4px; border-radius: 3px; white-space: nowrap;
+    background: var(--sevbg); color: var(--sev); }}
+  .sev-run {{ --sev: #c0392b; --sevbg: #fdecec; }}
+  .sev-tight {{ --sev: #b7791f; --sevbg: #fdf6e6; }}
+  .sev-safe {{ --sev: #1a7f37; --sevbg: #eefaf0; }}
+  .plbl {{ font-style: normal; font-size: calc(7px * var(--fs)); color: #aaa;
+    text-transform: uppercase; letter-spacing: 0.03em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+
+  /* Four across, three down -- the roster grid's shape, so a seat sits in the
+     same place in both halves of the screen and the eye can carry across. */
+  .tiles {{ display: grid; gap: 2px; grid-template-columns: repeat(4, minmax(0, 1fr)); }}
+  .tile {{ border: 1px solid #eee; border-radius: 3px; padding: 1px 3px 2px;
+    min-width: 0; display: flex; flex-direction: column; gap: 2px; }}
+  .ttop {{ display: flex; align-items: baseline; gap: 2px; min-width: 0; }}
+  .ttop b {{ font-size: calc(7px * var(--fs)); font-weight: 700; color: #444; }}
+  .ttop i {{ font-style: normal; margin-left: auto; font-size: calc(6.5px * var(--fs));
+    color: #1a7f37; font-weight: 700; font-variant-numeric: tabular-nums; }}
+  .tile .pips {{ gap: 1px; }}
+  .tile .pip {{ height: calc(4px * var(--fs)); width: 100%; }}
+  /* A seat that has met its target has stopped buying. Receding it leaves the
+     live demand as the only thing standing in the grid, which is the read. */
+  .tile.done {{ opacity: 0.3; }}
+  .minor .ttop i {{ display: none; }}  /* no room, and the tooltip has it */
+
+  .bd {{ display: flex; flex-direction: column; }}
+  .brow {{ display: flex; justify-content: space-between; gap: 4px;
+    font-size: calc(8px * var(--fs)); color: #444; }}
+  .brow:not(:last-child) {{ border-bottom: 1px solid #f4f4f4; }}
+  .brow b {{ font-weight: 400; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; }}
+  .brow i {{ font-style: normal; color: #aaa; font-variant-numeric: tabular-nums; }}
+  .brow.empty {{ color: #c0392b; }}
+  .bmore {{ font-size: calc(7px * var(--fs)); color: #1a7f37; font-weight: 700; }}
+  .pfoot {{ font-size: calc(7px * var(--fs)); color: #aaa;
+    font-variant-numeric: tabular-nums; }}
+
   /* Maximized: the board leaves its half and takes the viewport. Nothing is
      re-rendered -- the hidden columns and the other panes were always there. */
   body.maxed .board {{ position: fixed; inset: 0; z-index: 10;
@@ -604,6 +755,7 @@ def render_page(draft_id: str) -> str:
     </div>
 
     <div id="block"></div>
+    <div id="pressure"></div>
   </aside>
 
   <main class="board">
@@ -659,8 +811,8 @@ try {{ views = JSON.parse(localStorage.getItem("draftsim.views")) || {{}}; }} ca
 // same reason: the buttons are new markup on every refresh.
 function applyViews() {{
   document.querySelectorAll("section.card").forEach((card) => {{
-    const view = VIEWS.includes(views[card.dataset.roster])
-      ? views[card.dataset.roster] : VIEWS[0];
+    const view = VIEWS.includes(views[card.dataset.seat])
+      ? views[card.dataset.seat] : VIEWS[0];
     card.classList.toggle("view-bench", view === "bench");
     card.classList.toggle("view-need", view === "need");
     card.querySelectorAll(".seg button").forEach((b) => {{
@@ -674,20 +826,30 @@ function applyViews() {{
 document.getElementById("rosters").addEventListener("click", (e) => {{
   const btn = e.target.closest(".seg button");
   if (!btn) return;
-  const slot = btn.closest("section.card").dataset.roster;
+  const slot = btn.closest("section.card").dataset.seat;
   views[slot] = btn.dataset.pane;
   localStorage.setItem("draftsim.views", JSON.stringify(views));
   applyViews();
 }});
 
-// Card order, dragged by hand and remembered. Presentational: the server always
+// Seat order, dragged by hand and remembered. Presentational: the server always
 // sends seat order and this reorders the grid with CSS `order`, so nothing has
 // to be re-fetched and seat order is never lost -- clearing the list restores it.
+//
+// One array, and every grid keyed by seat obeys it: the roster cards and the
+// twelve tiles inside each run-pressure card all carry `data-seat`, so the seat
+// you dragged to the top-left of the board is top-left everywhere. That is why
+// this selects on the attribute rather than on `section.card` -- two grids
+// syncing to each other would disagree for a frame after every drag; two grids
+// reading the same array in the same pass cannot.
 let order = [];
 try {{ order = JSON.parse(localStorage.getItem("draftsim.order")) || []; }} catch (e) {{}}
 
+// Seats as the roster cards report them. The cards are the authority on which
+// seats exist -- a tile grid is a view of the same twelve and must not be able
+// to introduce a thirteenth.
 function slots() {{
-  return [...document.querySelectorAll("section.card")].map((c) => c.dataset.roster);
+  return [...document.querySelectorAll("section.card")].map((c) => c.dataset.seat);
 }}
 
 // Reconcile the stored list against the seats actually on the board: drop seats
@@ -701,8 +863,8 @@ function normalizeOrder() {{
 
 function applyOrder() {{
   normalizeOrder();
-  document.querySelectorAll("section.card").forEach((card) => {{
-    card.style.order = order.indexOf(card.dataset.roster);
+  document.querySelectorAll("[data-seat]").forEach((el) => {{
+    el.style.order = order.indexOf(el.dataset.seat);
   }});
 }}
 
@@ -716,7 +878,7 @@ const rosters = document.getElementById("rosters");
 rosters.addEventListener("dragstart", (e) => {{
   const card = e.target.closest("section.card");
   if (!card) return;
-  dragging = card.dataset.roster;
+  dragging = card.dataset.seat;
   card.classList.add("dragging");
   e.dataTransfer.effectAllowed = "move";
   // Firefox ignores a drag that carries no data.
@@ -729,14 +891,14 @@ rosters.addEventListener("dragover", (e) => {{
   e.preventDefault();  // without this the drop event never fires
   e.dataTransfer.dropEffect = "move";
   document.querySelectorAll(".dropzone").forEach((c) => c.classList.remove("dropzone"));
-  if (card.dataset.roster !== dragging) card.classList.add("dropzone");
+  if (card.dataset.seat !== dragging) card.classList.add("dropzone");
 }});
 
 rosters.addEventListener("drop", (e) => {{
   const card = e.target.closest("section.card");
   if (dragging === null || !card) return;
   e.preventDefault();
-  const target = card.dataset.roster;
+  const target = card.dataset.seat;
   if (target !== dragging) {{
     // Pull the card out, then put it back at the target's position: everything
     // from there down shifts one place, which is what dropping "onto" a slot
@@ -770,7 +932,7 @@ document.getElementById("reorder").addEventListener("click", () => {{
 function highlight() {{
   const mine = seatSel.value;
   document.querySelectorAll("section.card").forEach((card) => {{
-    card.classList.toggle("me", mine !== "" && card.dataset.roster === mine);
+    card.classList.toggle("me", mine !== "" && card.dataset.seat === mine);
   }});
 }}
 
@@ -783,9 +945,12 @@ async function tick() {{
     document.getElementById("sub").textContent = s.subtitle;
     document.getElementById("block").innerHTML = s.nomination_html;
     // Everything else refreshes; the cards hold still until the drag lands, so
-    // the element in hand isn't deleted out from under it.
+    // the element in hand isn't deleted out from under it. The pressure tiles
+    // freeze with them rather than on their own: they are the same seats in the
+    // same order, and half of that pair moving mid-drag is worse than neither.
     if (dragging === null) {{
       rosters.innerHTML = s.rosters_html;
+      document.getElementById("pressure").innerHTML = s.pressure_html;
       highlight();
       applyViews();
       applyOrder();

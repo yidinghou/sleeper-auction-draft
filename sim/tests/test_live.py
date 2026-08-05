@@ -47,6 +47,9 @@ def test_snapshot_before_the_first_poll_says_so(poller):
     snap = poller.snapshot()
     assert "waiting" in snap["subtitle"]
     assert snap["rosters_html"] == ""
+    # Every fragment the page swaps in has to be present even here, or the first
+    # tick throws on an undefined and the board never starts.
+    assert snap["pressure_html"] == ""
 
 
 def test_a_poll_produces_a_renderable_snapshot(poller):
@@ -57,7 +60,10 @@ def test_a_poll_produces_a_renderable_snapshot(poller):
     assert "complete" in snap["subtitle"]
     # One card per seat, all from the same snapshot, so no two parts of the
     # page can show different moments of the draft.
-    assert snap["rosters_html"].count("data-roster=") == 12
+    assert snap["rosters_html"].count("data-seat=") == 12
+    # Four position cards, each holding a tile for all twelve seats -- the same
+    # twelve, from the same snapshot, so the tiles and the cards cannot disagree.
+    assert snap["pressure_html"].count("data-seat=") == 48
     assert "Kansas City Chiefs" in snap["nomination_html"]
     assert snap["warning"] == ""
     # The whole snapshot crosses the wire as JSON on every tick.
