@@ -18,6 +18,7 @@ mistaken for it mid-auction. `BASE_CSS` / `POS_COLOR` are the dark set,
 from __future__ import annotations
 
 import html
+from typing import Optional
 
 # Position badge colors, mirrored from the app's Sleeper theme.
 POS_COLOR = {
@@ -127,21 +128,26 @@ BASE_CSS_LIGHT = f"""
 """
 
 
-def badge(pos: str, light: bool = False) -> str:
+def badge(pos: str, light: bool = False, label: Optional[str] = None) -> str:
     """A colored position pill, e.g. RB in green.
 
     On white the dark board's `color + "33"` wash all but disappears, so the
     light variant fills the pill with the position colour and writes on it --
     the same badge, legible against the page it is actually on.
+
+    `label` writes something other than the bare position on the pill while the
+    colour still keys off `pos` -- "QB1" in the draft log, where the position and
+    its rank are one fact and do not deserve two columns.
     """
+    text = html.escape(label if label is not None else pos)
     if light:
         color = POS_COLOR_LIGHT.get(pos, POS_FALLBACK_LIGHT)
         return (
             f'<span class="badge" style="color:#fff;background:{color}">'
-            f"{html.escape(pos)}</span>"
+            f"{text}</span>"
         )
     color = POS_COLOR.get(pos, POS_FALLBACK)
     return (
         f'<span class="badge" style="color:{color};background:{color}33">'
-        f"{html.escape(pos)}</span>"
+        f"{text}</span>"
     )

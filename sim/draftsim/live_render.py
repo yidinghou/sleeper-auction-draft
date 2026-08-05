@@ -25,7 +25,7 @@ from __future__ import annotations
 import html
 import math
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 from .config import BENCH
 from .live_pressure import PositionPressure, pressure
@@ -617,6 +617,22 @@ def _log_price(pick: SeatPick) -> str:
     )
 
 
+def _pos_ranks(state: LeagueState) -> Dict[int, str]:
+    """`{pick_no: "QB1"}` -- how many at that position had gone before this one.
+
+    Counted in draft order, so QB1 is the first quarterback off the board rather
+    than the best one still on it. That is the number a price wants to be read
+    against: $54 for QB1 and $54 for QB9 are not the same event.
+    """
+    ranks: Dict[int, str] = {}
+    seen: Dict[str, int] = {}
+    for pick in sorted(state.picks, key=lambda p: p.pick_no):
+        pos = pick.player.pos
+        seen[pos] = seen.get(pos, 0) + 1
+        ranks[pick.pick_no] = f"{pos}{seen[pos]}"
+    return ranks
+
+
 def render_log(state: LeagueState) -> str:
     """Every sale, newest first.
 
@@ -624,17 +640,21 @@ def render_log(state: LeagueState) -> str:
     just went, for how much, and whether that was over the odds. The position
     rides in the same pill the pool uses, because "what has the room paid for
     running backs" is a question about a colour, not about fifteen surnames you
-    have to recognise one at a time. Names run in full, as they do in the pool
+    have to recognise one at a time. The pill also carries the position's draft
+    rank -- QB1, RB7 -- because that and the position are one fact, and spending
+    a whole column on a number that is always two characters wide would take the
+    room from the name. Names run in full, as they do in the pool
     beside it and for the same reason -- the width is there. Uncapped,
     because the rows read *between* nominations are the ones from an hour ago,
     when you are trying to remember what a receiver went for; a draft is at most
     a couple of hundred picks, so the whole thing is cheap to carry.
     """
+    ranks = _pos_ranks(state)
     rows = "".join(
         f'<div class="lrow">'
         f'<i class="lno">#{pick.pick_no}</i>'
         f'<i class="lst">S{pick.slot}</i>'
-        f"{badge(pick.player.pos, light=True)}"
+        f"{badge(pick.player.pos, light=True, label=ranks.get(pick.pick_no))}"
         f'<b>{_esc(pick.player.name)}</b>'
         f"{_log_price(pick)}</div>"
         for pick in sorted(state.picks, key=lambda p: -p.pick_no)

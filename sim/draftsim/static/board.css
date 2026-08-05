@@ -554,8 +554,10 @@
   .prow { grid-template-columns:
     calc(22px * var(--fs)) minmax(0, 1fr) calc(20px * var(--fs))
     calc(22px * var(--fs)) calc(24px * var(--fs)); }
+  /* The log's pill is wider than the pool's: it carries a rank as well as a
+     position, and "WR12" is four characters where "WR" is two. */
   .lrow { grid-template-columns:
-    calc(22px * var(--fs)) calc(18px * var(--fs)) calc(20px * var(--fs))
+    calc(22px * var(--fs)) calc(18px * var(--fs)) calc(28px * var(--fs))
     minmax(0, 1fr) calc(22px * var(--fs)) calc(26px * var(--fs)); }
   .prow:not(:last-child), .lrow:not(:last-child) { border-bottom: 1px solid #f7f7f7; }
   .prow b, .lrow b { font-weight: 400; min-width: 0; overflow: hidden;
