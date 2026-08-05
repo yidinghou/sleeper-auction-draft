@@ -341,6 +341,21 @@ def test_a_card_advertises_its_gesture(midway):
         assert "double-click to fold" in tag
 
 
+def test_a_folded_card_shows_nothing_but_its_header_in_either_pane():
+    # Order alone does not do it. `.pcard .ppane.runs` ties the collapsed rule on
+    # specificity and loses on order, but `.pcard.view-tier .ppane.pdet` is a
+    # class heavier and wins wherever it sits -- which is why a folded card used
+    # to render its whole tier list squeezed into the rail. The rule has to both
+    # follow it and out-weigh it.
+    page = render_page("123").replace("{{", "{")
+    hide = page.index(
+        ".pcard.collapsed.view-tier .ppane.pdet,\n  .pcard.collapsed .ppane "
+        "{ display: none; }"
+    )
+    assert hide > page.index(".pcard .ppane.runs { display: flex; }")
+    assert hide > page.index(".pcard.view-tier .ppane.pdet {")
+
+
 def test_a_collapsed_card_hands_its_width_to_the_others():
     # Flex, not a grid template: that is what makes collapsing TE widen QB/RB/WR
     # instead of leaving a narrow gap where TE was.

@@ -950,6 +950,16 @@ def render_page(draft_id: str) -> str:
   .pcard .ppane.runs {{ display: flex; }}
   .pcard.view-tier .ppane.runs {{ display: none; }}
   .pcard.view-tier .ppane.pdet {{ display: flex; flex: 1; }}
+  /* Last word on the panes, and it has to win twice over: `.pcard .ppane.runs`
+     ties `.pcard.collapsed .ppane` on specificity and is beaten on order, but
+     `.pcard.view-tier .ppane.pdet` is a class heavier and beats order -- which
+     is why a folded card used to go on rendering its whole tier list squeezed
+     into a rail. Hence the long selector: it has to out-weigh that rule, not
+     merely follow it. Folded is folded, whichever pane the card was left on --
+     and that pane comes back untouched when you unfold, because `pviews` never
+     heard about any of this. */
+  .pcard.collapsed.view-tier .ppane.pdet,
+  .pcard.collapsed .ppane {{ display: none; }}
   .pseg {{ margin-left: 0; }}
   .pseg button {{ padding: 0 3px; font-size: calc(8px * var(--fs)); }}
   .pdbody {{ overflow-y: auto; scrollbar-width: thin;
