@@ -451,13 +451,19 @@ def render_pool(state: LeagueState) -> str:
     quote, so the three panes cannot disagree about what a player should cost.
     Players with no projection sort last rather than being dropped: an unpriced
     body is still a body somebody can nominate.
+
+    Names run in full here, unlike everywhere else on the board. The initial is
+    a concession to a 220px card, and this pane is not one -- it has 250px for a
+    name, which is more than "Christian McCaffrey" needs. It is also the pane
+    where the distinction earns its keep: the pool is where two men who share a
+    short name sit in the same list, and "B. Robinson" cannot tell you which.
     """
     ranked = sorted(
         state.available, key=lambda p: (-market_value(p), -p.points, p.name)
     )
     rows = "".join(
         f'<div class="prow">{badge(player.pos, light=True)}'
-        f'<b>{_esc(_short_name(player))}</b>'
+        f'<b>{_esc(player.name)}</b>'
         f'<i class="ptm">{_esc(player.team or "FA")}</i>'
         f'<i class="ppt">{player.points:.0f}</i>'
         f'<i class="ppr">{f"${market_value(player):.0f}" if market_value(player) else "—"}</i>'
@@ -497,7 +503,8 @@ def render_log(state: LeagueState) -> str:
     just went, for how much, and whether that was over the odds. The position
     rides in the same pill the pool uses, because "what has the room paid for
     running backs" is a question about a colour, not about fifteen surnames you
-    have to recognise one at a time. Uncapped,
+    have to recognise one at a time. Names run in full, as they do in the pool
+    beside it and for the same reason -- the width is there. Uncapped,
     because the rows read *between* nominations are the ones from an hour ago,
     when you are trying to remember what a receiver went for; a draft is at most
     a couple of hundred picks, so the whole thing is cheap to carry.
@@ -507,7 +514,7 @@ def render_log(state: LeagueState) -> str:
         f'<i class="lno">#{pick.pick_no}</i>'
         f'<i class="lst">S{pick.slot}</i>'
         f"{badge(pick.player.pos, light=True)}"
-        f'<b>{_esc(_short_name(pick.player))}</b>'
+        f'<b>{_esc(pick.player.name)}</b>'
         f"{_log_price(pick)}</div>"
         for pick in sorted(state.picks, key=lambda p: -p.pick_no)
     )

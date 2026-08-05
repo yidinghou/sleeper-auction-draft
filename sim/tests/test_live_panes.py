@@ -8,8 +8,8 @@ import pytest
 
 from draftsim.live_render import (
     _POOL_SHOWN,
+    _esc,
     _log_price,
-    _short_name,
     render_log,
     render_page,
     render_pool,
@@ -73,8 +73,10 @@ def test_the_pool_never_shows_a_player_who_is_gone(midway):
     expected = sorted(
         midway.available, key=lambda p: (-market_value(p), -p.points, p.name)
     )[:_POOL_SHOWN]
+    # Escaped, because a full name can carry an apostrophe -- "D'Andre Swift"
+    # ships as "D&#x27;Andre Swift", and the short name never had to.
     shown = re.findall(r"<b>(.*?)</b>", render_pool(midway))
-    assert shown == [_short_name(p) for p in expected]
+    assert shown == [_esc(p.name) for p in expected]
 
 
 def test_the_pool_is_a_shortlist_not_the_sheet(midway):
@@ -92,8 +94,7 @@ def test_an_unpriced_player_still_gets_a_row():
         available = [free, priced]
 
     html = render_pool(_S())
-    # Names render short ("A. Rich"), the same as everywhere else on the board.
-    assert html.index(_short_name(priced)) < html.index(_short_name(free))
+    assert html.index(priced.name) < html.index(free.name)
     assert "—" in html
 
 
@@ -118,7 +119,7 @@ def test_the_log_names_the_seat_that_bought(midway):
     newest = max(midway.picks, key=lambda p: p.pick_no)
     top = render_log(midway).split('class="lrow"')[1]
     assert f"S{newest.slot}" in top
-    assert _short_name(newest.player) in top
+    assert newest.player.name in top
     assert f"${newest.price}" in top
 
 
