@@ -477,7 +477,7 @@ def test_bench_rows_keep_their_position_tint_but_sit_back():
     # its own nothing else says what these bodies are -- but a step back from
     # the lineup. The old "hidden until maximized" behaviour must not come back.
     assert ".ln.bench { opacity: 0.75; }" in page
-    assert ".ln.bench { display: none" not in page.replace("{{", "{")
+    assert ".ln.bench { display: none" not in page
 
 
 def test_board_controls_sit_in_a_menu_bar_over_the_grid():
@@ -676,7 +676,7 @@ def test_a_full_seat_reports_no_pace_rather_than_dividing_by_zero(finished):
 def test_pane_state_is_client_side_and_survives_a_refresh():
     page = render_page("123")
     # Lineup is what the board loads on; a card with no stored choice shows it.
-    assert ".card .pane.lineup { display: flex;" in page.replace("{{", "{")
+    assert ".card .pane.lineup { display: flex;" in page
     assert '.card.view-need .pane.need' in page
     # The cards are replaced every tick, so the choice must be re-applied after
     # each swap and the handler must be delegated, not per-button.
@@ -796,7 +796,7 @@ def test_a_folded_row_is_positional_so_it_stays_where_you_folded_it():
 def test_a_folded_card_shows_nothing_but_its_strip_whichever_pane_it_was_on():
     # `.body` goes, not the panes inside it -- with the parent gone,
     # `.card.view-need .pane.need` has no specificity fight left to win.
-    page = render_page("123").replace("{{", "{")
+    page = render_page("123")
     assert ".card.collapsed > .body { display: none;" in page
     assert ".card .foldsum { display: none;" in page
     assert ".card.collapsed .foldsum { display: flex;" in page
@@ -821,7 +821,7 @@ def test_the_board_is_divided_into_rows_by_a_bar_over_each(midway):
     assert html.index('data-row="1"') < html.index('data-seat="5"')
     # One flat grid, not a grid per row: a card has to be draggable from any row
     # to any other, and the bar spans the columns rather than boxing them in.
-    assert "grid-column: 1 / -1" in render_page("123").replace("{{", "{")
+    assert "grid-column: 1 / -1" in render_page("123")
 
 
 def test_the_bar_is_the_fold_control_and_the_card_header_still_drags():
@@ -832,14 +832,14 @@ def test_the_bar_is_the_fold_control_and_the_card_header_still_drags():
     dbl = page.split('addEventListener("dblclick"')[-1]
     assert 'closest(".rowhd")' in dbl
     assert 'closest("section.card > header")' not in dbl
-    assert ".card header { cursor: grab" in page.replace("{{", "{")
+    assert ".card header { cursor: grab" in page
 
 
 def test_the_bar_carries_the_same_furniture_the_bands_do():
     # Same gesture, same control: a tinted strip, a caret that turns, and a
     # hover state -- a board that folds two ways by two rules is one you have to
     # remember.
-    page = render_page("123").replace("{{", "{")
+    page = render_page("123")
     assert ".rowhd:hover" in page
     assert '.rowhd::after { content: "\\25BE"' in page
     assert ".rowhd.shut::after { transform: rotate(-90deg); }" in page
@@ -865,7 +865,7 @@ def test_the_bars_take_their_own_place_in_the_order():
 
 def test_the_type_grows_as_rows_are_folded_away():
     # One knob, still: `--fs` is what every size on the card is a multiple of.
-    page = render_page("123").replace("{{", "{")
+    page = render_page("123")
     assert "const DENSITY = { 3: 1.17, 2: 1.38, 1: 1.5 };" in page
     assert 'grid.style.setProperty("--fs"' in page
     # The strip stays strip-sized, or the row you just put away grows too.

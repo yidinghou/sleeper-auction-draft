@@ -389,7 +389,7 @@ def test_a_folded_card_shows_nothing_but_its_header_in_either_pane():
     # class heavier and wins wherever it sits -- which is why a folded card used
     # to render its whole tier list squeezed into the rail. The rule has to both
     # follow it and out-weigh it.
-    page = render_page("123").replace("{{", "{")
+    page = render_page("123")
     hide = page.index(
         ".pcard.collapsed.view-tier .ppane.pdet,\n  .pcard.collapsed .ppane "
         "{ display: none; }"
@@ -403,7 +403,7 @@ def test_an_open_cards_width_does_not_depend_on_its_neighbours():
     # them, so opening one while the other three were folded made it three times
     # its usual width. Pinned to a quarter, a card is the size you last read it
     # at, and folding buys quiet rather than room.
-    page = render_page("123").replace("{{", "{")
+    page = render_page("123")
     assert "flex: 0 0 calc((100% - 15px) / 4);" in page
     assert "flex: 1 1 0;" not in page.split(".pcard { border")[1].split("}")[0]
     # Folded, a card shrinks to its own header -- a rail, not a quarter.

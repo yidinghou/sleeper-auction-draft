@@ -164,6 +164,28 @@ def test_an_empty_log_says_so():
     assert "no picks yet" in render_log(_S())
 
 
+# -- the page's own furniture -------------------------------------------------
+
+
+def test_the_page_arrives_whole_with_its_stylesheet_and_client_inlined():
+    # The shell, the stylesheet and the client are three files in `static/` now,
+    # stitched together at request time. That buys real CSS and real JS at the
+    # price of a new way to fail -- an asset that did not travel with the module
+    # -- and this is the only thing that would catch it. One request still: the
+    # page arrives with both inlined, nothing fetched after it but /api/state.
+    page = render_page("123")
+    assert "  .pcard { border" in page          # from board.css
+    assert "function applyRows()" in page       # from board.js
+    assert "connecting to draft 123" in page    # the shell's one interpolation
+    for token in ("/*__CSS__*/", "/*__JS__*/", "__DRAFT_ID__"):
+        assert token not in page, token
+
+
+def test_the_draft_id_is_escaped_into_the_shell():
+    # It comes off the command line and lands in the page's opening line.
+    assert "draft &lt;b&gt;" in render_page("<b>")
+
+
 # -- the bands ----------------------------------------------------------------
 
 
@@ -177,7 +199,7 @@ def test_the_column_is_three_bands_and_the_chrome_is_in_the_shell():
     # thing telling you so is the hover state, so that rule has to exist.
     assert "caret" not in page.split("<body>")[1]
     assert ".band > .bandhd:hover" in page
-    assert ".band > .bandhd { cursor: pointer" in page.replace("{{", "{")
+    assert ".band > .bandhd { cursor: pointer" in page
 
 
 def test_collapse_is_remembered_and_reapplied_after_every_swap():
