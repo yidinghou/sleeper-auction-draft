@@ -594,7 +594,8 @@ def render_page(draft_id: str) -> str:
      the roster cards do -- five columns inside a ~230px card -- and were squeezed
      down to 7px labels to fit. The knob is scoped here so raising it cannot move
      a roster card by a pixel. */
-  .side {{ --fs: 1.30; display: flex; flex-direction: column; min-width: 0;
+  .side {{ --fs-base: 1.30; --fs: var(--fs-base);
+    display: flex; flex-direction: column; min-width: 0;
     padding: 8px 10px; gap: 6px; border-right: 1px solid #eee; overflow: hidden; }}
   /* Each band is a box, not a run of text with a heading over it. Folding is a
      double-click with no button to leave behind, so without a frame a shut band
@@ -988,7 +989,14 @@ def render_page(draft_id: str) -> str:
   .pane2.collapsed {{ flex: 0 0 auto; }}
   .collapsed > .bandhd .note {{ display: none; }}
   .pane2 > .bandhd {{ flex: none; }}
-  .pane2 .listwrap {{ flex: 1; min-height: 0; overflow-y: auto;
+  /* A fifth larger again than the rest of the column, and only inside the list
+     -- the two headers stay the size the other bands' headers are, or the eye
+     would read the pool as the more important section rather than the roomier
+     one. These are the two panes you read a line at a time rather than scan as
+     a shape, and they have the width to spend on it that a 220px card does not.
+     Derived from the column's own knob so the two move together. */
+  .pane2 .listwrap {{ --fs: calc(var(--fs-base) * 1.2);
+    flex: 1; min-height: 0; overflow-y: auto;
     scrollbar-width: thin; scrollbar-color: #ccc transparent; }}
 
   .prow, .lrow {{ display: grid; align-items: center; gap: 5px; padding: 1px 2px;
@@ -997,7 +1005,7 @@ def render_page(draft_id: str) -> str:
     calc(22px * var(--fs)) minmax(0, 1fr) calc(20px * var(--fs))
     calc(22px * var(--fs)) calc(24px * var(--fs)); }}
   .lrow {{ grid-template-columns:
-    calc(22px * var(--fs)) calc(16px * var(--fs)) minmax(0, 1fr)
+    calc(22px * var(--fs)) calc(18px * var(--fs)) minmax(0, 1fr)
     calc(22px * var(--fs)) calc(26px * var(--fs)); }}
   .prow:not(:last-child), .lrow:not(:last-child) {{ border-bottom: 1px solid #f7f7f7; }}
   .prow b, .lrow b {{ font-weight: 400; min-width: 0; overflow: hidden;
