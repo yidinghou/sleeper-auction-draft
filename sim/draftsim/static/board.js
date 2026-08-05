@@ -117,16 +117,6 @@ try { collapsed = JSON.parse(localStorage.getItem("draftsim.collapsed")) || []; 
 // Four across, from the grid's own `grid-template-columns`.
 const GRID_COLS = 4;
 
-// How much bigger the cards get as rows are folded away. Three rows is the size
-// the board was tuned at; fold one and the survivors gain half a row of height,
-// and the point of that height is reading rather than white space -- so the
-// board's one density knob goes up with them. A folded row pins itself back to
-// `--fs-strip` in CSS, or the strip you just put away would grow too.
-// The top step is where it is because a folded row gives back height, not
-// width: past about 1.5 the fixed slot and price columns grow into the name and
-// the longest ones start ellipsizing, which is not what "bigger" was for.
-const DENSITY = { 3: 1.17, 2: 1.38, 1: 1.5 };
-
 // Fold by row, not by card. Four cards side by side share a row's height, so
 // folding one alone frees nothing -- its neighbours still need the room. A whole
 // row is the smallest thing whose height can actually go somewhere.
@@ -146,7 +136,6 @@ function applyRows() {
   // A header row and a card row per row of the board, in that order -- the same
   // interleaving `slotOrder` lays the items out in.
   const tmpl = [];
-  let open = 0;
   for (let r = 0; r < rows; r++) {
     const shut = collapsed.includes("row:" + r);
     const mine = cards.slice(r * GRID_COLS, (r + 1) * GRID_COLS);
@@ -160,14 +149,12 @@ function applyRows() {
       head.querySelector(".note").textContent =
         mine.map((c) => "S" + c.dataset.seat).join(" · ");
     }
-    if (!shut) open++;
     tmpl.push("auto", shut ? "auto" : "1fr");
   }
   // Explicit rows, because `grid-auto-rows: minmax(0, 1fr)` would hand a folded
   // row its full third back however little is left in it -- and would give each
   // header bar a third of the board besides.
   grid.style.gridTemplateRows = tmpl.join(" ");
-  grid.style.setProperty("--fs", DENSITY[open] || DENSITY[3]);
 }
 
 function applyCollapsed() {

@@ -863,14 +863,19 @@ def test_the_bars_take_their_own_place_in_the_order():
     assert "head.style.order = r * (GRID_COLS + 1);" in page
 
 
-def test_the_type_grows_as_rows_are_folded_away():
-    # One knob, still: `--fs` is what every size on the card is a multiple of.
+def test_folding_a_row_does_not_resize_the_type_in_the_others():
+    # The type used to step up as rows were folded away, which was affordable
+    # only while the survivors also inherited the folded rows' height. Pinned to
+    # a third, a 1.5x card loses the bottom two lineup slots off the end of the
+    # box -- and every card on the board changed size to put four of them away.
+    # A pressure card does not do this, and now neither does a roster row.
     page = render_page("123")
-    assert "const DENSITY = { 3: 1.17, 2: 1.38, 1: 1.5 };" in page
-    assert 'grid.style.setProperty("--fs"' in page
-    # The strip stays strip-sized, or the row you just put away grows too.
-    assert "--fs-strip: 1.17;" in page
-    assert ".card.collapsed { background: #fafafa; --fs: var(--fs-strip); }" in page
+    assert "DENSITY" not in page
+    assert 'setProperty("--fs"' not in page
+    # One knob, one value: `--fs` is what every size on the card is a multiple
+    # of, and nothing on the board writes it a second time.
+    assert page.count("--fs: 1.17;") == 1
+    assert ".card.collapsed { background: #fafafa; }" in page
 
 
 # -- compact names -----------------------------------------------------------
