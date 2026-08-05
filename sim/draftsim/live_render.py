@@ -593,7 +593,12 @@ def render_page(draft_id: str) -> str:
     padding: 8px 10px; gap: 6px; border-right: 1px solid #eee; overflow: hidden; }}
   .band {{ display: flex; flex-direction: column; min-height: 0; min-width: 0;
     position: relative; }}
-  .band-live {{ flex: 1 1 0; }}
+  /* Sized to its content, not to a share. Band 1 holds three fixed things -- the
+     league line, the seat picker, the block -- so a share only parked white space
+     under them, and worse: folding a band below handed this one a third of the
+     freed height, which pushed the header you had just double-clicked a hundred
+     pixels down the screen. Content-sized, it never moves and never takes. */
+  .band-live {{ flex: 0 0 auto; }}
   .band-runs {{ flex: 2 1 0; }}
   .band-panes {{ flex: 2 1 0; }}
   .band > .bandhd {{ display: flex; align-items: baseline; gap: 6px; flex: none;
