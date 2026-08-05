@@ -7,10 +7,15 @@ from pathlib import Path
 import pytest
 
 from draftsim.live_pressure import TIERS, PositionPressure, pressure, split_tier
-from draftsim.live_render import render_pressure
+from draftsim.live_render import (
+    _pressure_detail,
+    _short_name,
+    render_page,
+    render_pressure,
+)
 from draftsim.live_state import DRAFT_TARGETS, reconstruct
 from draftsim.sleeper import config_from_draft
-from draftsim.valuation import Player, load_players
+from draftsim.valuation import Player, load_players, market_value
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -207,3 +212,90 @@ def test_the_card_says_how_many_teams_are_short(midway):
     for pr in pressure(midway):
         card = html.split(f'data-pos="{pr.pos}"')[1]
         assert f"{len(pr.need_seats)} teams still need {pr.pos}" in card
+
+
+# -- the tier detail ----------------------------------------------------------
+
+
+def _detail(html: str, pos: str) -> str:
+    return html.split(f'data-det="{pos}"')[1].split("</div></div>")[0]
+
+
+def test_every_position_ships_a_detail_panel(midway):
+    # All four ship and CSS shows one, so opening a panel costs no fetch and
+    # cannot show a different moment of the draft than the card behind it.
+    html = render_pressure(midway)
+    for pos in TIERS:
+        assert f'data-det="{pos}"' in html
+
+
+def test_the_panel_names_the_players_the_card_only_counted(midway):
+    html = render_pressure(midway)
+    for pr in pressure(midway):
+        panel = _detail(html, pr.pos)
+        for player in pr.avail[:10]:
+            assert _short_name(player) in panel
+
+
+def test_the_next_tier_is_listed_under_the_cliff(midway):
+    html = render_pressure(midway)
+    for pr in pressure(midway):
+        if not pr.next_tier:
+            continue
+        panel = _detail(html, pr.pos)
+        head, _, tail = panel.partition("tcliff")
+        # Below the cliff means below it on screen, not merely mentioned.
+        assert _short_name(pr.next_tier[0]) in tail
+        assert _short_name(pr.next_tier[0]) not in head
+        assert f"−{pr.cliff_drop} pts" in panel
+
+
+def test_a_tier_with_nothing_under_it_says_so_rather_than_printing_zero():
+    pr = PositionPressure(
+        pos="WR", avail=[_wr(230, "a"), _wr(210, "b")], next_tier=[],
+        cliff_drop=0, drafted=0, wanted=2.0, need_seats=[], lines={},
+    )
+    panel = _pressure_detail(pr)
+    assert "nothing below this tier" in panel
+    assert "−0" not in panel
+
+
+def test_an_emptied_tier_says_so():
+    pr = PositionPressure(
+        pos="WR", avail=[], next_tier=[_wr(120, "c")], cliff_drop=0,
+        drafted=0, wanted=4.0, need_seats=[], lines={},
+    )
+    assert "nobody left in this tier" in _pressure_detail(pr)
+
+
+def test_the_rows_quote_the_same_dollars_the_block_does(midway):
+    # $PROJ is market_value, so the tier list and the nomination strip cannot
+    # disagree about what a player is expected to cost.
+    pr = next(p for p in pressure(midway) if p.avail)
+    panel = _pressure_detail(pr)
+    proj = market_value(pr.avail[0])
+    assert (f"${proj:.0f}" if proj else "—") in panel
+
+
+def test_the_panel_lists_more_than_the_card_does(midway):
+    # The card shows three; the cap that used to live in split_tier() would have
+    # silently held the panel to the same three.
+    deep = max(pressure(midway), key=lambda p: len(p.next_tier))
+    assert len(deep.next_tier) > 6  # uncapped in the data
+    assert _short_name(deep.next_tier[6]) in _detail(render_pressure(midway), deep.pos)
+
+
+# -- opening and closing ------------------------------------------------------
+
+
+def test_double_click_opens_and_the_open_position_survives_a_refresh():
+    page = render_page("123")
+    assert 'pressureEl.addEventListener("dblclick"' in page
+    # On the container, not in the markup it holds -- that markup is replaced
+    # every 2s, and state stored inside it would close the panel twice a second.
+    assert "pressureEl.dataset.open = pos" in page
+
+
+def test_escape_closes_the_panel_before_it_touches_the_board():
+    page = render_page("123")
+    assert "if (pressureEl.dataset.open) openTier(null); else setMaxed(false);" in page

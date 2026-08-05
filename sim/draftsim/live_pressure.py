@@ -51,9 +51,9 @@ TIERS: Dict[str, Tuple[float, ...]] = {
 _RUN = 2.0
 _TIGHT = 1.0
 
-# How many of the tier below to carry into the detail view. Enough to see what
-# you drop to, not so many that the panel becomes a player list.
-NEXT_TIER_SHOWN = 6
+# Deliberately uncapped. Both bands come back whole and the renderer slices them
+# -- the card wants three names, the detail panel wants as many as fit, and a cap
+# baked in here would silently be the smaller of the two.
 
 
 @dataclass(frozen=True)
@@ -64,7 +64,7 @@ class PositionPressure:
     avail: List[Player]
     """The current tier, best first -- what you can still buy at this price."""
     next_tier: List[Player]
-    """The band below it, best first, capped at `NEXT_TIER_SHOWN`."""
+    """The whole band below it, best first -- what you drop to if you wait."""
     cliff_drop: int
     """Points between the worst of the current tier and the best of the next.
     Zero when there is no tier below, which is its own kind of cliff."""
@@ -125,7 +125,7 @@ def split_tier(pos: str, available: Sequence[Player]) -> Tuple[List[Player], Lis
     current = [p for p in pool if p.points >= cut]
     beneath = [p for p in pool if p.points < cut]
     drop = round(current[-1].points - beneath[0].points) if beneath else 0
-    return current, beneath[:NEXT_TIER_SHOWN], drop
+    return current, beneath, drop
 
 
 def pressure(state: LeagueState) -> List[PositionPressure]:

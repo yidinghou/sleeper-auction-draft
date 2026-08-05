@@ -339,7 +339,8 @@ def _pressure_card(state: LeagueState, pr: PositionPressure) -> str:
     foot = f"−{pr.cliff_drop} cliff" if pr.cliff_drop else "no tier below"
     return (
         f'<section class="pcard sev-{pr.severity}{" minor" if minor else ""}"'
-        f' style="--pos:{color}" data-pos="{pr.pos}">'
+        f' style="--pos:{color}" data-pos="{pr.pos}"'
+        f' title="double-click for the {_esc(pr.pos)} tier">'
         f'<div class="phd">{badge(pr.pos, light=True)}'
         f'<span class="pcount"><b>{pr.drafted}</b>/{total}</span>'
         f'<span class="pverd">{pr.left} left</span></div>'
@@ -350,15 +351,81 @@ def _pressure_card(state: LeagueState, pr: PositionPressure) -> str:
     )
 
 
+# How much of each band the detail panel lists. The panel is the answer to "which
+# ones?", so it is generous -- but a position with thirty bodies under the cliff
+# would turn it into a scrolling player list, which is not what it is for.
+_TIER_SHOWN = 10
+
+
+def _tier_row(player: Player, rank: int, below: bool = False) -> str:
+    """One available player: rank, name, team, points, $PROJ.
+
+    `$PROJ` is `market_value`, the same figure the nomination strip quotes, so
+    what you read here is what you see when they hit the block.
+    """
+    proj = market_value(player)
+    return (
+        f'<div class="trow{" below" if below else ""}">'
+        f'<i class="tr">{rank}</i>'
+        f'<b>{_esc(_short_name(player))}</b>'
+        f'<i class="ttm">{_esc(player.team or "FA")}</i>'
+        f'<i class="tpt">{player.points:.0f}</i>'
+        f'<i class="tpr">{f"${proj:.0f}" if proj else "—"}</i></div>'
+    )
+
+
+def _pressure_detail(pr: PositionPressure) -> str:
+    """One position's tier and the tier under it, with the cliff between.
+
+    The question the card provokes and cannot answer: *which quarterbacks, and
+    what do I drop to if I wait?* Both bands are listed rather than counted, and
+    the divider is what makes waiting a decision rather than a shrug.
+    """
+    rows = "".join(
+        _tier_row(p, i + 1) for i, p in enumerate(pr.avail[:_TIER_SHOWN])
+    ) or '<div class="trow gone">nobody left in this tier</div>'
+
+    if pr.next_tier:
+        divider = (
+            f'<div class="tcliff">▾ −{pr.cliff_drop} pts to the next tier</div>'
+        )
+        below = "".join(
+            _tier_row(p, len(pr.avail) + i + 1, below=True)
+            for i, p in enumerate(pr.next_tier[:_TIER_SHOWN])
+        )
+    else:
+        # No band underneath: the drop is off the end of the position, which is
+        # worth saying plainly rather than printing "−0".
+        divider = '<div class="tcliff none">nothing below this tier</div>'
+        below = ""
+
+    short = f"{len(pr.need_seats)} teams short" if pr.need_seats else "nobody short"
+    return (
+        f'<div class="pdet" data-det="{pr.pos}">'
+        f'<div class="pdhd">{badge(pr.pos, light=True)}'
+        f'<b>{pr.left} left</b>'
+        f'<span class="pdsub">{_num(round(pr.wanted, 1))} wanted · {short}</span>'
+        '<button class="pdx" type="button" aria-label="Close">&times;</button></div>'
+        f'<div class="pdbody">{rows}{divider}{below}</div></div>'
+    )
+
+
 def render_pressure(state: LeagueState) -> str:
     """Run pressure, one card per position, in `TIERS` order.
 
     Fixed order and fixed positions, for the same reason the roster cards are in
     seat order: a card that reshuffles itself the moment a run starts is a card
     you have to hunt for at exactly the moment you needed it.
+
+    Every card's detail panel ships alongside it and CSS shows at most one -- the
+    same bargain the card panes and the maximize toggle make, so opening one
+    costs no fetch and cannot show a different moment of the draft than the card
+    behind it.
     """
-    cards = "".join(_pressure_card(state, pr) for pr in pressure(state))
-    return f'<div class="pgrid">{cards}</div>'
+    state_pressure = pressure(state)
+    cards = "".join(_pressure_card(state, pr) for pr in state_pressure)
+    details = "".join(_pressure_detail(pr) for pr in state_pressure)
+    return f'<div class="pgrid">{cards}</div><div class="pdets">{details}</div>'
 
 
 def render_nomination(
@@ -430,7 +497,8 @@ def render_page(draft_id: str) -> str:
      the block. Right: the rosters. Splitting them this way gives the grid the
      whole viewport height instead of sharing it with the chrome, which is what
      lets a full 16-man roster fit. Space under the header is left free. */
-  .side {{ display: flex; flex-direction: column; min-width: 0;
+  /* Positioned, so the tier detail can cover this column and only this one. */
+  .side {{ display: flex; flex-direction: column; min-width: 0; position: relative;
     padding: 10px 12px; gap: 6px; border-right: 1px solid #eee; }}
   .side h1 {{ font-size: calc(13px * var(--fs)); margin: 0; }}
   .side .sub {{ margin: 0; font-size: calc(11px * var(--fs)); }}
@@ -636,9 +704,11 @@ def render_page(draft_id: str) -> str:
   #pressure {{ min-height: 0; overflow: hidden; }}
   .pgrid {{ display: grid; gap: 5px; grid-template-columns: 1fr 1fr 1fr 0.55fr;
     align-items: start; }}
+  /* zoom-in, not pointer: a single click does nothing here, and a cursor that
+     promises one is a cursor that lies. */
   .pcard {{ border: 1px solid #ddd; border-radius: 6px; padding: 4px 5px 5px;
     min-width: 0; display: flex; flex-direction: column; gap: 3px;
-    cursor: pointer; }}
+    cursor: zoom-in; }}
   .pcard:hover {{ border-color: #bbb; }}
   .phd {{ display: flex; align-items: center; gap: 4px; min-width: 0; }}
   .phd .badge {{ min-width: calc(20px * var(--fs)); font-size: calc(7.5px * var(--fs));
@@ -685,6 +755,61 @@ def render_page(draft_id: str) -> str:
   .bmore {{ font-size: calc(7px * var(--fs)); color: #1a7f37; font-weight: 700; }}
   .pfoot {{ font-size: calc(7px * var(--fs)); color: #aaa;
     font-variant-numeric: tabular-nums; }}
+
+  /* The tier detail, opened by double-clicking a card. It covers the left
+     column and nothing else: the decision it serves is "these are the last
+     three startable QBs" next to "these four seats still have money", and a
+     modal over the whole page would hide the half you need to bid against.
+     All four panels ship; `data-open` on #pressure picks one, and because that
+     attribute lives on the container rather than the markup inside it, the
+     panel survives the 2s swap and its list refreshes underneath you. */
+  .pdets {{ display: none; }}
+  /* Anchored to `.side`, not to #pressure, so it covers the column whole --
+     nomination block included. #pressure's own overflow does not clip it,
+     because its containing block is an ancestor of the clipping box. */
+  #pressure[data-open] .pdets {{ display: flex; flex-direction: column;
+    position: absolute; inset: 0; z-index: 12; background: #fff;
+    padding: 10px 12px; }}
+  .pdet {{ display: none; }}
+  #pressure[data-open="QB"] .pdet[data-det="QB"],
+  #pressure[data-open="RB"] .pdet[data-det="RB"],
+  #pressure[data-open="WR"] .pdet[data-det="WR"],
+  #pressure[data-open="TE"] .pdet[data-det="TE"] {{ display: flex;
+    flex-direction: column; min-height: 0; flex: 1; }}
+  .pdhd {{ display: flex; align-items: baseline; gap: 6px; flex: none;
+    width: 100%; max-width: calc(340px * var(--fs));
+    padding-bottom: 5px; border-bottom: 1px solid #eee; }}
+  .pdhd b {{ font-size: calc(12px * var(--fs)); }}
+  .pdsub {{ font-size: calc(9px * var(--fs)); color: #888; }}
+  .pdx {{ margin-left: auto; width: 22px; height: 22px; padding: 0;
+    border-radius: 50%; font-size: 15px; line-height: 1; color: #666; }}
+  /* Capped rather than filling the column. A row stretched across 900px puts a
+     hand's width of nothing between the name and its price, and the eye has to
+     travel it for every line. */
+  .pdbody {{ overflow-y: auto; scrollbar-width: thin; min-height: 0; flex: 1;
+    width: 100%; max-width: calc(340px * var(--fs)); }}
+
+  /* Rank, name, team, points, $PROJ -- the same five things in the same order
+     as the maximized roster row, so the eye does not have to re-learn a table
+     between the two halves of the screen. */
+  .trow {{ display: grid; align-items: baseline; gap: 7px; padding: 2px 3px;
+    font-size: calc(10px * var(--fs));
+    grid-template-columns:
+      calc(16px * var(--fs)) minmax(0, 1fr) calc(24px * var(--fs))
+      calc(28px * var(--fs)) calc(30px * var(--fs)); }}
+  .trow:not(:last-child) {{ border-bottom: 1px solid #f6f6f6; }}
+  .trow i {{ font-style: normal; font-variant-numeric: tabular-nums;
+    text-align: right; color: #888; font-size: calc(9px * var(--fs)); }}
+  .trow .tr {{ text-align: left; color: #ccc; }}
+  .trow .ttm {{ text-align: left; color: #aaa; }}
+  .trow .tpr {{ color: #1a7f37; font-weight: 700; }}
+  /* Below the cliff is a different class of player, not merely a later one. */
+  .trow.below {{ opacity: 0.55; }}
+  .trow.gone {{ display: block; color: #c0392b; }}
+  .tcliff {{ margin: 5px 0; padding-top: 4px; border-top: 2px dotted #e0a89f;
+    color: #c0392b; font-size: calc(8.5px * var(--fs)); font-weight: 700;
+    text-align: center; }}
+  .tcliff.none {{ border-top-color: #eee; color: #aaa; }}
 
   /* Maximized: the board leaves its half and takes the viewport. Nothing is
      re-rendered -- the hidden columns and the other panes were always there. */
@@ -795,8 +920,37 @@ maxBtn.addEventListener("click", () => {{
   setMaxed(!document.body.classList.contains("maxed"));
 }});
 document.getElementById("close").addEventListener("click", () => setMaxed(false));
+
+// The tier detail: which players are actually left at a position, and what you
+// drop to if you wait. Opened by double-click -- a single click on a card that
+// is mostly a grid of small targets is too easy to trigger by accident while
+// reading it.
+//
+// The open position lives on #pressure itself, not in the markup it holds: that
+// markup is replaced every 2s, so anything stored inside it would close the
+// panel twice a second. Both handlers are delegated for the same reason.
+const pressureEl = document.getElementById("pressure");
+
+function openTier(pos) {{
+  if (pos) pressureEl.dataset.open = pos; else delete pressureEl.dataset.open;
+}}
+
+pressureEl.addEventListener("dblclick", (e) => {{
+  const card = e.target.closest(".pcard");
+  if (!card) return;
+  // Double-clicking the open card again closes it -- the same gesture back out.
+  openTier(pressureEl.dataset.open === card.dataset.pos ? null : card.dataset.pos);
+}});
+
+pressureEl.addEventListener("click", (e) => {{
+  if (e.target.closest(".pdx")) openTier(null);
+}});
+
 document.addEventListener("keydown", (e) => {{
-  if (e.key === "Escape") setMaxed(false);
+  if (e.key !== "Escape") return;
+  // One key, one job at a time: dismiss the panel that is actually in front of
+  // you, and only fall through to the board when nothing is over it.
+  if (pressureEl.dataset.open) openTier(null); else setMaxed(false);
 }});
 
 // Per-card pane. "lineup" first: it is what the board loads on, and it is the
