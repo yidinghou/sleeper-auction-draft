@@ -549,6 +549,33 @@
     flex: 1; min-height: 0; overflow-y: auto;
     scrollbar-width: thin; scrollbar-color: #ccc transparent; }
 
+  /* The position filters, riding at the right of each pane's header. Smaller
+     than the roster cards' segment -- five buttons where those have three, and
+     a header that already carries a title and a note. */
+  .fseg button { padding: 0 3px; font-size: calc(7.5px * var(--fs)); }
+  /* A folded pane is a title and nothing else; its filter goes with the rest. */
+  .collapsed > .bandhd .fseg { display: none; }
+  /* Said when a filter matches nothing, in place of an empty box that reads as
+     a broken pane. Outside the scroller, since it is about the list rather than
+     in it, and the scroller is what gets replaced twice a second -- but above
+     it, where the missing rows would have been, rather than at the foot of a
+     pane the eye has no reason to reach. */
+  .fnone { flex: none; color: #888; font-size: calc(10px * var(--fs));
+    padding: 4px 6px; }
+  .collapsed > .fnone { display: none; }
+  /* The filter itself: no JS runs per row and none runs per refresh. The client
+     writes one attribute on the wrapper and the rows sort themselves out.
+     Written per position rather than with a variable because CSS cannot compare
+     two attributes, and four positions is a short list. */
+  .listwrap[data-filter="QB"] .prow:not([data-pos="QB"]),
+  .listwrap[data-filter="QB"] .lrow:not([data-pos="QB"]),
+  .listwrap[data-filter="RB"] .prow:not([data-pos="RB"]),
+  .listwrap[data-filter="RB"] .lrow:not([data-pos="RB"]),
+  .listwrap[data-filter="WR"] .prow:not([data-pos="WR"]),
+  .listwrap[data-filter="WR"] .lrow:not([data-pos="WR"]),
+  .listwrap[data-filter="TE"] .prow:not([data-pos="TE"]),
+  .listwrap[data-filter="TE"] .lrow:not([data-pos="TE"]) { display: none; }
+
   .prow, .lrow { display: grid; align-items: center; gap: 5px; padding: 1px 2px;
     font-size: calc(10px * var(--fs)); line-height: 1.2; min-width: 0; }
   /* pos · name · team · bye · pts · $PROJ */

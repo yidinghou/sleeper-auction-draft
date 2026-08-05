@@ -64,6 +64,52 @@ pressureEl.addEventListener("click", (e) => {
   if (head) toggleCollapsed("pos:" + head.closest(".pcard").dataset.pos);
 });
 
+// Which position the pool and the log are narrowed to. Empty is everyone.
+//
+// Unlike `views` and `pviews`, this needs no re-apply after a refresh: the
+// buttons live in the shell and the chosen position is written on the list
+// wrapper, both of which outlive the swap. The hiding itself is a CSS rule
+// keyed on that attribute, so a filtered pane costs nothing per tick.
+const POSITIONS = ["QB", "RB", "WR", "TE"];
+let filters = {};
+try { filters = JSON.parse(localStorage.getItem("draftsim.filters")) || {}; } catch (e) {}
+
+function applyFilters() {
+  document.querySelectorAll(".fseg").forEach((seg) => {
+    const pane = seg.dataset.for;
+    const pos = POSITIONS.includes(filters[pane]) ? filters[pane] : "";
+    const list = document.getElementById(pane);
+    if (list) list.dataset.filter = pos;
+    seg.querySelectorAll("button").forEach((b) => {
+      b.setAttribute("aria-pressed", String(b.dataset.pos === pos));
+    });
+    // A filter that matches nothing leaves an empty box, which reads as a
+    // broken pane rather than as an answer -- and "no tight end has gone yet"
+    // is an answer. The one thing here CSS cannot do on its own: it can hide
+    // the rows that do not match, but it cannot ask whether any are left.
+    const none = document.querySelector('.fnone[data-for="' + pane + '"]');
+    if (!none || !list) return;
+    // `rows` guards the tick before the first fetch lands: a list with nothing
+    // in it yet has not answered the question, and must not claim it has.
+    const rows = list.querySelectorAll(".prow, .lrow").length;
+    const empty = pos && rows > 0 && !list.querySelector('[data-pos="' + pos + '"]');
+    none.hidden = !empty;
+    none.textContent = pane === "log"
+      ? "no " + pos + " has gone yet" : "no " + pos + " left";
+  });
+}
+
+// One listener for both panes. Independent by design: narrowing the pool to
+// running backs while the log still shows every sale is the pairing you want
+// when you are deciding what to nominate next.
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".fseg button");
+  if (!btn) return;
+  filters[btn.closest(".fseg").dataset.for] = btn.dataset.pos;
+  localStorage.setItem("draftsim.filters", JSON.stringify(filters));
+  applyFilters();
+});
+
 // Nothing on this page covers anything any more, so Escape has one job again.
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") setMaxed(false);
@@ -243,6 +289,9 @@ function toggleCollapsed(id) {
 // Delegated from the document because every one of these headers is rebuilt
 // every two seconds, and one listener beats nine.
 document.addEventListener("dblclick", (e) => {
+  // The pool and log filters sit inside a band header, so two quick taps on ALL
+  // would otherwise fold the pane you were filtering.
+  if (e.target.closest(".fseg")) return;
   const head = e.target.closest(".bandhd");
   if (head) {
     const band = head.closest("[data-band]");
@@ -415,6 +464,10 @@ async function tick() {
       highlight();
       applyViews();
       applyPViews();
+      // Not to re-apply the filter -- the wrapper kept its attribute through
+      // the swap -- but to re-ask whether it still matches anything. A tight
+      // end going off the board is exactly what turns that answer over.
+      applyFilters();
       applyOrder();
       applyCollapsed();
     }
@@ -430,5 +483,6 @@ async function tick() {
 // the fold survives a server that is down when the page opens.
 applyCollapsed();
 applyPViews();
+applyFilters();
 tick();
 setInterval(tick, 2000);
