@@ -198,13 +198,14 @@ def test_a_finished_seat_dims_out_of_the_grid(midway):
     assert dimmed, "no seat had met a target -- the assertion above proved nothing"
 
 
-def test_te_renders_minor_and_the_rest_carry_a_board_list(midway):
+def test_every_card_carries_a_board_list_tight_end_included(midway):
+    # TE used to be cut down to buy the other three width. One starter is still a
+    # position you can be run out of, and "who is left at tight end" is a
+    # question it asks more sharply than the others, not less.
     html = render_pressure(midway)
-    te = html.split('data-pos="TE"')[1]
-    assert "minor" in html.split('data-pos="TE"')[0].rsplit("<section", 1)[1]
-    assert "on the board" not in te
-    for pos in ("QB", "RB", "WR"):
+    for pos in TIERS:
         assert "on the board" in html.split(f'data-pos="{pos}"')[1]
+    assert "minor" not in html
 
 
 def test_the_card_says_how_many_teams_are_short(midway):

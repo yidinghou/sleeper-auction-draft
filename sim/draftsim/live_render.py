@@ -278,11 +278,6 @@ def render_rosters(state: LeagueState) -> str:
     return f'<div class="grid">{cards}</div>'
 
 
-# TE gets a narrow card. It is one starter with no flex claim, so its pressure
-# is a single pip per seat and a number -- and the width that buys goes to the
-# three positions where a run actually costs you a lineup.
-_MINOR = ("TE",)
-
 # Enough supply to see whether the tier is a tier or a rump, without the card
 # turning into a player list. The detail panel has the rest.
 _BOARD_SHOWN = 3
@@ -311,7 +306,6 @@ def _seat_tile(seat: Seat, line: PositionLine, color: str) -> str:
 def _pressure_card(state: LeagueState, pr: PositionPressure) -> str:
     """One position: supply on the board over the league's fill state."""
     color = POS_COLOR_LIGHT.get(pr.pos, POS_FALLBACK_LIGHT)
-    minor = pr.pos in _MINOR
     total = round(DRAFT_TARGETS.get(pr.pos, 0.0) * state.config.teams)
 
     tiles = "".join(
@@ -319,21 +313,23 @@ def _pressure_card(state: LeagueState, pr: PositionPressure) -> str:
         for slot in sorted(state.seats)
     )
 
-    board = ""
-    if not minor:
-        rows = "".join(
-            f'<div class="brow"><b>{_esc(_short_name(p))}</b>'
-            f'<i>{p.points:.0f}</i></div>'
-            for p in pr.avail[:_BOARD_SHOWN]
-        )
-        if not rows:
-            rows = '<div class="brow empty">tier is gone</div>'
-        more = (
-            f'<div class="bmore">+{len(pr.avail) - _BOARD_SHOWN} more</div>'
-            if len(pr.avail) > _BOARD_SHOWN
-            else ""
-        )
-        board = f'<i class="plbl">on the board</i><div class="bd">{rows}{more}</div>'
+    # Every position gets the board list, TE included. It was cut from TE to buy
+    # the other three some width, back when a narrow card was the only way to
+    # find any -- and "who is left at tight end" is a question a one-starter
+    # position asks more sharply, not less.
+    rows = "".join(
+        f'<div class="brow"><b>{_esc(_short_name(p))}</b>'
+        f'<i>{p.points:.0f}</i></div>'
+        for p in pr.avail[:_BOARD_SHOWN]
+    )
+    if not rows:
+        rows = '<div class="brow empty">tier is gone</div>'
+    more = (
+        f'<div class="bmore">+{len(pr.avail) - _BOARD_SHOWN} more</div>'
+        if len(pr.avail) > _BOARD_SHOWN
+        else ""
+    )
+    board = f'<i class="plbl">on the board</i><div class="bd">{rows}{more}</div>'
 
     # The cliff is what makes the tier count mean something -- "3 left" is only
     # frightening next to what the fourth-best is worth.
@@ -349,7 +345,7 @@ def _pressure_card(state: LeagueState, pr: PositionPressure) -> str:
     # can never describe different moments of the draft -- the same bargain the
     # roster cards make with LINEUP / BN / NEED.
     return (
-        f'<section class="pcard sev-{pr.severity}{" minor" if minor else ""}"'
+        f'<section class="pcard sev-{pr.severity}"'
         f' style="--pos:{color}" data-pos="{pr.pos}"'
         ' title="double-click to fold">'
         f'<div class="phd">{badge(pr.pos, light=True)}'
@@ -856,13 +852,11 @@ def render_page(draft_id: str) -> str:
      supply (what's left in the tier) over demand (which seats still want one),
      and the twelve tiles are the same twelve seats as the board across the
      aisle, in the same arrangement -- drag a roster card and these follow.
-     TE is deliberately narrow: one starter, no flex claim, so its pressure is
-     a pip and a number, and the width goes where a run costs you a lineup. */
+     All four cards are the same size, TE included: one starter is still a
+     position you can be run out of, and the room is there. */
   #pressure {{ min-height: 0; flex: 1; display: flex; overflow: hidden; }}
   /* Flex, not grid, for the same reason the bands are: a collapsed card hands
-     its width to its siblings with no arithmetic. TE rides at 0.55 because it
-     is one starter with no flex claim; collapse it and QB/RB/WR take the room,
-     which those seat tiles were tight enough to want. */
+     its width to its siblings with no arithmetic. */
   /* Cards size to their content and sit at the top of the band. Stretching them
      to the band's full height just puts a hand of white space under the board
      list and makes four short cards look like four half-empty ones. */
@@ -876,14 +870,6 @@ def render_page(draft_id: str) -> str:
   .pcard {{ border: 1px solid #ddd; border-radius: 6px; padding: 4px 5px 5px;
     min-width: 0; display: flex; flex-direction: column; gap: 3px;
     cursor: zoom-in; flex: 1 1 0; max-height: 100%; }}
-  /* TE rides narrow because it is one starter, but its header costs the same
-     as everyone's -- badge, count, verdict, two pane buttons -- and at the
-     column's larger type 0.55 of a share stopped holding that row. */
-  .pcard.minor {{ flex: 0.7 1 0; }}
-  /* The count is what goes: the pill beside it already says how many are left
-     and the label under it says how many teams still need one. Ellipsizing
-     "3/12" down to "3." would have kept a word that no longer means anything. */
-  .pcard.minor .pcount {{ display: none; }}
   /* Collapsed to its header: the badge and how many are left, which is the one
      line you would still want from a position you have stopped working on. */
   .pcard.collapsed {{ flex: 0 0 auto; cursor: zoom-in; }}
@@ -927,7 +913,6 @@ def render_page(draft_id: str) -> str:
   /* A seat that has met its target has stopped buying. Receding it leaves the
      live demand as the only thing standing in the grid, which is the read. */
   .tile.done {{ opacity: 0.3; }}
-  .minor .ttop i {{ display: none; }}  /* no room, and the tooltip has it */
 
   .bd {{ display: flex; flex-direction: column; }}
   .brow {{ display: flex; justify-content: space-between; gap: 4px;
