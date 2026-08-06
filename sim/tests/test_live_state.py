@@ -22,7 +22,7 @@ from draftsim.live_state import (
     seat_value_of,
     spend_by_position,
 )
-from draftsim.roster import starters
+from draftsim.roster import display_slots, starters
 from draftsim.sleeper import Nomination, config_from_draft
 from draftsim.valuation import Player, load_players
 
@@ -383,6 +383,37 @@ def test_a_card_totals_what_its_starters_project(midway):
         total = sum(p.points for p in starters(seat.roster, midway.config) if p)
         figure = card.split('class="proj"')[1].split("<b>")[1].split("</b>")[0]
         assert figure == f"{total:,.0f}"
+
+
+def test_a_card_counts_the_starters_it_has_bought(midway):
+    # How much of the lineup is bought, next to what it projects. Defenses and
+    # kickers are left out, the same ones the NEED pane leaves out: bought once,
+    # late, by everyone, so counting them only makes the same denominator mean
+    # different things on different cards.
+    wanted = [s for s in midway.config.starter_slots if s not in _NEED_SKIP]
+    for seat in midway.seats.values():
+        foot = _card(midway, seat.slot).split('class="proj"')[1]
+        have = sum(
+            1
+            for slot, player in display_slots(seat.roster, midway.config)
+            if slot != BENCH and slot not in _NEED_SKIP and player
+        )
+        assert f">{have}<i>/{len(wanted)}</i>" in foot
+        assert ">STARTERS<" in foot
+    # A ratio says what it is and a bare 1,323 does not, so compact labels only
+    # the projection and the word comes back with the overlay.
+    page = render_page("123")
+    assert ".proj .str { display: none; }" in page
+    assert "body.maxed .proj .str { display: inline; }" in page
+
+
+def test_a_lineup_with_a_hole_in_it_says_so(midway):
+    # The count is only worth a line if a short one is legible without being
+    # read: amber, and not the out-of-market red, which would be on eleven of
+    # twelve cards all draft and mean nothing by the time it mattered.
+    cards = [_card(midway, slot) for slot in midway.seats]
+    assert any('class="fill short"' in c for c in cards)
+    assert ".proj .fill.short { color: #b26a00; }" in render_page("123")
 
 
 def test_an_empty_seat_projects_nothing_rather_than_zero(mock_config, pool):

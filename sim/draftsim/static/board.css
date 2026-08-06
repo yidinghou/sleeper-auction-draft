@@ -185,17 +185,33 @@
   .card.broke .big { color: #c0392b; }
   .card.broke .budget i:not(.held) { background: #c0392b; }
 
-  /* The card's footer: what its starters are projected to score. Below the
-     panes rather than in the header, because the header is money and nothing
-     else -- and down here it is the same number whichever pane is showing.
-     Deliberately not money green: the header owns that colour, and a second
-     green figure on the card would be read as dollars. */
+  /* The card's footer: how much of the lineup is bought, and what it projects.
+     Below the panes rather than in the header, because the header is money and
+     nothing else -- and down here they are the same numbers whichever pane is
+     showing. Deliberately not money green: the header owns that colour, and a
+     second green figure on the card would be read as dollars. */
   .proj { flex: none; display: flex; align-items: baseline; gap: 4px;
     margin-top: 3px; padding-top: 3px; border-top: 1px solid #eee; }
   .proj .pl { font-size: calc(8px * var(--fs)); color: #888; font-weight: 700;
     text-transform: uppercase; letter-spacing: 0.04em; }
-  .proj b { margin-left: auto; font-size: calc(11px * var(--fs)); color: #1a1a1a;
+  /* Compact, the count goes unlabeled and the projection does not: a ratio says
+     what it is, a bare 1,323 does not. The word is in the markup and comes back
+     when the overlay has room for it -- the same bargain the lineup's column
+     labels make. */
+  .proj .str { display: none; }
+  body.maxed .proj .str { display: inline; }
+  /* The projection is the right-hand figure, so its label carries the gap. */
+  .proj .pts { margin-left: auto; }
+  .proj b { font-size: calc(11px * var(--fs)); color: #1a1a1a;
     font-weight: 700; font-variant-numeric: tabular-nums; }
+  /* The target sits back from the count, the way the NEED pane's have/want
+     does -- what is bought is the figure, what is asked for is the scale. */
+  .proj .fill i { font-style: normal; font-weight: 400; color: #999;
+    font-size: calc(9px * var(--fs)); }
+  /* A lineup with a hole in it says so. Amber, not the out-of-market red: this
+     is the ordinary state of a card until the last rounds, and red on eleven of
+     twelve cards all draft would mean nothing by the time it mattered. */
+  .proj .fill.short { color: #b26a00; }
 
   /* Folded, a row of four cards is a strip of money and pips: the four seats
      still in their four columns, each saying what it can spend and which

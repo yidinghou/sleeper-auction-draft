@@ -261,24 +261,34 @@ def _card_header(state: LeagueState, seat: Seat) -> str:
     )
 
 
-def _proj_total(layout: Sequence[Tuple[str, Optional[Player]]]) -> str:
-    """What the seat's starters are projected to score, as the card's footer.
+def _card_footer(layout: Sequence[Tuple[str, Optional[Player]]]) -> str:
+    """How much of the lineup is bought, and what it projects.
 
-    The one number that says whether the money bought anything. It sits below
-    the panes rather than in the header because the header is money and nothing
-    else -- and below the panes it is also the same number whichever pane is
-    showing, which is what a card-level total should be.
+    The two card-level numbers. They sit below the panes rather than in the
+    header because the header is money and nothing else -- and below the panes
+    they are the same numbers whichever pane is showing, which is what a
+    card-level figure should be.
 
-    Starters only, off the same optimal lineup the LINEUP pane is drawn from, so
-    the total cannot disagree with the rows above it.
+    Both are read off the same optimal lineup the LINEUP pane is drawn from, so
+    the footer cannot disagree with the rows above it.
+
+    The count leaves out the same positions the NEED pane does: a defense is
+    bought once, late, by everyone, so counting it only moves every seat's
+    denominator by one and makes 9/10 mean "nothing missing but a defense" on
+    some cards and "missing a receiver" on others.
     """
-    total = sum(
-        player.points for slot, player in layout if slot != BENCH and player
-    )
+    starters = [(slot, p) for slot, p in layout if slot != BENCH]
+    counted = [(slot, p) for slot, p in starters if slot not in _NEED_SKIP]
+    filled = sum(1 for _, player in counted if player)
+    total = sum(player.points for _, player in starters if player)
     figure = f"{total:,.0f}" if total else "—"
+    short = "" if filled == len(counted) else " short"
     return (
-        '<div class="proj" title="starters&#x27; projected points">'
-        f'<span class="pl">PROJ</span><b>{figure}</b></div>'
+        '<div class="proj" title="starters filled &#xb7;'
+        ' starters&#x27; projected points">'
+        f'<span class="pl str">STARTERS</span>'
+        f'<b class="fill{short}">{filled}<i>/{len(counted)}</i></b>'
+        f'<span class="pl pts">PROJ</span><b>{figure}</b></div>'
     )
 
 
@@ -326,7 +336,7 @@ def _roster_card(state: LeagueState, seat: Seat, row: int) -> str:
         f'<div class="pane" data-pane="bench">{bench}</div>'
         f"{_need_pane(state, seat)}"
         "</div>"
-        f"{_proj_total(layout)}"
+        f"{_card_footer(layout)}"
         "</section>"
     )
 
