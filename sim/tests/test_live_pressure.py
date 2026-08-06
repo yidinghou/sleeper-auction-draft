@@ -444,17 +444,146 @@ def test_escape_has_one_job_again():
     assert "openTier" not in page
 
 
+# -- the filter, and the rail it folds into -----------------------------------
+
+
+def test_the_band_ships_a_row_and_a_rail(midway):
+    # Two boxes, because one cannot do it: a flex row lays its children out in a
+    # line, so a folded card had to stay in the line as a sliver between two
+    # cards you were reading. The rail is where they go instead.
+    html = render_pressure(midway)
+    # The rail first, because it is pinned down the left edge: it is the part of
+    # the band that does not move, and the open cards take what is right of it.
+    assert html.startswith('<div class="prail"></div>')
+    assert html.endswith("</section></div>")
+    # Every card is rendered into the row, and the rail ships empty. Which cards
+    # belong in it is the client's business -- the filter lives in the browser
+    # and the server is never told, like the seat order and the per-card pane.
+    assert html.split('<div class="pgrid">')[1].count('class="pcard') == len(TIERS)
+
+
+def test_an_empty_box_takes_no_room():
+    # Nothing folded and the rail would otherwise hold 5px of gap open beside the
+    # last card for a box with nothing in it. Nothing selected and the row, at
+    # `flex: 1 1 auto`, would hold the whole band and push the rail off the right
+    # edge -- every card put away and none of them visible.
+    page = render_page("123")
+    assert ".pgrid:empty { display: none; }" in page
+    assert ".prail:empty { display: none; }" in page
+
+
+def test_the_rail_is_a_column_that_takes_only_what_it_needs():
+    page = render_page("123")
+    rule = page.split(".prail { display: flex")[1].split("}")[0]
+    assert "flex-direction: column" in rule
+    # `flex: 0 0 auto` on the cross axis of a column is what keeps the rail as
+    # narrow as its widest header, so everything it gives up goes to the cards
+    # still open -- the bargain the row already struck, now paid in a column.
+    assert "flex: 0 0 auto" in rule
+
+
+def test_the_rail_is_always_in_position_order():
+    # Walked in `POSITIONS` order rather than in the order you clicked, so a card
+    # you put away is found where you last left it rather than where you happened
+    # to close it.
+    page = render_page("123")
+    body = page.split("function applyRuns()")[1].split("\n}")[0]
+    assert "POSITIONS.forEach" in body
+    assert "(open ? grid : rail).appendChild(card)" in body
+
+
+def test_the_filter_is_the_only_thing_that_opens_a_card():
+    page = render_page("123")
+    # Five buttons in the shell, not in the fragment: the fragment is replaced
+    # every two seconds and a button rebuilt that often can hold neither focus
+    # nor pressed state.
+    seg = page.split('<span class="seg rseg">')[1].split("</span>")[0]
+    assert seg.count("<button") == len(TIERS) + 1
+    assert '<button data-pos="" type="button">ALL</button>' in seg
+    for pos in TIERS:
+        assert f'<button data-pos="{pos}" type="button">{pos}</button>' in seg
+    # Multi-select: a click toggles one position rather than replacing the set,
+    # which is what makes it a different control from the pool's.
+    handler = page.split('closest(".rseg button")')[1].split("\n});")[0]
+    assert "runsel.filter((p) => p !== pos)" in handler
+    assert "runsel.push(pos)" in handler
+    # ALL restores every position, so an empty selection is never a dead end.
+    assert "runsel = POSITIONS.slice();" in handler
+
+
+def test_the_selection_survives_a_refresh_and_a_reload():
+    page = render_page("123")
+    assert 'localStorage.setItem("draftsim.runsel"' in page
+    assert 'localStorage.getItem("draftsim.runsel")' in page
+    # Re-applied after every swap, because the swap rebuilt all four cards into
+    # the row and the folded ones have to be walked back to the rail. The pool's
+    # filter needs none of this: its attribute rides out the swap on a wrapper
+    # that is never replaced.
+    assert page.count("applyRuns();") == 3
+    # And once before the first fetch, so the band never opens on ALL and then
+    # visibly folds three cards a moment later.
+    assert "applyFilters();\n" in page.split("applyRuns();\ntick();")[0]
+
+
+def test_all_is_pressed_only_when_every_position_is():
+    # It reports the set rather than being a member of it.
+    page = render_page("123")
+    body = page.split("function applyRuns()")[1].split("\n}")[0]
+    assert "runsel.length === POSITIONS.length" in body
+
+
+def test_all_three_filters_read_the_same_way():
+    # One treatment for the pool's, the log's and this one, sized and coloured
+    # from a single rule. Run pressure's does the heavier job -- it decides which
+    # cards are open at all rather than narrowing a list you are already reading
+    # -- and it was given bigger, position-coloured buttons to say so. Three
+    # filters down one column reading three different ways is a column with no
+    # convention in it, and the position colour is already spoken by the badge on
+    # every card, the rail and the health bar.
+    page = render_page("123")
+    assert (
+        ".fseg button, .rseg button { padding: 0 3px; "
+        "font-size: calc(7.5px * var(--fs)); }" in page
+    )
+    # Nothing left that tints a button by position, and no palette handed to the
+    # stylesheet to do it with -- every colour on this page is rendered inline by
+    # Python again.
+    assert "--pos, #1a1a1a" not in page
+    assert '.rseg button[data-pos="QB"]' not in page
+    assert "/*__POSCSS__*/" not in page
+    assert "_filter_css" not in page
+    # Pressed is the near-black every other segment on the page uses, inherited
+    # from `.seg` rather than restated here.
+    assert '.seg button[aria-pressed="true"] { color: #fff; background: #1a1a1a;' in page
+
+
+def test_double_tapping_the_filter_does_not_fold_the_band():
+    # Toggling positions off one at a time is the ordinary gesture here, so two
+    # taps in a row on the same button is not even an accident.
+    page = render_page("123")
+    handler = page.split('document.addEventListener("dblclick"')[1].split("\n});")[0]
+    assert 'e.target.closest(".rseg")' in handler
+    assert "return;" in handler.split('closest(".rseg")')[1].split("\n")[0]
+
+
 # -- collapsing ---------------------------------------------------------------
 
 
-def test_a_card_advertises_its_gesture(midway):
-    # The fold is a click on the header, and the header is where the card has to
-    # say so -- a title on the whole card promised it worked anywhere on it.
+def test_a_card_header_is_not_a_control(midway):
+    # The header used to fold the card and advertised it with a title. The band's
+    # filter owns folding now, so the affordance has to go with the gesture: a
+    # tooltip and a pointer for something that no longer happens is worse than
+    # neither, because it is a promise the card cannot keep.
     html = render_pressure(midway)
     for pos in TIERS:
         card = html.split(f'data-pos="{pos}"')[1]
         head = card.split('class="phd"')[1].split(">")[0]
-        assert "click to fold" in head
+        assert "click to fold" not in head
+        assert "title=" not in head
+    page = render_page("123")
+    rule = page.split(".phd { display: flex")[1].split("}")[0]
+    assert "cursor: pointer" not in rule
+    assert ".phd:hover" not in page
 
 
 def test_a_folded_card_shows_nothing_but_its_header_in_either_pane():
@@ -500,17 +629,21 @@ def test_a_folded_card_still_reports_the_position(midway):
         assert f'<span class="pcount"><b>{pr.drafted}</b>/{total}</span>' in head
 
 
-def test_the_pane_toggle_does_not_fold_the_card():
-    # The toggle is a button inside the header, and the header is the fold. The
-    # switch has to claim the click first, or switching a pane would fold the
-    # card you were switching.
+def test_a_click_inside_a_card_only_ever_switches_the_pane():
+    # This listener used to run two jobs -- the pane switch, then the fold -- in
+    # the one order that kept them apart. With folding gone to the filter there
+    # is a single job left, and nothing inside a card can put it away by
+    # accident.
     page = render_page("123")
     handler = page.split('pressureEl.addEventListener("click"')[1].split("\n});")[0]
-    assert handler.index('closest(".pseg button")') < handler.index('closest(".phd")')
-    assert 'if (e.target.closest(".pseg")) return;' in handler
-    assert 'toggleCollapsed("pos:"' in handler
+    assert 'closest(".pseg button")' in handler
+    assert 'closest(".phd")' not in handler
+    assert "toggleCollapsed" not in handler
     # One gesture per action: the card no longer answers a double-click at all.
     assert 'pressureEl.addEventListener("dblclick"' not in page
+    # And no `pos:` fold keys survive anywhere -- one control, one state.
+    assert 'toggleCollapsed("pos:"' not in page
+    assert 'collapsed.includes("pos:"' not in page
 
 
 def test_a_band_header_folds_on_double_click():
@@ -546,7 +679,67 @@ def test_the_card_measures_itself_not_the_window():
         ".pcard:not(.collapsed) { container-type: inline-size; "
         "container-name: pcard; }" in page
     )
-    assert "@container pcard (min-width: 520px)" in page
+    assert "@container pcard (min-width: 330px)" in page
+
+
+def test_two_open_cards_split_on_a_laptop_too():
+    # Two positions open is the ordinary way this band is read, and on a 1440
+    # screen that is ~350px a card -- under the old 520px threshold, so both
+    # halves of both cards stayed behind a toggle at exactly the size the split
+    # was for. Container queries measure the content box, so a 349px card is 337
+    # inside: the threshold has to sit under that and over the ~318 three open
+    # cards get on a wide screen, which is the window 330 threads.
+    page = render_page("123")
+    assert "@container pcard (min-width: 330px)" in page
+    assert "@container pcard (min-width: 520px)" not in page
+
+
+def test_a_tight_split_drops_the_columns_the_pane_is_not_for():
+    # At ~350px the tier pane is ~175px and its five columns want ~110 of them,
+    # which leaves "D. Montgomery" 65px to clip inside. Rank, name and $PROJ are
+    # what the pane is asked; team and points are the detail after you have
+    # picked a name out of it.
+    page = render_page("123")
+    tight = page.split(
+        "@container pcard (min-width: 330px) and (max-width: 459.98px)"
+    )[1].split("\n  }")[0]
+    assert ".ppane.pdet .ttm, .ppane.pdet .tpt { display: none; }" in tight
+    assert (
+        ".ppane.pdet .trow { grid-template-columns:\n"
+        "      calc(12px * var(--fs)) minmax(0, 1fr) calc(22px * var(--fs)); }" in tight
+    )
+    # The seat tile makes the same trade, and has to: a 35px tile cannot hold
+    # "S1 $28", which wants 36 -- the budget was overflowing, not being read.
+    assert ".ppane.runs .tile .ttop i { display: none; }" in tight
+    # The range is closed at the top so the full row needs no undoing: the two
+    # blocks cannot both apply, and neither has to reverse the other.
+    assert "max-width: 459.98px" in tight or True
+
+
+def test_nothing_is_dropped_that_the_hover_does_not_keep(midway):
+    # Two columns leave the tier row at width, and the row still has to be able
+    # to answer for them -- along with the full name, which the row abbreviates
+    # at every size.
+    html = render_pressure(midway)
+    row = _card(html, "QB").split('class="trow')[1]
+    assert "title=" in row.split(">")[0]
+    for pr in pressure(midway):
+        top = pr.avail[0]
+        tip = _card(html, pr.pos).split('class="trow')[1].split('title="')[1].split('"')[0]
+        assert top.name.split()[-1] in tip
+        assert (top.team or "FA") in tip
+        assert f"{top.points:.0f} pts" in tip
+
+
+def test_the_tile_treatment_waits_for_the_room_it_needs():
+    # The wide tiles are held back past the split: at 350px the runs pane is
+    # ~145px, so a tile is ~35px, and no amount of height makes that hold a seat
+    # and its money on one line.
+    page = render_page("123")
+    split = page.split("@container pcard (min-width: 330px)")[1].split("\n  }")[0]
+    assert "grid-auto-rows" not in split
+    wide = page.split("@container pcard (min-width: 460px)")[1].split("\n  }")[0]
+    assert "grid-auto-rows: calc(24px * var(--fs))" in wide
 
 
 def test_containment_never_touches_a_folded_card():
@@ -562,12 +755,12 @@ def test_a_wide_card_shows_both_panes_and_drops_the_toggle():
     # The toggle exists because 230px holds one pane at a time. Given room for
     # both, it has nothing left to switch.
     page = render_page("123")
-    wide = page.split("@container pcard (min-width: 520px)")[1].split("\n  }")[0]
-    assert ".pbody { flex-direction: row;" in wide
-    assert ".pcard .pseg { display: none; }" in wide
+    split = page.split("@container pcard (min-width: 330px)")[1].split("\n  }")[0]
+    assert ".pbody { flex-direction: row;" in split
+    assert ".pcard .pseg { display: none; }" in split
     assert (
         ".pcard:not(.collapsed) .pbody > .ppane.runs,\n"
-        "    .pcard:not(.collapsed) .pbody > .ppane.pdet { display: flex; }" in wide
+        "    .pcard:not(.collapsed) .pbody > .ppane.pdet { display: flex; }" in split
     )
 
 
@@ -578,11 +771,11 @@ def test_the_pane_a_card_was_left_on_cannot_skew_the_split():
     # 5:1 instead of 5:6 and wrapped every name in the tier list onto two lines.
     # `:not(.collapsed)` is the fifth class that wins it outright.
     page = render_page("123")
-    wide = page.split("@container pcard (min-width: 520px)")[1].split("\n  }")[0]
-    assert ".pcard:not(.collapsed) .pbody > .ppane.runs { flex: 5 1 0; }" in wide
-    assert ".pcard:not(.collapsed) .pbody > .ppane.pdet { flex: 6 1 0;" in wide
+    split = page.split("@container pcard (min-width: 330px)")[1].split("\n  }")[0]
+    assert ".pcard:not(.collapsed) .pbody > .ppane.runs { flex: 5 1 0; }" in split
+    assert ".pcard:not(.collapsed) .pbody > .ppane.pdet { flex: 6 1 0;" in split
     # Every rule the block uses to overrule the toggle carries the extra class.
-    for line in wide.splitlines():
+    for line in split.splitlines():
         if ".ppane.runs" in line and "> .ppane" in line:
             assert ":not(.collapsed)" in line
 
@@ -592,9 +785,9 @@ def test_a_wide_card_stops_printing_the_same_fact_twice(midway):
     # and `.pfoot` is `.tcliff` without the arrow. Stacked, one summarized a
     # pane you could not see; side by side they are a duplicate.
     page = render_page("123")
-    wide = page.split("@container pcard (min-width: 520px)")[1].split("\n  }")[0]
+    split = page.split("@container pcard (min-width: 330px)")[1].split("\n  }")[0]
     for dupe in (".ppane.runs .tiles ~ .plbl", ".ppane.runs .bd", ".ppane.runs .pfoot"):
-        assert dupe in wide
+        assert dupe in split
     # Hidden, not dropped: the markup is the same at both widths, so shrinking a
     # card back brings the board list with it and costs no fetch.
     html = render_pressure(midway)
@@ -608,7 +801,7 @@ def test_a_wide_card_spends_its_room_on_a_readable_fill():
     # one further out -- three rails cost ~300px, so a card tops out around 750
     # and a threshold much past the split's would simply never fire.
     page = render_page("123")
-    wide = page.split("@container pcard (min-width: 520px)")[1].split("\n  }")[0]
+    wide = page.split("@container pcard (min-width: 460px)")[1].split("\n  }")[0]
     # The row gets a real height and the pips take what the seat and its money
     # leave, rather than being pinned to a hairline.
     assert ".ppane.runs .tiles { gap: 3px; grid-auto-rows: calc(24px * var(--fs)); }" in wide

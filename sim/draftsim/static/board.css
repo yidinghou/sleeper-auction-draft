@@ -420,12 +420,42 @@
      aisle, in the same arrangement -- drag a roster card and these follow.
      All four cards are the same size, TE included: one starter is still a
      position you can be run out of, and the room is there. */
-  #pressure { min-height: 0; flex: 1; display: flex; overflow: hidden; }
+  /* Two boxes, not one: the rail the folded cards stack in, pinned down the left
+     edge, and the row of open cards taking everything right of it. A single flex
+     row cannot do this -- it will lay its children out in a line and that is the
+     whole of its offer, so a folded card had to stay in the line, a sliver
+     wedged between two cards you were reading. Splitting the row from the rail
+     is what lets the put-away cards leave the row entirely.
+
+     The rail is on the left because it is the part of this band that does not
+     move. Four positions are always either in it or beside it, so the eye should
+     find a folded one in the same place whichever cards are open -- and a rail
+     that slid left every time you opened another card would be a landmark that
+     moves. Both boxes are rendered every tick; the client moves cards between
+     them. */
+  #pressure { min-height: 0; flex: 1; display: flex; gap: 5px;
+    overflow: hidden; }
   /* Cards size to their content and sit at the top of the band. Stretching them
      to the band's full height just puts a hand of white space under the board
      list and makes four short cards look like four half-empty ones. */
-  .pgrid { display: flex; gap: 5px; align-items: flex-start; flex: 1;
+  .pgrid { display: flex; gap: 5px; align-items: flex-start; flex: 1 1 auto;
     min-width: 0; }
+  /* Deselect everything and the row has nothing in it. Left displayed it is an
+     empty flex child with `flex: 1`, which would hold the whole band open and
+     push the rail off the right edge -- the one arrangement where every card is
+     put away and none of them can be seen. */
+  .pgrid:empty { display: none; }
+  /* The rail: folded cards in a column at the left edge, always in QB / RB / WR
+     / TE order however you clicked them, so a card is always found where it was
+     last time. It takes exactly the width its widest header needs and no more --
+     which is the point of folding one at all. Everything it gives up goes to the
+     cards still open, the same bargain the row struck below, now paid in a
+     column instead of a sliver. */
+  .prail { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto;
+    align-items: stretch; min-width: 0; }
+  /* Nothing folded, no rail -- and no 5px of gap held open beside the last card
+     for a box with nothing in it. */
+  .prail:empty { display: none; }
   /* Capped at the band's height, not stretched to it: a card sizes to whatever
      it holds, but a tier list of twenty names must scroll inside the card
      rather than growing it down over the pool and the log below. */
@@ -449,8 +479,11 @@
      have stopped working on. Only the pane toggle goes, because it is a control
      for something that is no longer on screen. */
   .pcard.collapsed .pseg { display: none; }
-  /* The pill is pushed right by `margin-left: auto` in a full-width header. On a
-     rail there is no right to push to, so it hugs the badge instead. */
+  /* The pill is pushed right by `margin-left: auto` in a full-width header. In
+     the rail the cards are all one width, so pushing right would set the pills
+     against an edge with a ragged gap in front of each -- and the counts they
+     are meant to be read against are back at the badge. Hugging instead makes
+     the four rails one left-aligned list, which is how a column is read. */
   .pcard.collapsed .pverd { margin-left: 4px; }
   /* Settled: no seat is short here any more, so the position cannot run and the
      card steps back from the ones that can. Recessive, not hidden -- the tier
@@ -459,13 +492,14 @@
   .pcard.done { opacity: 0.55; }
   .pcard.done:hover { opacity: 1; }
   .pcard:hover { border-color: #bbb; }
-  /* The header is the fold, one single click, the same gesture on all four. No
-     caret: the hover state is the affordance, as it is on the band headers. */
+  /* Not a control any more. The header used to be the fold, and the band's
+     filter has taken that over -- so the pointer and the hover fill go with it,
+     because an affordance for a gesture that no longer exists is worse than
+     none. What is left is a line of type with the pane toggle sitting on it.
+     `user-select: none` stays: it is there so the badge and the counts do not
+     highlight when a click near them lands slightly askew. */
   .phd { display: flex; align-items: center; gap: 4px; min-width: 0;
-    cursor: pointer; user-select: none; border-radius: 3px; }
-  .phd:hover { background: #f2f2f2; }
-  /* The buttons inside the header are not the fold and must not look like it. */
-  .phd .pseg { cursor: default; }
+    user-select: none; border-radius: 3px; }
   .phd .badge { min-width: calc(20px * var(--fs)); font-size: calc(8px * var(--fs));
     padding: 1px 3px; }
   /* The first thing in the header to give way when the card is narrow: the
@@ -581,9 +615,15 @@
   .pbody { display: flex; flex-direction: column; gap: 3px;
     min-height: 0; min-width: 0; flex: 1 1 auto; }
 
-  /* Below this the tier row cannot hold a name: its four fixed columns want
-     ~72px of the pane and "M. Stafford" wants the rest. */
-  @container pcard (min-width: 520px) {
+  /* Two open cards on a laptop are ~350px apiece, and the split has to reach
+     them: two positions open is the ordinary way this band is read, and hiding
+     half of each behind a toggle at exactly that size was the shape being asked
+     to change. So the split starts here, and what it cannot afford at this width
+     is given up further down rather than paid for by not splitting at all.
+
+     Under 340px it stops: three open cards on a laptop are ~235px each, which is
+     one pane's worth, and two panes in it would be two unreadable ones. */
+  @container pcard (min-width: 330px) {
     .pbody { flex-direction: row; align-items: stretch; gap: 8px; }
     /* Both panes at once, which is what retires the toggle -- and both of them
        sized by this block rather than by the toggle's rules.
@@ -616,12 +656,49 @@
     .ppane.runs .bd,
     .ppane.runs .pfoot { display: none; }
 
+  }
+
+  /* -- the tight split ----------------------------------------------------
+     Between 340 and 460 the card splits but the tier row cannot keep all five
+     of its columns: rank, team, points and $PROJ want ~110px of a ~175px pane
+     and leave "D. Montgomery" 65px to clip inside.
+
+     So the two columns that are not what the pane is for step out. The tier list
+     answers "which ones, and what do they cost" -- rank, name and $PROJ are that
+     question; team and points are the detail you read once you have picked a
+     name out of it, and both are still on the row's hover. Dropping them hands
+     the name ~120px, which is a full short name rather than most of one.
+
+     Shrinking the type instead would have kept all five and made the whole list
+     harder to read, to preserve two columns nobody scans this pane for. */
+  @container pcard (min-width: 330px) and (max-width: 459.98px) {
+    .ppane.pdet .trow { grid-template-columns:
+      calc(12px * var(--fs)) minmax(0, 1fr) calc(22px * var(--fs)); }
+    .ppane.pdet .ttm, .ppane.pdet .tpt { display: none; }
+    /* The seat tile makes the same trade, and has to: the runs pane is ~145px
+       here, so a tile is ~35px, and "S1 $28" wants 36 of them -- the budget was
+       not being read at this width, it was overflowing the box. What the pane is
+       for is which seats are still short and how short, which is the seat and
+       its pips; the budget is the detail, and the tile's hover still carries it
+       along with the count and the max bid. */
+    .ppane.runs .tile .ttop i { display: none; }
+  }
+
+  /* -- the wide split -----------------------------------------------------
+     Past here the runs pane has a column's height to spend as well as its width,
+     so the tiles stop being a strip and become the grid they are on the board
+     across the aisle. */
+  @container pcard (min-width: 460px) {
     /* And the fill finally gets to be a bar. Narrow, a pip is four pixels
        because four pixels is what a stacked card can spare; the split hands the
        runs pane a whole column's height for three rows of tiles, so the row is
        given a real height and the pips stretch into whatever is left after the
        seat and its money. Same twelve tiles, same 4x3, just no longer drawn as
-       a hairline across a tile three times wider than it needs to be. */
+       a hairline across a tile three times wider than it needs to be.
+
+       Held back to this width rather than shipped with the split: at 350px the
+       runs pane is ~145px, so a tile is ~34px, and a tile that wide cannot hold
+       "S1" and "$28" on one line at this size however tall it is. */
     .ppane.runs .tiles { gap: 3px; grid-auto-rows: calc(24px * var(--fs)); }
     .ppane.runs .tile { padding: 2px 4px; gap: 2px; }
     .ppane.runs .pips { flex: 1 1 auto; align-items: stretch; }
@@ -690,12 +767,22 @@
     flex: 1; min-height: 0; overflow-y: auto;
     scrollbar-width: thin; scrollbar-color: #ccc transparent; }
 
-  /* The position filters, riding at the right of each pane's header. Smaller
-     than the roster cards' segment -- five buttons where those have three, and
-     a header that already carries a title and a note. */
-  .fseg button { padding: 0 3px; font-size: calc(7.5px * var(--fs)); }
-  /* A folded pane is a title and nothing else; its filter goes with the rest. */
-  .collapsed > .bandhd .fseg { display: none; }
+  /* The position filters, riding at the right of each band's header: the pool's,
+     the log's, and run pressure's. Smaller than the roster cards' segment -- five
+     buttons where those have three, and a header that already carries a title
+     and a note.
+
+     One treatment for all three, though run pressure's does a heavier job: the
+     pool's narrows a list you are already reading, where that one decides which
+     cards are open at all. Sizing it up and colouring each button by position
+     said so, and said it too loudly -- three filters on one column reading three
+     different ways is a column with no convention in it, and the position colour
+     is already spoken everywhere it matters here: the badge on every card, the
+     rail, the health bar. The filter does not need to say it a fourth time. */
+  .fseg button, .rseg button { padding: 0 3px; font-size: calc(7.5px * var(--fs)); }
+  /* A folded band is a title and nothing else; its filter goes with the rest. */
+  .collapsed > .bandhd .fseg,
+  .collapsed > .bandhd .rseg { display: none; }
   /* Said when a filter matches nothing, in place of an empty box that reads as
      a broken pane. Outside the scroller, since it is about the list rather than
      in it, and the scroller is what gets replaced twice a second -- but above
