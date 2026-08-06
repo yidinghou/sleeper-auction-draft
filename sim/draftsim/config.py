@@ -118,3 +118,20 @@ class DraftConfig:
         need is unchanged by the share split.
         """
         return {pos: round(share) for pos, share in self.starter_shares().items()}
+
+    def owned_starters(self) -> Dict[str, int]:
+        """Per-team startable spots a position owns *outright* — the same shares,
+        floored rather than rounded.
+
+        The default lineup gives QB 2.00, RB 2.77, WR 3.23, TE 1.00, so this
+        reads 2 / 2 / 3 / 1: the FLEX is genuinely contested and neither the
+        backs nor the receivers own it. Where `starter_counts()` rounds — it is a
+        target you buy against, and 2.77 backs means buy three — this floors,
+        because it answers the other question: how many bodies does the lineup
+        seat this position no matter what else is on the roster. A body past this
+        count may well start; what it is not is a slot the seat was owed.
+
+        Used by the folded card strip, which draws what a seat has rather than
+        what it should still buy.
+        """
+        return {pos: int(share) for pos, share in self.starter_shares().items()}

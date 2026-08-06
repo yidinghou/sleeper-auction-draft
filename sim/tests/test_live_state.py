@@ -2,6 +2,7 @@
 
 import json
 import math
+import re
 from pathlib import Path
 
 import pytest
@@ -837,17 +838,94 @@ def test_every_card_ships_the_strip_it_folds_down_to(midway):
     assert html.count('class="foldsum"') == len(midway.seats)
 
 
+def _strip(state, slot):
+    return _card(state, slot).split('class="foldsum"')[1].split("</div>")[0]
+
+
+def _pips(markup):
+    """Pips in a chunk of strip -- the `pips` wrapper is not one of them."""
+    return len(re.findall(r'class="pip[ "]', markup))
+
+
 def test_the_strip_says_what_is_filled_and_what_is_not(midway):
     # The same positions the NEED pane covers, drawn with the same pips -- one
-    # `position_summary` call feeds both, so the two cannot disagree.
-    card = _card(midway, 1)
-    strip = card.split('class="foldsum"')[1].split("</div>")[0]
+    # `position_summary` call feeds both, so they cannot cover different
+    # positions. What they count against differs, on purpose; see below.
+    strip = _strip(midway, 1)
     for line in position_summary(midway.seats[1], midway.config):
         if line.pos in _NEED_SKIP:
             assert f">{line.pos}<" not in strip
         else:
             assert f">{line.pos}<" in strip
     assert 'class="pips"' in strip
+
+
+def test_the_strips_run_is_the_slots_a_position_owns_outright(mock_config, pool):
+    # Folded, a card is read off rather than shopped for: the question is what a
+    # seat *has*, so the run is `owned_starters()` -- 2 QB / 2 RB / 3 WR / 1 TE,
+    # the whole slots the lineup seats no matter what -- not the fractional
+    # DRAFT_TARGETS the NEED pane buys against.
+    assert mock_config.owned_starters() == {
+        "QB": 2, "RB": 2, "WR": 3, "TE": 1, "DEF": 1, "K": 0
+    }
+    state = reconstruct([], mock_config, pool)
+    strip = _strip(state, 1)
+    runs = dict(zip(re.findall(r">(\w+)</i>", strip), strip.split('class="pips"')[1:]))
+    for pos, want in (("QB", 2), ("RB", 2), ("WR", 3), ("TE", 1)):
+        assert _pips(runs[pos]) == want
+    # An empty seat is one line: nothing is owned, so nothing is depth.
+    assert "fx" not in strip
+    assert '<span class="pip half' not in strip  # whole slots, so no half pip
+
+
+def test_depth_stacks_under_its_position_rather_than_widening_the_run(finished):
+    # Inline, a surplus pip made every position a different width and pushed the
+    # tight end onto a row of its own -- so which positions a card still had to
+    # fill stopped being readable across four folded cards at once. Stacked, line
+    # one is the same eight slots in the same eight places on every card.
+    seat = next(
+        s
+        for s in finished.seats.values()
+        if any(
+            line.have > finished.config.owned_starters().get(line.pos, 0)
+            for line in position_summary(s, finished.config)
+            if line.pos not in _NEED_SKIP
+        )
+    )
+    strip = _strip(finished, seat.slot)
+    owned = finished.config.owned_starters()
+    for line in position_summary(seat, finished.config):
+        if line.pos in _NEED_SKIP:
+            continue
+        cell = next(c for c in strip.split('class="fpos"')[1:] if f">{line.pos}<" in c)
+        run, _, extra = cell.partition('class="pips fx"')
+        # The run is exactly the slots owned, however many bodies are on it.
+        assert _pips(run) == owned[line.pos]
+        assert extra.count('class="pip extra"') == max(0, line.have - owned[line.pos])
+
+
+def test_a_depth_line_holds_twice_the_slots_it_sits_under(finished):
+    # A depth line holds twice the slots it sits under, so five running backs fit
+    # the one line beneath two RB slots. A position only takes a third line when
+    # a seat holds more than twice what it can start, which is deeper than seats
+    # go: every position of a finished 16-man roster is at most two lines.
+    owned = finished.config.owned_starters()
+    for seat in finished.seats.values():
+        strip = _strip(finished, seat.slot)
+        for line in position_summary(seat, finished.config):
+            if line.pos in _NEED_SKIP:
+                continue
+            cell = next(c for c in strip.split('class="fpos"')[1:] if f">{line.pos}<" in c)
+            depth = line.have - owned[line.pos]
+            assert cell.count('class="pips fx"') == math.ceil(
+                max(0, depth) / (2 * owned[line.pos])
+            )
+        assert strip.count('class="pips fx"') <= 4  # one per position, no more
+
+
+def test_the_strip_stacks_its_two_lines_rather_than_running_them_together():
+    page = render_page("123")
+    assert ".foldsum .fstack { display: flex; flex-direction: column;" in page
 
 
 def test_folding_is_by_row_because_a_lone_card_frees_nothing():
@@ -925,7 +1003,7 @@ def test_a_folded_card_shows_nothing_but_its_strip_whichever_pane_it_was_on():
     page = render_page("123")
     assert ".card.collapsed > .body { display: none;" in page
     assert ".card .foldsum { display: none;" in page
-    assert ".card.collapsed .foldsum { display: flex;" in page
+    assert ".card.collapsed .foldsum { display: grid;" in page
 
 
 def test_the_fold_is_remembered_alongside_every_other_fold():

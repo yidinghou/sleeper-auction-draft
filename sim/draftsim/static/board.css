@@ -229,20 +229,46 @@
   .card.collapsed .seg { display: none; }
   .card.collapsed .proj { display: none; }
   .card .foldsum { display: none; }
-  .card.collapsed .foldsum { display: flex; gap: 5px; padding-top: 3px;
-    align-items: center; flex-wrap: wrap; }
-  .foldsum .fpos { display: flex; align-items: center; gap: 3px; min-width: 0; }
-  .foldsum .ms { font-style: normal; font-weight: 700; color: #999;
-    font-size: calc(7px * var(--fs)); }
-  /* Smaller than the NEED pane's pips, and only just: four positions' worth of
-     them have to sit on one line in a quarter-width card, and a second line
-     costs the strip a third of its height for one tight end. Wrapping rather
-     than clipping, because a narrower window must lose the layout, not the
-     position. */
-  .foldsum .pips { gap: 1.5px; }
-  .foldsum .pip { height: calc(5.5px * var(--fs)); width: calc(6px * var(--fs)); }
-  .foldsum .pip.half { width: calc(3.5px * var(--fs)); }
-  .foldsum .pip.extra { width: calc(4px * var(--fs)); }
+  /* A grid rather than a wrapping row, because the positions have to line up
+     across four cards side by side and a flex row sizes each one to its own
+     contents -- so a seat with five running backs put its receivers somewhere no
+     other card's were. Tracks instead: four across when a card is wide enough,
+     two when it is not, and a position's depth fills its own track without ever
+     moving the position beside it. */
+  .card.collapsed .foldsum { display: grid; column-gap: 6px; row-gap: 4px;
+    padding-top: 4px; align-items: start;
+    grid-template-columns: repeat(auto-fit, minmax(calc(58px * var(--fs)), 1fr)); }
+  .foldsum .fpos { display: flex; align-items: flex-start; gap: 4px;
+    min-width: 0; }
+  .foldsum .ms { font-style: normal; font-weight: 700; color: #888;
+    font-size: calc(9.5px * var(--fs)); line-height: calc(11px * var(--fs)); }
+  /* Slots on the first line, depth on the second, stacked under the position
+     they belong to. Inline, a surplus pip made every position a different width
+     and pushed the tight end onto a row of its own -- so which positions a card
+     had left to fill stopped being readable across four folded cards at once.
+     Stacked, the first line of a track is always that position's own slots. */
+  .foldsum .fstack { display: flex; flex-direction: column; gap: 1.5px;
+    min-width: 0; }
+  /* Larger than the NEED pane's pips, not smaller. This strip is the whole of
+     what a folded card says, and shrinking it to hold four positions on one row
+     made it a texture rather than something you read. It takes the size it needs
+     and the grid above drops to two tracks when a card is too narrow for four --
+     two legible rows beat one you have to lean in for, and the folded row's
+     height is measured by the client either way. */
+  .foldsum .pips { gap: 2px; }
+  .foldsum .pip { height: calc(9px * var(--fs)); width: calc(10px * var(--fs));
+    border-radius: 2.5px; }
+  .foldsum .pip.half { width: calc(5.5px * var(--fs)); }
+  /* Depth is as wide as a slot and half as tall: it has to be legible -- a spare
+     body is a thing you are reading the strip *for* -- so the difference from an
+     owned slot is height and tint, not size. Squeezed to half width it was a
+     speck, and a speck you cannot count is not depth, it is texture.
+
+     Filled at a tint rather than outlined, unlike the panes' surplus pip: at
+     this size a 1px ring is most of the pip, and the shape stopped reading. */
+  .foldsum .pip.extra { width: calc(10px * var(--fs)); height: calc(5px * var(--fs));
+    box-shadow: none;
+    background: color-mix(in srgb, var(--pos, #7c90a0) 50%, #fff); }
   /* The bar over each row: what divides twelve cards into three rows you can
      name, and the control that folds one away. Deliberately the same furniture
      as the bands down the left column -- tinted strip, small caps, a caret that

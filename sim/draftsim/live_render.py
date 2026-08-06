@@ -210,20 +210,59 @@ def _need_pane(state: LeagueState, seat: Seat) -> str:
     )
 
 
+def _fold_cell(line: PositionLine, owned: int) -> str:
+    """One position of the folded strip: its run of slots, and its depth beneath.
+
+    Two lines rather than one, because a surplus pip drawn *after* the run made
+    every position a different width -- a seat with a fourth receiver pushed the
+    tight end onto a second row, and which positions a card had left to fill
+    stopped being something you could read across four folded cards at once.
+    Stacked, row one is always the same eight slots in the same eight places, and
+    depth is a line under whichever position has it.
+    """
+    color = POS_COLOR_LIGHT.get(line.pos, POS_FALLBACK_LIGHT)
+    stack = _pips(line.have, owned, color, cap=True)
+    # Depth wraps at twice the slots owned, so a position carrying everything it
+    # could plausibly carry is still two lines: four spare running backs under
+    # two RB slots, not two rows of two. The line is wider than the run above it
+    # and that is fine -- the strip lays its positions out in equal grid tracks
+    # (see `.foldsum` in board.css), so a deep position fills its own track
+    # rather than shoving the position beside it along. It was a flex row once,
+    # and there a seat with five backs put its receivers somewhere no other
+    # card's were.
+    left = line.have - owned
+    per_row = max(1, 2 * owned)
+    while left > 0:
+        stack += (
+            f'<span class="pips fx" style="--pos:{color}">'
+            + '<span class="pip extra"></span>' * min(left, per_row)
+            + "</span>"
+        )
+        left -= per_row
+    return (
+        f'<span class="fpos"><i class="ms">{_esc(line.pos)}</i>'
+        f'<span class="fstack">{stack}</span></span>'
+    )
+
+
 def _fold_summary(state: LeagueState, seat: Seat) -> str:
     """What a card still says once its row is folded: which positions it has
-    filled and which it has not.
+    filled, which it has not, and where it is carrying depth.
 
-    The NEED pane's own pips, at strip size -- built from the same
-    `position_summary` call the pane is built from, so a folded card cannot
-    disagree with the pane it is hiding. It ships in every card and CSS shows it
-    only when folded, the same bargain the three panes make.
+    The NEED pane's own pips, at strip size, but counted against a different
+    number and deliberately so. The pane is a shopping list -- `DRAFT_TARGETS`,
+    fractional, saying what a seat should still buy. Folded, a card is not being
+    shopped for; it is being read off, and the question is what a seat *has*. So
+    the run here is `owned_starters()`: the whole slots the lineup seats a
+    position no matter what, 2 QB / 2 RB / 3 WR / 1 TE. Everything past it is
+    depth, and depth is exactly what the second line draws.
+
+    It ships in every card and CSS shows it only when folded, the same bargain
+    the three panes make.
     """
+    owned = state.config.owned_starters()
     cells = "".join(
-        f'<span class="fpos">'
-        f'<i class="ms">{_esc(line.pos)}</i>'
-        f"{_pips(line.have, line.want, POS_COLOR_LIGHT.get(line.pos, POS_FALLBACK_LIGHT))}"
-        "</span>"
+        _fold_cell(line, owned.get(line.pos, 0))
         for line in position_summary(seat, state.config)
         if line.pos not in _NEED_SKIP
     )
