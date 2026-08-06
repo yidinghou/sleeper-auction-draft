@@ -18,6 +18,7 @@ from draftsim.sleeper import (
     config_from_draft,
     draft_pulse,
     parse_nomination,
+    seat_for_user,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -150,3 +151,30 @@ def test_picks_identify_seats_by_slot_not_user(mock_picks):
     # board keys on draft_slot.
     assert all(p["picked_by"] == "" for p in mock_picks)
     assert {p["draft_slot"] for p in mock_picks} == set(range(1, 13))
+
+
+# -- finding your own seat ---------------------------------------------------
+
+
+def test_a_seated_user_resolves_to_their_slot():
+    draft = {"draft_order": {"abc123": 7, "def456": 3}}
+    assert seat_for_user(draft, "abc123") == 7
+
+
+def test_the_recorded_mock_seats_its_creator(mock_draft):
+    # A mock does publish an order, for the one human in it — which is why
+    # --user resolves against a rehearsal and not only on draft night. The
+    # empty `picked_by` on its picks is a separate hole and stays one.
+    creator = mock_draft["creators"][0]
+    assert seat_for_user(mock_draft, creator) == mock_draft["draft_order"][creator]
+
+
+def test_a_draft_with_no_order_yields_no_seat(real_draft):
+    # The real draft had not been seated when it was captured. Unknown, not
+    # absent — the board goes unmarked rather than guessing a slot.
+    assert real_draft.get("draft_order") is None
+    assert seat_for_user(real_draft, "abc123") is None
+
+
+def test_a_user_not_in_the_order_yields_no_seat():
+    assert seat_for_user({"draft_order": {"abc123": 7}}, "nobody") is None

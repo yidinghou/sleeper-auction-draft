@@ -15,6 +15,11 @@ Note the two are different shapes of truth: ``/picks`` is settled history,
 Teams are keyed by ``draft_slot`` (1..teams), not by user. Mock drafts return
 an empty ``picked_by`` and a null ``draft_order`` until they start, so the slot
 number is the only identifier that works both before and during a real draft.
+
+``seat_for_user`` is the one bridge from a name back to a slot, for the single
+purpose of marking which seat is yours. It uses a third endpoint,
+``GET /user/{username}``, and it is allowed to fail: on a mock there is no
+``draft_order`` to look a user up in, and the board simply goes unmarked.
 """
 
 from __future__ import annotations
@@ -86,6 +91,32 @@ def fetch_picks(draft_id: str) -> List[Dict[str, Any]]:
     if not isinstance(picks, list):
         raise SleeperError(f"draft {draft_id} returned a non-list pick feed")
     return picks
+
+
+def fetch_user(username: str) -> Dict[str, Any]:
+    """A Sleeper account, by username or by user_id — both resolve here.
+
+    Only the `user_id` is wanted, and only to look the account up in a draft's
+    `draft_order`. Sleeper answers 200 with a null body for a name nobody has,
+    which is not an HTTP error and has to be caught here.
+    """
+    user = _get(f"/user/{username}")
+    if not isinstance(user, dict) or not user.get("user_id"):
+        raise SleeperError(f"no Sleeper account named {username!r}")
+    return user
+
+
+def seat_for_user(draft: Dict[str, Any], user_id: str) -> Optional[int]:
+    """Which draft slot an account is sitting in, if the draft says.
+
+    `draft_order` maps user_id -> draft_slot, and is null on a mock and on a
+    real draft that has not had its order set yet. None means "unknown", never
+    "not playing" — the caller leaves the board unmarked rather than guessing.
+    """
+    order = draft.get("draft_order")
+    if not isinstance(order, dict):
+        return None
+    return _int_or_none(order.get(user_id))
 
 
 def config_from_draft(draft: Dict[str, Any]) -> DraftConfig:
