@@ -1028,10 +1028,15 @@ def test_a_folded_card_shows_nothing_but_its_strip_whichever_pane_it_was_on():
 
 def test_the_fold_is_remembered_alongside_every_other_fold():
     page = render_page("123")
-    # One list, one key: the bands, the panes, the pressure cards and now the
-    # roster rows are the same gesture.
+    # One list, one key: the bands, the panes and the roster rows are the same
+    # gesture. (The pressure cards were too, until the run pressure filter took
+    # folding over from them -- they answer to `draftsim.runsel` now.)
     assert page.count('localStorage.setItem("draftsim.collapsed"') == 1
-    assert "applyCollapsed();\napplyPViews();\ntick();" in page
+    # Re-applied after every swap, and once before the first fetch so a folded
+    # row never flashes open. Not pinned to an exact run of lines: that only
+    # broke this test every time an unrelated apply pass joined the list.
+    assert page.count("applyCollapsed();") == 3
+    assert "\napplyCollapsed();\n" in page.rsplit("\ntick();", 1)[0]
 
 
 def test_the_board_is_divided_into_rows_by_a_bar_over_each(midway):

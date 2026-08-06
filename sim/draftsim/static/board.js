@@ -34,6 +34,11 @@ document.getElementById("close").addEventListener("click", () => setMaxed(false)
 
 const pressureEl = document.getElementById("pressure");
 
+// The four positions the board has an opinion about, in the order everything
+// keyed by position is laid out in: the pressure cards, the rail they fold into,
+// and both sets of filter buttons.
+const POSITIONS = ["QB", "RB", "WR", "TE"];
+
 // Which pane each position card is showing. The twin of `views` above: that one
 // is keyed by seat, this one by position, and both exist because the markup they
 // describe is thrown away and rebuilt every two seconds.
@@ -52,24 +57,78 @@ function applyPViews() {
   });
 }
 
-// One listener, two jobs, in the order that keeps them apart: the RUNS/TIER
-// buttons sit inside the header, so the pane switch has to claim the click
-// before the fold does -- otherwise switching a pane would fold the card you
-// were switching. Everywhere else on the header is the fold, single click.
-//
-// Single, not double, unlike the roster rows: nothing here is a drag handle, so
-// there is no gesture for a click to be mistaken for.
+// The RUNS / TIER toggle, and the only thing a click inside a pressure card
+// does. The header used to fold the card as well, which meant this listener had
+// to run two jobs in the one order that kept them apart -- the pane switch
+// claiming the click first, or switching a pane would fold the card you were
+// switching. The band's filter owns folding now, so the header is not a control
+// and the ordering problem is gone with it.
 pressureEl.addEventListener("click", (e) => {
   const btn = e.target.closest(".pseg button");
-  if (btn) {
-    pviews[btn.closest(".pcard").dataset.pos] = btn.dataset.pane;
-    localStorage.setItem("draftsim.pviews", JSON.stringify(pviews));
-    applyPViews();
-    return;
+  if (!btn) return;
+  pviews[btn.closest(".pcard").dataset.pos] = btn.dataset.pane;
+  localStorage.setItem("draftsim.pviews", JSON.stringify(pviews));
+  applyPViews();
+});
+
+// Which positions the run pressure band has open. The rest fold into the rail
+// down its right -- so this is one list rather than a filter and a fold state,
+// because "which positions am I working on" is one question and two controls
+// answering it can disagree.
+//
+// Multi-select: it is usually two or three, the run you are in and the one you
+// are about to be in. Selecting none is allowed and is the whole band put away;
+// ALL brings it back, so the state cannot be got stuck in.
+//
+// Unlike `filters` below, this does need re-applying after every swap: the cards
+// it describes are destroyed and rebuilt twice a second, and which container
+// each one belongs in is not something the server knows to render.
+let runsel = null;
+try { runsel = JSON.parse(localStorage.getItem("draftsim.runsel")); } catch (e) {}
+if (!Array.isArray(runsel)) runsel = POSITIONS.slice();
+
+function applyRuns() {
+  const grid = pressureEl.querySelector(".pgrid");
+  const rail = pressureEl.querySelector(".prail");
+  // Both arrive together in the same swap, so either missing means the first
+  // fetch has not landed and there is nothing to sort yet.
+  if (grid && rail) {
+    // Walked in `POSITIONS` order rather than in click order, so the rail always
+    // reads QB / RB / WR / TE down the page and a card you put away is found
+    // where you last left it rather than where you happened to close it.
+    POSITIONS.forEach((pos) => {
+      const card = pressureEl.querySelector('.pcard[data-pos="' + pos + '"]');
+      if (!card) return;
+      const open = runsel.includes(pos);
+      card.classList.toggle("collapsed", !open);
+      // A no-op when the card is already the last child of the right box, which
+      // is the common case -- four moves every two seconds either way, which is
+      // nothing next to the innerHTML swap that just rebuilt them.
+      (open ? grid : rail).appendChild(card);
+    });
   }
-  if (e.target.closest(".pseg")) return;
-  const head = e.target.closest(".phd");
-  if (head) toggleCollapsed("pos:" + head.closest(".pcard").dataset.pos);
+  document.querySelectorAll(".rseg button").forEach((b) => {
+    // ALL is pressed only when every position is -- it reports the set rather
+    // than being a member of it.
+    b.setAttribute("aria-pressed", String(b.dataset.pos
+      ? runsel.includes(b.dataset.pos)
+      : runsel.length === POSITIONS.length));
+  });
+}
+
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".rseg button");
+  if (!btn) return;
+  const pos = btn.dataset.pos;
+  if (!pos) {
+    runsel = POSITIONS.slice();
+  } else if (runsel.includes(pos)) {
+    runsel = runsel.filter((p) => p !== pos);
+  } else {
+    runsel.push(pos);
+  }
+  localStorage.setItem("draftsim.runsel", JSON.stringify(runsel));
+  applyRuns();
 });
 
 // Which position the pool and the log are narrowed to. Empty is everyone.
@@ -78,7 +137,6 @@ pressureEl.addEventListener("click", (e) => {
 // buttons live in the shell and the chosen position is written on the list
 // wrapper, both of which outlive the swap. The hiding itself is a CSS rule
 // keyed on that attribute, so a filtered pane costs nothing per tick.
-const POSITIONS = ["QB", "RB", "WR", "TE"];
 let filters = {};
 try { filters = JSON.parse(localStorage.getItem("draftsim.filters")) || {}; } catch (e) {}
 
@@ -283,12 +341,12 @@ function rowHeight(grid, rows, shutRows) {
     ` calc((100% - ${chrome} - ${s}px) / 2))`;
 }
 
+// Bands and rows. The pressure cards used to fold from here too, under `pos:`
+// keys; they answer to `runsel` now, and any of those keys still sitting in a
+// browser's storage from before simply match nothing.
 function applyCollapsed() {
   document.querySelectorAll("[data-band]").forEach((el) => {
     el.classList.toggle("collapsed", collapsed.includes("band:" + el.dataset.band));
-  });
-  document.querySelectorAll(".pcard").forEach((el) => {
-    el.classList.toggle("collapsed", collapsed.includes("pos:" + el.dataset.pos));
   });
   applyRows();
 }
@@ -317,9 +375,11 @@ function toggleCollapsed(id) {
 // Delegated from the document because every one of these headers is rebuilt
 // every two seconds, and one listener beats nine.
 document.addEventListener("dblclick", (e) => {
-  // The pool and log filters sit inside a band header, so two quick taps on ALL
-  // would otherwise fold the pane you were filtering.
-  if (e.target.closest(".fseg")) return;
+  // All three filters sit inside a band header, so two quick taps on ALL would
+  // otherwise fold the very band you were filtering -- and on the run pressure
+  // filter, where toggling positions off one at a time is the ordinary gesture,
+  // two taps in a row is not even an accident.
+  if (e.target.closest(".fseg") || e.target.closest(".rseg")) return;
   const head = e.target.closest(".bandhd");
   if (head) {
     const band = head.closest("[data-band]");
@@ -339,9 +399,13 @@ document.addEventListener("dblclick", (e) => {
 // two clicks eats the gesture, and the fold silently does nothing about one time
 // in ten. The board holds the swap for a moment after a press on a foldable
 // header, the same way it holds it while a card is being dragged.
+//
+// `.phd` was on this list while a pressure card folded on a click of its header.
+// It comes off with the gesture: the card headers are not controls any more, and
+// the filter that replaced them lives in the shell, which no swap touches.
 let heldAt = 0;
 document.addEventListener("mousedown", (e) => {
-  if (e.target.closest(".rowhd") || e.target.closest(".phd")) {
+  if (e.target.closest(".rowhd")) {
     heldAt = Date.now();
   }
 });
@@ -496,6 +560,10 @@ async function tick() {
       highlight();
       applyViews();
       applyPViews();
+      // Unlike the pool's filter, this one cannot ride out the swap on an
+      // attribute: the swap rebuilt all four cards into `.pgrid`, so the folded
+      // ones have to be walked back to the rail.
+      applyRuns();
       // Not to re-apply the filter -- the wrapper kept its attribute through
       // the swap -- but to re-ask whether it still matches anything. A tight
       // end going off the board is exactly what turns that answer over.
@@ -516,5 +584,9 @@ async function tick() {
 applyCollapsed();
 applyPViews();
 applyFilters();
+// No cards to sort yet, but the filter buttons are in the shell and can be shown
+// pressed before the first fetch lands -- so the band never opens on ALL and then
+// visibly folds three cards a moment later.
+applyRuns();
 tick();
 setInterval(tick, 2000);

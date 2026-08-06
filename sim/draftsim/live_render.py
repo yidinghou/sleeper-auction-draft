@@ -546,9 +546,11 @@ def _pressure_card(state: LeagueState, pr: PositionPressure) -> str:
     return (
         f'<section class="pcard sev-{pr.severity}{done}"'
         f' style="--pos:{color}" data-pos="{pr.pos}">'
-        # The header is the fold control, so it is the header that says so --
-        # a title on the whole card promised the gesture worked anywhere on it.
-        f'<div class="phd" title="click to fold">{badge(pr.pos, light=True)}'
+        # No longer a control: which cards are open is the band's filter to say,
+        # and a header that folded on click as well would be a second answer to
+        # a question that now has one. So no tooltip and no cursor -- it is a
+        # line of type again, and the only buttons on it are the pane's own.
+        f'<div class="phd">{badge(pr.pos, light=True)}'
         f'<span class="pcount"><b>{pr.drafted}</b>/{total}</span>'
         f'<span class="pverd">{pr.left} left</span>'
         '<span class="seg pseg">'
@@ -579,10 +581,17 @@ def _tier_row(player: Player, rank: int, below: bool = False) -> str:
 
     `$PROJ` is `market_value`, the same figure the nomination strip quotes, so
     what you read here is what you see when they hit the block.
+
+    The hover carries the full name, the team and the points, because a card
+    narrow enough to split but not to hold all five columns drops the last two
+    (see `board.css`, the tight split) -- and because the name in the row is the
+    short form whatever the width. So the tooltip is where the row is complete,
+    at every size rather than only the ones that need it.
     """
     proj = market_value(player)
     return (
-        f'<div class="trow{" below" if below else ""}">'
+        f'<div class="trow{" below" if below else ""}"'
+        f' title="{_esc(_meta_tip(player))}">'
         f'<i class="tr">{rank}</i>'
         f'<b>{_esc(_short_name(player))}</b>'
         f'<i class="ttm">{_esc(player.team or "FA")}</i>'
@@ -637,9 +646,27 @@ def render_pressure(state: LeagueState) -> str:
     showing its pressure view or its tier, and can be folded, without any of that
     costing you sight of the other three. Comparing positions is the whole point
     of putting them side by side, so nothing here is allowed to cover them.
+
+    Two containers. The rail comes first and every card is rendered into the
+    second: the rail is pinned down the left edge of the band, and the open cards
+    take whatever is right of it. Pinned rather than trailing because it is the
+    one part of the band that does not move -- four positions are always in it or
+    beside it, so the eye should find them in the same place whichever ones you
+    have open, and a rail that slides left every time you open another card is a
+    landmark that moves.
+
+    It ships empty because which cards are folded is the client's business -- the
+    band's filter, kept in the browser like the seat order and the per-card pane,
+    and never told to the server. The client moves the cards it has put away into
+    the rail after each swap.
+
+    The rail cannot be had from one container: a flex row will not stack a subset
+    of its children into a column at one edge, and a grid cannot hand the open
+    cards a row of their own to divide. So the shape is two boxes, and the only
+    thing the server owes them is that both exist, in that order.
     """
     cards = "".join(_pressure_card(state, pr) for pr in pressure(state))
-    return f'<div class="pgrid">{cards}</div>'
+    return f'<div class="prail"></div><div class="pgrid">{cards}</div>'
 
 
 # Deep enough to scroll to anyone worth a dollar. The sheet runs to thousands of

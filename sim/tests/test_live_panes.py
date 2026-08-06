@@ -207,8 +207,14 @@ def test_collapse_is_remembered_and_reapplied_after_every_swap():
     assert "draftsim.collapsed" in page
     assert "applyCollapsed();" in page
     # Applied before the first fetch too, so a folded band never flashes open
-    # and a card never shows the wrong pane for a beat.
-    assert "applyCollapsed();\napplyPViews();\ntick();" in page
+    # and a card never shows the wrong pane for a beat. Asserted as "before the
+    # first tick" rather than as an exact run of three lines: pinning the
+    # sequence meant every new apply pass added between them broke a test about
+    # something else, which is how this one came to be checking a line that had
+    # not existed for two commits.
+    startup = page.rsplit("\ntick();", 1)[0]
+    for call in ("applyCollapsed();", "applyPViews();", "applyFilters();"):
+        assert f"\n{call}\n" in startup
 
 
 def test_the_panes_are_swapped_with_everything_else():

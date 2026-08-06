@@ -24,8 +24,20 @@
     </section>
 
     <section class="band band-runs" data-band="runs">
+      <!-- The filter is the only thing that opens and closes these cards, which
+           is why it is a filter and not four fold gestures: which positions you
+           are working on is one decision, and it should be readable in one
+           place. Multi-select, because it usually is two or three of them --
+           the run you are in and the one you are about to be in. What you leave
+           out folds into the rail down the right of the band. -->
       <div class="bandhd"><h2>Run pressure</h2>
-        <span class="note">RUNS / TIER per card · click a card header to fold</span></div>
+        <span class="note">RUNS / TIER per card</span>
+        <span class="seg rseg">
+          <button data-pos="" type="button">ALL</button>
+          <button data-pos="QB" type="button">QB</button>
+          <button data-pos="RB" type="button">RB</button>
+          <button data-pos="WR" type="button">WR</button>
+          <button data-pos="TE" type="button">TE</button></span></div>
       <div class="bandbody"><div id="pressure"></div></div>
     </section>
 
