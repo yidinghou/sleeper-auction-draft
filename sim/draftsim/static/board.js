@@ -170,6 +170,18 @@ const GRID_COLS = 4;
 // Rows are positional, and deliberately so: the board can be dragged into any
 // order, and what you folded is the row you were looking at, not whichever seats
 // happened to be in it.
+// The seats in a row, as short as they can be said. Untouched, an unmoved board
+// spells out "S1 · S2 · S3 · S4" over every row -- four tokens saying one thing,
+// next to a heading that already said which row this is. Consecutive seats
+// collapse to "S1–S4"; once cards have been dragged the run breaks and the list
+// comes back, which is exactly when it is worth reading.
+function seatRange(names) {
+  const nums = names.map((n) => +n.slice(1));
+  const run = nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
+  if (run && names.length > 2) return names[0] + "–" + names[names.length - 1];
+  return names.join(" · ");
+}
+
 function applyRows() {
   const grid = document.querySelector("#rosters .grid");
   if (!grid) return;
@@ -187,15 +199,21 @@ function applyRows() {
     const shut = collapsed.includes("row:" + r);
     if (shut) shutRows++;
     const mine = cards.slice(r * GRID_COLS, (r + 1) * GRID_COLS);
-    mine.forEach((c) => c.classList.toggle("collapsed", shut));
+    mine.forEach((c) => {
+      c.classList.toggle("collapsed", shut);
+      // Which row a card is in after a drag is the client's answer to give, and
+      // the tint that bands it to its bar is cut from that number.
+      c.dataset.row = r;
+    });
     const head = heads[r];
     if (head) {
       head.style.order = r * (GRID_COLS + 1);
       head.classList.toggle("shut", shut);
+      head.dataset.row = r;
       // Which seats are in this row is the client's answer to give: a dragged
       // card changes it, and the server never hears about the drag.
       head.querySelector(".note").textContent =
-        mine.map((c) => "S" + c.dataset.seat).join(" · ");
+        seatRange(mine.map((c) => "S" + c.dataset.seat));
     }
     tmpl.push("var(--rowbar)", shut ? "auto" : "minmax(0, var(--rowfull))");
   }

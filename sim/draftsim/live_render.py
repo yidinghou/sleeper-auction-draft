@@ -25,7 +25,7 @@ from __future__ import annotations
 import html
 import math
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Sequence, Tuple
 
 from .config import BENCH
 from .live_pressure import PositionPressure, pressure
@@ -261,7 +261,28 @@ def _card_header(state: LeagueState, seat: Seat) -> str:
     )
 
 
-def _roster_card(state: LeagueState, seat: Seat) -> str:
+def _proj_total(layout: Sequence[Tuple[str, Optional[Player]]]) -> str:
+    """What the seat's starters are projected to score, as the card's footer.
+
+    The one number that says whether the money bought anything. It sits below
+    the panes rather than in the header because the header is money and nothing
+    else -- and below the panes it is also the same number whichever pane is
+    showing, which is what a card-level total should be.
+
+    Starters only, off the same optimal lineup the LINEUP pane is drawn from, so
+    the total cannot disagree with the rows above it.
+    """
+    total = sum(
+        player.points for slot, player in layout if slot != BENCH and player
+    )
+    figure = f"{total:,.0f}" if total else "—"
+    return (
+        '<div class="proj" title="starters&#x27; projected points">'
+        f'<span class="pl">PROJ</span><b>{figure}</b></div>'
+    )
+
+
+def _roster_card(state: LeagueState, seat: Seat, row: int) -> str:
     """One seat, as three panes over the same roster.
 
     LINEUP is every starting slot, one player per line, in the slot they would
@@ -269,6 +290,11 @@ def _roster_card(state: LeagueState, seat: Seat) -> str:
     ship in the markup and CSS shows one, so switching panes costs no fetch and
     cannot show a different moment of the draft than the pane it replaced -- the
     same bargain the short/full name swap makes.
+
+    `data-row` is which row of the board the card starts in. It bands the card to
+    the bar above it from the first paint; the client rewrites it after a drag,
+    because after a drag the row a card is in is a question only the client can
+    answer.
     """
     price_of = {pick.player.id: pick.price for pick in seat.picks}
     layout = display_slots(seat.roster, state.config)
@@ -293,13 +319,15 @@ def _roster_card(state: LeagueState, seat: Seat) -> str:
     broke = " broke" if seat.max_bid <= _OUT_OF_MARKET else ""
     return (
         f'<section class="card{broke}" data-seat="{seat.slot}"'
-        ' draggable="true">'
+        f' data-row="{row}" draggable="true">'
         f"{_card_header(state, seat)}"
         '<div class="body">'
         f'<div class="pane lineup" data-pane="lineup">{lineup}</div>'
         f'<div class="pane" data-pane="bench">{bench}</div>'
         f"{_need_pane(state, seat)}"
-        "</div></section>"
+        "</div>"
+        f"{_proj_total(layout)}"
+        "</section>"
     )
 
 
@@ -346,9 +374,10 @@ def render_rosters(state: LeagueState) -> str:
     slots = sorted(state.seats)
     parts = []
     for index, slot in enumerate(slots):
+        row = index // _GRID_COLS
         if index % _GRID_COLS == 0:
-            parts.append(_row_header(index // _GRID_COLS))
-        parts.append(_roster_card(state, state.seats[slot]))
+            parts.append(_row_header(row))
+        parts.append(_roster_card(state, state.seats[slot], row))
     return f'<div class="grid">{"".join(parts)}</div>'
 
 

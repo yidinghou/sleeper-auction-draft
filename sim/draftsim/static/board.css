@@ -144,6 +144,12 @@
   .card { background: #fff; border: 1px solid #ddd; border-radius: 6px;
     padding: 4px 7px 6px; min-width: 0; overflow: hidden;
     display: flex; flex-direction: column; }
+  /* Banded to the bar above it: the row's tint as a cap along the top edge and
+     as the card's border. Ahead of the state rules below on purpose -- being
+     dragged, being your seat, or being folded all have to beat the band, and at
+     equal specificity that is decided by which rule comes last. */
+  .card[data-row] { border-color: var(--bandline);
+    box-shadow: inset 0 3px 0 var(--bandline); }
   /* Drag to reorder. The card being carried fades so the gap it will leave is
      visible, and the card under the cursor shows a leading edge on the side the
      drop will insert at -- "this is where it lands", not merely "this is hovered". */
@@ -179,6 +185,18 @@
   .card.broke .big { color: #c0392b; }
   .card.broke .budget i:not(.held) { background: #c0392b; }
 
+  /* The card's footer: what its starters are projected to score. Below the
+     panes rather than in the header, because the header is money and nothing
+     else -- and down here it is the same number whichever pane is showing.
+     Deliberately not money green: the header owns that colour, and a second
+     green figure on the card would be read as dollars. */
+  .proj { flex: none; display: flex; align-items: baseline; gap: 4px;
+    margin-top: 3px; padding-top: 3px; border-top: 1px solid #eee; }
+  .proj .pl { font-size: calc(8px * var(--fs)); color: #888; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.04em; }
+  .proj b { margin-left: auto; font-size: calc(11px * var(--fs)); color: #1a1a1a;
+    font-weight: 700; font-variant-numeric: tabular-nums; }
+
   /* Folded, a row of four cards is a strip of money and pips: the four seats
      still in their four columns, each saying what it can spend and which
      positions it has filled. That is what you want from seats you are not
@@ -193,6 +211,7 @@
   .card.collapsed header { margin-bottom: 0; border-bottom: none;
     padding-bottom: 0; }
   .card.collapsed .seg { display: none; }
+  .card.collapsed .proj { display: none; }
   .card .foldsum { display: none; }
   .card.collapsed .foldsum { display: flex; gap: 5px; padding-top: 3px;
     align-items: center; flex-wrap: wrap; }
@@ -219,21 +238,48 @@
      speak of. And `--rowbar` tall rather than as tall as its line, because the
      height of an open row is the pane less the bars and the gaps, and that
      subtraction has to be arithmetic CSS can do. */
+     A bar and its four cards share a tint, and neighbouring rows take different
+     ones, so a row reads as a group of four rather than as four cards that
+     happen to sit under a divider. Greys only -- the position colours on the
+     lines are the board's palette, and a row band tinted anything else would
+     compete with them. The bar squares its bottom corners and the cards under it
+     wear a cap of the same tint, which is what makes the bar read as the top
+     edge of the group rather than as a rule between two of them. */
+     A colour per row, not two alternating: three rows are few enough to each be
+     their own, and a row you can name by its colour is a row you can find again
+     after looking away. Pale and low-chroma on purpose -- these tint a strip and
+     a card's top edge, and the four position hues on the lines are the palette
+     that is meant to be read. The hues sit in the gaps that palette leaves
+     (violet, slate blue, green against pink / teal / blue / orange), so a band is
+     never mistaken for a position. Past three, rows fall back to grey. */
+  .rowhd[data-row], .card[data-row] { --band: #e4e8ec; --bandline: #c9d0d7; }
+  .rowhd[data-row="0"], .card[data-row="0"] { --band: #e7e3f2; --bandline: #cdc5e4; }
+  .rowhd[data-row="1"], .card[data-row="1"] { --band: #dde6f0; --bandline: #bdcbdb; }
+  .rowhd[data-row="2"], .card[data-row="2"] { --band: #dfeee1; --bandline: #bfd9c3; }
   .rowhd { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px;
-    height: var(--rowbar); padding: 0 6px; background: #f4f4f4;
-    border-radius: 3px; cursor: pointer; user-select: none; }
-  .rowhd:hover { background: #ededed; }
-  .rowhd h2 { font-size: calc(8.5px * var(--fs)); margin: 0; color: #666;
+    height: var(--rowbar); padding: 0 6px; background: var(--band, #f4f4f4);
+    border-radius: 3px 3px 0 0; cursor: pointer; user-select: none; }
+  .rowhd:hover { background: color-mix(in srgb, var(--band, #f4f4f4) 88%, #000); }
+  /* Padding as well as margin, because the base stylesheet gives every h2 a
+     6px top padding for the page's own headings -- inside a 16px bar that is a
+     20px box, so the title overflowed the strip and sat low against its note.
+     Both texts are set to their own line height so centring them centres the
+     type rather than two boxes of different heights. */
+  .rowhd h2 { font-size: calc(8.5px * var(--fs)); margin: 0; padding: 0;
+    line-height: 1; color: #666;
     text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
   .rowhd:hover h2 { color: #1a1a1a; }
-  .rowhd .note { font-size: calc(8px * var(--fs)); color: #bbb;
+  .rowhd .note { font-size: calc(8px * var(--fs)); color: #888; line-height: 1;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     font-variant-numeric: tabular-nums; }
   .rowhd::after { content: "\25BE"; margin-left: auto; flex: none;
-    font-size: calc(7px * var(--fs)); color: #bbb; line-height: 1.6; }
+    font-size: calc(7px * var(--fs)); color: #888; line-height: 1; }
   .rowhd:hover::after { color: #888; }
   .rowhd.shut::after { transform: rotate(-90deg); }
-  .rowhd.shut { background: #ededed; }
+  /* Shut, the bar is the whole row, so it stops being a top edge and closes
+     itself back up. */
+  .rowhd.shut { background: color-mix(in srgb, var(--band, #f4f4f4) 92%, #000);
+    border-radius: 3px; }
 
   /* Three panes over one roster, as tabs across the card. On the dark board
      these hid until hover because twelve cards' worth of lit chrome drowned the
@@ -649,6 +695,8 @@
   body.maxed .big { font-size: calc(15px * var(--fs)); }
   body.maxed .max { font-size: calc(10px * var(--fs)); }
   body.maxed .seg button { font-size: calc(8.5px * var(--fs)); }
+  body.maxed .proj .pl { font-size: calc(9px * var(--fs)); }
+  body.maxed .proj b { font-size: calc(13px * var(--fs)); }
   /* Barely larger type than compact, because at four across on a laptop there
      is no room for more. What maximizing actually buys is the full names and
      the bye/points columns below, not size -- and all twelve seats still have

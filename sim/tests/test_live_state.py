@@ -373,6 +373,40 @@ def test_the_header_carries_no_points_or_slot_counts(midway):
         assert "open" not in header
 
 
+def test_a_card_totals_what_its_starters_project(midway):
+    # The one number that says whether the money bought anything. Starters only,
+    # off the same optimal lineup the LINEUP pane draws, so the footer cannot
+    # disagree with the rows above it.
+    for seat in midway.seats.values():
+        card = _card(midway, seat.slot)
+        assert 'class="proj"' in card
+        total = sum(p.points for p in starters(seat.roster, midway.config) if p)
+        figure = card.split('class="proj"')[1].split("<b>")[1].split("</b>")[0]
+        assert figure == f"{total:,.0f}"
+
+
+def test_an_empty_seat_projects_nothing_rather_than_zero(mock_config, pool):
+    # A seat that has bought nothing has no projection; a bold 0 reads as a
+    # measurement rather than as absence.
+    state = reconstruct([], mock_config, pool)
+    card = render_rosters(state).split('data-seat="1"')[1].split("</section>")[0]
+    assert "<b>—</b>" in card.split('class="proj"')[1]
+
+
+def test_the_points_total_sits_below_the_panes_not_in_the_header(midway):
+    # The header is money and nothing else, and below the panes the total is the
+    # same number whichever pane happens to be showing.
+    card = _card(midway, next(iter(midway.seats)))
+    assert 'class="proj"' not in card.split("</header>")[0]
+    assert card.index("</div>") < card.index('class="proj"')
+
+
+def test_a_folded_card_drops_its_points_total(midway):
+    # Folded, a card is a strip of money and pips -- the fold summary owns that
+    # height.
+    assert ".card.collapsed .proj { display: none; }" in render_page("123")
+
+
 def test_the_budget_bar_splits_spendable_from_reserved(midway):
     # A dollar per unfilled slot is in the account but already owed; a seat with
     # $80 and eight holes is not the threat its balance says it is.
@@ -939,6 +973,51 @@ def test_folding_a_row_does_not_resize_the_type_in_the_others():
     assert ".card.collapsed { background: #fafafa; }" in page
 
 
+def test_a_row_and_its_four_cards_share_a_band(midway):
+    # A bar over four cards that look like every other card on the board reads as
+    # a divider, not as a group. The band is on the cards from the first paint --
+    # before any client code has said a word about order.
+    html = render_rosters(midway)
+    cards = [c.split('"')[0] for c in html.split('data-row="')[1:]]
+    # Bar, then its four cards, per row.
+    assert cards[:6] == ["0", "0", "0", "0", "0", "1"]
+    page = render_page("123")
+    # A colour per row, not two alternating -- three rows are few enough to each
+    # be their own, and the hues stay clear of the four position colours.
+    for row in ("0", "1", "2"):
+        assert f'.rowhd[data-row="{row}"], .card[data-row="{row}"] {{ --band:' in page
+    assert "box-shadow: inset 0 3px 0 var(--bandline);" in page
+    assert "background: var(--band, #f4f4f4);" in page
+
+
+def test_the_bar_title_fits_inside_the_bar():
+    # The base stylesheet gives every h2 a top padding for the page's own
+    # headings; unreset, that made a 20px box inside a 16px strip and the title
+    # sat low against its note.
+    page = render_page("123")
+    bar = page.split(".rowhd h2 {")[1].split("}")[0]
+    assert "padding: 0" in bar
+    assert "line-height: 1" in bar
+
+
+def test_a_dragged_card_rebands_to_the_row_it_landed_in():
+    # The server never hears about the drag, so which row a card is in -- and the
+    # tint that bands it to its bar -- is the client's answer to give.
+    page = render_page("123")
+    assert "c.dataset.row = r;" in page
+    assert "head.dataset.row = r;" in page
+
+
+def test_the_bar_names_a_run_of_seats_as_a_range():
+    # Unmoved, every bar spelled out four tokens saying one thing, next to a
+    # heading that already said which row this is. The list comes back once a
+    # drag has broken the run -- which is when it is worth reading.
+    page = render_page("123")
+    assert "function seatRange(names)" in page
+    assert 'names[0] + "–" + names[names.length - 1]' in page
+    assert 'seatRange(mine.map((c) => "S" + c.dataset.seat))' in page
+
+
 # -- compact names -----------------------------------------------------------
 
 
@@ -1005,5 +1084,9 @@ def test_the_overlay_has_its_own_way_out():
 def test_the_page_hides_column_labels_until_maximized():
     page = render_page("123")
     assert "body.maxed .colhead" in page
+    # Per-player bye and points stay a maximized column. The card's own total is
+    # the number compact has room for.
+    assert ".mb, .mp { display: none; color: #666; }" in page
+    assert "body.maxed .mb, body.maxed .mp { display: block; }" in page
     # Tabular figures are what make the numbers read as columns.
     assert "tabular-nums" in page
