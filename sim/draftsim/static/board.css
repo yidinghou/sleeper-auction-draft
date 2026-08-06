@@ -809,6 +809,16 @@
      rather than off the bottom of the overlay: silently hiding a player is the
      one failure this must not have. */
   body.maxed #rosters { overflow: hidden; }
+  /* Nothing folds here -- the overlay is the whole viewport and twelve open
+     cards fit it, so folding would put away something there was room for. The
+     bar keeps its title and its seat list, which are worth reading; it drops the
+     caret and the pointer, which advertise a gesture that no longer does
+     anything. `applyRows` is the half that makes it true. */
+  body.maxed .rowhd { cursor: default; }
+  body.maxed .rowhd::after { display: none; }
+  body.maxed .rowhd:hover { background: var(--band, #f4f4f4); }
+  body.maxed .rowhd:hover h2 { color: #666; }
+  body.maxed .foldhint { display: none; }
   /* Keep the close button's corner clear of the hint text. */
   body.maxed .menubar { padding-right: 30px; }
   body.maxed .card { padding: 6px 8px; }

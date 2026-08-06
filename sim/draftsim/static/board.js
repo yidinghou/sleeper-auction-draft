@@ -15,9 +15,17 @@ seatSel.addEventListener("change", () => {
 });
 
 const maxBtn = document.getElementById("max");
+// Maximized, nothing folds: the overlay is the whole viewport and all twelve
+// cards fit it open, so a folded row would be putting away something there was
+// room for. Folding exists to buy height on the compact board, and there is
+// none to buy here.
+//
+// The folds are ignored rather than cleared -- `applyRows` reads this class and
+// treats every row as open -- so minimizing comes back to the board you left.
 function setMaxed(on) {
   document.body.classList.toggle("maxed", on);
   maxBtn.textContent = on ? "Minimize" : "Maximize";
+  applyRows();
 }
 maxBtn.addEventListener("click", () => {
   setMaxed(!document.body.classList.contains("maxed"));
@@ -195,8 +203,10 @@ function applyRows() {
   // interleaving `slotOrder` lays the items out in.
   const tmpl = [];
   let shutRows = 0;
+  // Maximized, every row is open whatever the stored folds say: see `setMaxed`.
+  const foldable = !document.body.classList.contains("maxed");
   for (let r = 0; r < rows; r++) {
-    const shut = collapsed.includes("row:" + r);
+    const shut = foldable && collapsed.includes("row:" + r);
     if (shut) shutRows++;
     const mine = cards.slice(r * GRID_COLS, (r + 1) * GRID_COLS);
     mine.forEach((c) => {
@@ -317,7 +327,11 @@ document.addEventListener("dblclick", (e) => {
     return;
   }
   const rowHead = e.target.closest(".rowhd");
-  if (rowHead) toggleCollapsed("row:" + rowHead.dataset.row);
+  // Maximized the rows do not fold, so the gesture does nothing rather than
+  // quietly recording a fold you would only see on minimizing.
+  if (rowHead && !document.body.classList.contains("maxed")) {
+    toggleCollapsed("row:" + rowHead.dataset.row);
+  }
 });
 
 // A double-click is two clicks on the *same element*, and the fragments holding

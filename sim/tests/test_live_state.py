@@ -940,6 +940,26 @@ def test_folding_is_by_row_because_a_lone_card_frees_nothing():
     assert "grid.style.gridTemplateRows" in page
 
 
+def test_nothing_folds_in_the_overlay_and_the_folds_survive_it():
+    # Maximized, the board is the whole viewport and twelve open cards fit it,
+    # so a folded row would be putting away something there was room for.
+    # Folding buys height on the compact board and there is none to buy here.
+    page = render_page("123")
+    # `applyRows` ignores the stored folds rather than clearing them, so
+    # minimizing comes back to the board you left.
+    assert 'const foldable = !document.body.classList.contains("maxed");' in page
+    assert 'const shut = foldable && collapsed.includes("row:" + r);' in page
+    # And it reruns on the toggle, or the overlay would open onto folded rows.
+    assert "applyRows();" in page.split("function setMaxed(")[1].split("}")[0]
+    # The gesture stops too: a fold recorded here is one you would only see on
+    # minimizing, which is a board changing while you were not looking at it.
+    assert 'if (rowHead && !document.body.classList.contains("maxed")) {' in page
+    # No caret, no pointer, and the hint stops advertising it.
+    assert "body.maxed .rowhd::after { display: none; }" in page
+    assert "body.maxed .foldhint { display: none; }" in page
+    assert 'class="foldhint"' in page
+
+
 def test_an_open_row_takes_what_the_folded_ones_gave_up():
     # The point of folding a row is the room it hands the rows you kept -- an
     # open row shares out what the folded ones freed, rather than the `1fr`
