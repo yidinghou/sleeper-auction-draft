@@ -40,12 +40,18 @@ now, and where all twelve rosters stand.
 python -m draftsim.live --draft-id 1387809050569240576            # a mock
 python -m draftsim.live --draft-id 1387809050569240576 --replay 60  # rehearse mid-draft
 python -m draftsim.live --draft-id 1387810431371853824            # the real thing
+python -m draftsim.live --draft-id <id> --user yidinghou         # mark your seat
 ```
 
-Then open <http://127.0.0.1:8765> and pick your seat from the dropdown.
+Then open <http://127.0.0.1:8765>.
 
-The screen splits in two: **left** is the draft's live state — what's on the
-block, the current high bid, your seat picker — and **right** is all 12 rosters
+`--user` takes your Sleeper username and finds your slot in the draft's own
+`draft_order`, so your card is marked and the money band's dashed line is your
+own ceiling. It is not required: a draft that has not been seated yet publishes
+no order, and the board runs unmarked and says so.
+
+The screen splits in two: **left** is the draft's live state — what the room has
+spent, every seat's buying power, what's on the block — and **right** is all 12 rosters
 in **one viewport height**, nothing to scroll mid-auction. Splitting it this way
 gives the grid the full height instead of sharing it with the chrome. Space
 under the left header is free. **Maximize** (or `Esc` to close) expands the
@@ -132,12 +138,18 @@ Notes:
   hard error — silently dropping one would understate every roster and so
   inflate every max bid.
 - **Seats are keyed by `draft_slot`**, not by user. Mock drafts return an empty
-  `picked_by`, and `draft_order` is `null` until a draft starts, so the slot
-  number is the only identifier that works in both.
+  `picked_by`, so the slot number is the only identifier the pick feed carries.
+  `draft_order` is the one exception and the only thing `--user` uses: a mock
+  does publish it for the human in it, but a draft that has not been seated has
+  it as `null`, so resolving a username to a seat is always allowed to fail.
 - **Polling is cheap.** Only the small `/draft` endpoint is hit each tick
   (default 3s, ~20 requests/min); the much larger pick feed is refetched only
   when `draft_pulse` changes. A failed poll leaves the last good board up with a
   visible warning rather than blanking.
+- **The money band is `max_bid`, not balance.** A seat holding eight open slots
+  owes a dollar of its balance to each, so balance overstates it — and the
+  auction is decided on what can go on one player. Ranked, top three annotated;
+  the point of the chart is the nine you don't have to read.
 - **`--replay N` rewinds a finished mock** to N picks. A completed draft shows
   every seat broke and every need met, which is the one state the board is
   useless in.
