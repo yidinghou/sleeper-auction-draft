@@ -519,7 +519,13 @@ def _pressure_card(state: LeagueState, pr: PositionPressure) -> str:
         # Outside the header, so it folds away with the rest: three pixels
         # squeezed onto a rail is a smear, not a reading.
         f"{_health_bar(pr, total)}"
-        f"{runs}{_pressure_detail(pr)}</section>"
+        # The two panes in a box of their own, which does nothing at all on a
+        # narrow card -- it is a column of the same two children the card would
+        # have laid out itself. It earns its keep at width, where the panes go
+        # side by side and the header and the health bar must still run the full
+        # width above them. Without it the card cannot be split, because a flex
+        # row would take the header into the row with them.
+        f'<div class="pbody">{runs}{_pressure_detail(pr)}</div></section>'
     )
 
 

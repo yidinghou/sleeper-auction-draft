@@ -517,3 +517,106 @@ def test_a_band_header_folds_on_double_click():
     page = render_page("123")
     handler = page.split('e.target.closest(".bandhd")')[1].split("});")[0]
     assert 'toggleCollapsed("band:"' in handler
+
+
+# -- the wide card ------------------------------------------------------------
+
+
+def test_the_panes_ship_in_a_box_the_header_stays_out_of(midway):
+    # The split needs somewhere to put the row. Without a box around just the
+    # two panes, turning the card into a flex row would take the header and the
+    # health bar into the row with them.
+    html = render_pressure(midway)
+    for pos in TIERS:
+        card = _card(html, pos)
+        body = card.split('<div class="pbody">')[1]
+        assert 'class="ppane runs"' in body
+        assert f'data-det="{pos}"' in body
+        # The two things that must span the full width are above the box.
+        head = card.split('<div class="pbody">')[0]
+        assert 'class="phd"' in head
+        assert 'class="phealth"' in head
+
+
+def test_the_card_measures_itself_not_the_window():
+    # What makes a card wide is how many of its siblings you folded, and no
+    # media query can see that.
+    page = render_page("123")
+    assert (
+        ".pcard:not(.collapsed) { container-type: inline-size; "
+        "container-name: pcard; }" in page
+    )
+    assert "@container pcard (min-width: 520px)" in page
+
+
+def test_containment_never_touches_a_folded_card():
+    # `container-type: inline-size` forbids an element sizing to its contents,
+    # and a folded card is exactly that -- `flex: 0 0 auto`, a rail as wide as
+    # its badge. Contain it and the rail collapses to nothing.
+    page = render_page("123")
+    assert ".pcard { container-type" not in page
+    assert ".pcard.collapsed { flex: 0 0 auto;" in page
+
+
+def test_a_wide_card_shows_both_panes_and_drops_the_toggle():
+    # The toggle exists because 230px holds one pane at a time. Given room for
+    # both, it has nothing left to switch.
+    page = render_page("123")
+    wide = page.split("@container pcard (min-width: 520px)")[1].split("\n  }")[0]
+    assert ".pbody { flex-direction: row;" in wide
+    assert ".pcard .pseg { display: none; }" in wide
+    assert (
+        ".pcard:not(.collapsed) .pbody > .ppane.runs,\n"
+        "    .pcard:not(.collapsed) .pbody > .ppane.pdet { display: flex; }" in wide
+    )
+
+
+def test_the_pane_a_card_was_left_on_cannot_skew_the_split():
+    # The toggle's rules are four classes -- `.pcard.view-tier .ppane.pdet` sets
+    # `flex: 1` -- and so is `.pcard .pbody > .ppane.pdet`. A tie goes to source
+    # order, which worked right up until it didn't: a card left on TIER split
+    # 5:1 instead of 5:6 and wrapped every name in the tier list onto two lines.
+    # `:not(.collapsed)` is the fifth class that wins it outright.
+    page = render_page("123")
+    wide = page.split("@container pcard (min-width: 520px)")[1].split("\n  }")[0]
+    assert ".pcard:not(.collapsed) .pbody > .ppane.runs { flex: 5 1 0; }" in wide
+    assert ".pcard:not(.collapsed) .pbody > .ppane.pdet { flex: 6 1 0;" in wide
+    # Every rule the block uses to overrule the toggle carries the extra class.
+    for line in wide.splitlines():
+        if ".ppane.runs" in line and "> .ppane" in line:
+            assert ":not(.collapsed)" in line
+
+
+def test_a_wide_card_stops_printing_the_same_fact_twice(midway):
+    # ON THE BOARD is the tier list's first three rows with two columns missing,
+    # and `.pfoot` is `.tcliff` without the arrow. Stacked, one summarized a
+    # pane you could not see; side by side they are a duplicate.
+    page = render_page("123")
+    wide = page.split("@container pcard (min-width: 520px)")[1].split("\n  }")[0]
+    for dupe in (".ppane.runs .tiles ~ .plbl", ".ppane.runs .bd", ".ppane.runs .pfoot"):
+        assert dupe in wide
+    # Hidden, not dropped: the markup is the same at both widths, so shrinking a
+    # card back brings the board list with it and costs no fetch.
+    html = render_pressure(midway)
+    for pos in TIERS:
+        assert "on the board" in _card(html, pos)
+
+
+def test_a_wide_card_spends_its_room_on_a_readable_fill():
+    # The complaint the split was answering: twelve tiles at 185px apiece, each
+    # showing four pixels of roster fill. One breakpoint does this, not a second
+    # one further out -- three rails cost ~300px, so a card tops out around 750
+    # and a threshold much past the split's would simply never fire.
+    page = render_page("123")
+    wide = page.split("@container pcard (min-width: 520px)")[1].split("\n  }")[0]
+    # The row gets a real height and the pips take what the seat and its money
+    # leave, rather than being pinned to a hairline.
+    assert ".ppane.runs .tiles { gap: 3px; grid-auto-rows: calc(24px * var(--fs)); }" in wide
+    assert ".ppane.runs .pips { flex: 1 1 auto; align-items: stretch; }" in wide
+    assert ".ppane.runs .tile .pip { height: auto; }" in wide
+    assert ".phealth { height: 5px; }" in wide
+    # The check is sized by the same box as the pips it stands in for, so the
+    # 4x3 grid cannot reshuffle as seats fill up -- at either width.
+    assert ".ppane.runs .tfull { height: auto; flex: 1 1 auto; }" in wide
+    # And the narrow ration is untouched, exactly once.
+    assert page.count(".tile .pip { height: calc(4px * var(--fs));") == 1

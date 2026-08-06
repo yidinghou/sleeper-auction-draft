@@ -556,6 +556,85 @@
   .pdbody { overflow-y: auto; scrollbar-width: thin;
     scrollbar-color: #ccc transparent; min-height: 0; flex: 1; }
 
+  /* -- the wide card ------------------------------------------------------
+     One card, two shapes. Everything above is drawn for the ~230px a card gets
+     when all four are open; fold three and the survivor was handed 760px and
+     did nothing with it but stretch -- twelve tiles at 185px apiece holding an
+     8px label and a five-pixel hairline, and a tier list still hidden behind a
+     toggle that only ever existed because 230px could hold one pane at a time.
+     With room, the card splits into what it always was underneath: demand on
+     the left, supply on the right.
+
+     The query is on the card's own width, not the viewport's. What makes a card
+     wide here is how many of its siblings you folded, and no media query can
+     see that. */
+  /* `:not(.collapsed)` is load-bearing twice over. `container-type: inline-size`
+     implies inline-size containment, which forbids an element sizing to its own
+     contents -- and a folded card is exactly that, `flex: 0 0 auto`, a rail as
+     wide as its badge. Scoping containment to open cards keeps the rail a rail,
+     and buys the guarantee that no rule below can ever fire inside a folded
+     card, whatever width the rail happens to be. */
+  .pcard:not(.collapsed) { container-type: inline-size; container-name: pcard; }
+  /* Narrow, this is a no-op: a column of the same two panes the card would have
+     laid out itself. It exists so that going to a row at width takes the panes
+     and leaves the header and the health bar spanning above them. */
+  .pbody { display: flex; flex-direction: column; gap: 3px;
+    min-height: 0; min-width: 0; flex: 1 1 auto; }
+
+  /* Below this the tier row cannot hold a name: its four fixed columns want
+     ~72px of the pane and "M. Stafford" wants the rest. */
+  @container pcard (min-width: 520px) {
+    .pbody { flex-direction: row; align-items: stretch; gap: 8px; }
+    /* Both panes at once, which is what retires the toggle -- and both of them
+       sized by this block rather than by the toggle's rules.
+
+       `:not(.collapsed)` is doing specificity work here, not just repeating the
+       container's own condition. The pane rules this has to overrule --
+       `.pcard.view-tier .ppane.runs { display: none }` and
+       `.pcard.view-tier .ppane.pdet { flex: 1 }` -- are four classes, and
+       `.pcard .pbody > .ppane.pdet` is four classes too. A tie is settled by
+       source order, which would work today and quietly stop working the day
+       somebody appends a rule below. Five classes wins outright and says so.
+
+       Getting the second of those wrong is not a small bug: `flex: 1` is
+       `flex-grow: 1`, so a card left on TIER split 5:1 instead of 5:6 and wrapped
+       every name in the tier list onto two lines. */
+    .pcard:not(.collapsed) .pbody > .ppane.runs,
+    .pcard:not(.collapsed) .pbody > .ppane.pdet { display: flex; }
+    .pcard:not(.collapsed) .pbody > .ppane.runs { flex: 5 1 0; }
+    /* The larger share to the tier: its names ellipsize and the seat grid's do
+       not, so width is worth more on the right than on the left. */
+    .pcard:not(.collapsed) .pbody > .ppane.pdet { flex: 6 1 0; min-height: 0;
+      border-left: 1px solid #f0f0f0; padding-left: 8px; }
+    /* Nothing left to switch between. */
+    .pcard .pseg { display: none; }
+    /* ON THE BOARD is the tier list's first three rows with two columns
+       missing, and `.pfoot` is `.tcliff` without the arrow. Stacked they were a
+       summary of a pane you could not see; side by side they are the same fact
+       printed twice, six inches apart. */
+    .ppane.runs .tiles ~ .plbl,
+    .ppane.runs .bd,
+    .ppane.runs .pfoot { display: none; }
+
+    /* And the fill finally gets to be a bar. Narrow, a pip is four pixels
+       because four pixels is what a stacked card can spare; the split hands the
+       runs pane a whole column's height for three rows of tiles, so the row is
+       given a real height and the pips stretch into whatever is left after the
+       seat and its money. Same twelve tiles, same 4x3, just no longer drawn as
+       a hairline across a tile three times wider than it needs to be. */
+    .ppane.runs .tiles { gap: 3px; grid-auto-rows: calc(24px * var(--fs)); }
+    .ppane.runs .tile { padding: 2px 4px; gap: 2px; }
+    .ppane.runs .pips { flex: 1 1 auto; align-items: stretch; }
+    .ppane.runs .tile .pip { height: auto; }
+    /* Still exactly the pips' height, because it is sized by the same box --
+       so the grid cannot reshuffle as seats fill up, at either width. */
+    .ppane.runs .tfull { height: auto; flex: 1 1 auto; }
+    .ttop b, .ttop i { font-size: calc(9px * var(--fs)); }
+    /* Three pixels was a rail's ration. With the card at full width it can be
+       read as a bar rather than inferred from a smear. */
+    .phealth { height: 5px; }
+  }
+
   /* Rank, name, team, points, $PROJ -- the same five things in the same order
      as the maximized roster row, so the eye does not have to re-learn a table
      between the two halves of the screen.
