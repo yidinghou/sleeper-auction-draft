@@ -1,18 +1,10 @@
 
-const seatSel = document.getElementById("seat");
-// Seat options are built once, from the league size the server reports.
-function fillSeats(teams) {
-  if (seatSel.options.length > 1) return;
-  for (let i = 1; i <= teams; i++) {
-    const o = document.createElement("option");
-    o.value = i; o.textContent = "Seat " + i; seatSel.appendChild(o);
-  }
-  seatSel.value = localStorage.getItem("draftsim.seat") || "";
-}
-seatSel.addEventListener("change", () => {
-  localStorage.setItem("draftsim.seat", seatSel.value);
-  highlight();
-});
+// Which seat is yours arrives with the state, resolved from `--user` against
+// the draft's own order. It used to be a dropdown backed by localStorage --
+// the same answer re-entered every session, kept in a place the server could
+// not see. Null when the draft has no order to look you up in, which is every
+// mock: the board then simply marks no card.
+let mySeat = null;
 
 const maxBtn = document.getElementById("max");
 // Maximized, nothing folds: the overlay is the whole viewport and all twelve
@@ -533,7 +525,7 @@ document.getElementById("reorder").addEventListener("click", () => {
 });
 
 function highlight() {
-  const mine = seatSel.value;
+  const mine = mySeat === null ? "" : String(mySeat);
   document.querySelectorAll("section.card").forEach((card) => {
     card.classList.toggle("me", mine !== "" && card.dataset.seat === mine);
   });
@@ -559,8 +551,9 @@ async function tick() {
   try {
     const res = await fetch("/api/state", { cache: "no-store" });
     const s = await res.json();
-    fillSeats(s.teams);
+    mySeat = s.my_seat === undefined ? null : s.my_seat;
     document.getElementById("sub").textContent = s.subtitle;
+    document.getElementById("ledger").innerHTML = s.ledger_html;
     document.getElementById("block").innerHTML = s.nomination_html;
     // Everything else refreshes; the cards hold still until the drag lands, so
     // the element in hand isn't deleted out from under it. The pressure tiles

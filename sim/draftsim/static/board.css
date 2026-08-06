@@ -78,7 +78,6 @@
      multipliers come down as the column's knob goes up: the room the bigger type
      needs is taken from the band that did not need the size, not from the pool. */
   .side h1 { font-size: calc(12px * var(--fs)); margin: 0; }
-  .side .sub { margin: 0; font-size: calc(10px * var(--fs)); }
 
   /* A column, so the menu bar takes its own height off the top and the grid
      gets exactly what's left -- the grid sizes to that, and a bar measured in
@@ -90,19 +89,79 @@
      the aisle in the state column. */
   .menubar { display: flex; align-items: center; gap: 6px; flex: none;
     min-width: 0; }
-  .menubar .hint { color: #aaa; font-size: calc(9px * var(--fs));
+  .menubar .hint { color: #949494; font-size: calc(9px * var(--fs));
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-  .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
-    font-size: calc(10px * var(--fs)); color: #666; }
-  select { background: #fff; color: #1a1a1a; border: 1px solid #ddd;
-    border-radius: 6px; padding: 2px 6px; font: inherit; }
   button { background: #f6f6f6; color: #1a1a1a; border: 1px solid #ddd;
     border-radius: 6px; padding: 2px 8px; font: inherit; cursor: pointer; }
   button:hover { border-color: #1a1a1a; }
   .dot { width: 7px; height: 7px; border-radius: 50%; background: #1a7f37;
     display: inline-block; }
   .dot.stale { background: #c0392b; }
+
+  /* The money band. What the room has spent, and what every seat can still do
+     about it. This replaced a sentence of league constants -- teams, budget,
+     roster size -- that were settled before the draft opened; only the spend
+     figure in it ever moved, so it is the only one that stayed, and it is
+     drawn rather than written. */
+  .led { display: flex; flex-direction: column; gap: 5px; }
+  .ledtop { display: flex; align-items: baseline; gap: 6px; }
+  .ledbig { font-size: calc(15px * var(--fs)); font-weight: 700; color: #1a7f37;
+    line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .ledof { font-size: calc(10px * var(--fs)); color: #767676;
+    font-variant-numeric: tabular-nums; }
+  .ledpct { margin-left: auto; font-size: calc(9.5px * var(--fs));
+    color: #767676; font-variant-numeric: tabular-nums; }
+  .ledpct b { color: #1a1a1a; font-weight: 700; }
+  .rail { height: 5px; border-radius: 3px; background: #eee; overflow: hidden; }
+  .rail i { display: block; height: 100%; background: #1a7f37; }
+
+  /* Twelve columns of max bid, ranked. `budget_left` would have been the
+     friendlier number and the wrong one: a seat holding eight open slots owes a
+     dollar of its balance to each, and the auction is decided on what can go on
+     one player. Ranked because the question is who can outbid you, and that is
+     an order -- the leftmost column is the answer and the fall to the broke
+     tail is the shape of the room. */
+  .ch { display: flex; flex-direction: column; gap: 3px; }
+  .chhd { display: flex; align-items: baseline; gap: 8px;
+    font-size: calc(8px * var(--fs)); color: #767676; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.04em; }
+  .chhd .me { margin-left: auto; font-weight: 400; text-transform: none;
+    letter-spacing: 0; font-size: calc(9.5px * var(--fs)); }
+  .chhd .me b { color: #1a1a1a; }
+  /* No seat to mark. Amber rather than red: nothing is broken, the draft simply
+     has not published an order to find you in -- which is every mock, and so
+     every rehearsal. */
+  .chhd .me.unseated { color: #b26a00; }
+
+  /* Heights are written inline by the server, which is the side that knows the
+     budget; `_LEDGER_H` there and this height are the same number. The dashed
+     line is your own ceiling, so every bar above it is a seat that can take a
+     player off you -- and it is left unlabelled because a tick sitting on the
+     plot collides with whichever column happens to be under it. */
+  .plot { position: relative; height: 84px; display: flex; align-items: flex-end;
+    gap: 4px; border-bottom: 1px solid #ddd; }
+  .gl { position: absolute; left: 0; right: 0; border-top: 1px dashed #e4e4e4; }
+  .col { flex: 1; min-width: 0; display: flex; flex-direction: column;
+    justify-content: flex-end; align-items: center; height: 100%; }
+  .col .amt { font-size: calc(9px * var(--fs)); font-weight: 700; color: #1a1a1a;
+    line-height: 1.1; margin-bottom: 2px; font-variant-numeric: tabular-nums;
+    white-space: nowrap; }
+  .col .bar { width: 100%; background: #1a7f37; border-radius: 2px 2px 0 0; }
+  .col.broke .bar { background: #c0392b; }
+  /* Your own column is tinted for its full height, not just coloured at the
+     bar. Late in a draft your max bid is a few dollars and the bar is the 2px
+     minimum -- a recoloured sliver is not findable, and the one column you look
+     for first cannot be the one that disappears. The tint is a locator; the bar
+     itself is still drawn like everyone else's. */
+  .col.me { background: #f2f2f2; border-radius: 2px 2px 0 0; }
+  .col.me .bar { background: #1a1a1a; }
+  .chft { display: flex; gap: 4px; }
+  .chft span { flex: 1; min-width: 0; text-align: center;
+    font-size: calc(8.5px * var(--fs)); color: #949494;
+    font-variant-numeric: tabular-nums; }
+  .chft span.me { color: #1a1a1a; font-weight: 700; }
+  .chft span.broke { color: #c0392b; }
 
   /* What is on the block. The one panel on the page that is not white, because
      it is the thing you look up at between bids. */

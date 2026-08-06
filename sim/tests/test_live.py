@@ -52,14 +52,18 @@ def test_snapshot_before_the_first_poll_says_so(poller):
     assert snap["pressure_html"] == ""
     assert snap["pool_html"] == ""
     assert snap["log_html"] == ""
+    assert snap["ledger_html"] == ""
+    assert snap["my_seat"] is None
 
 
 def test_a_poll_produces_a_renderable_snapshot(poller):
     poller.refresh()
     snap = poller.snapshot()
     assert snap["teams"] == 12
-    assert "192 picks" in snap["subtitle"]
-    assert "complete" in snap["subtitle"]
+    # The subtitle is connection state now and nothing else; what the room has
+    # spent moved into the ledger, where it is drawn.
+    assert snap["subtitle"] == "complete"
+    assert "192</b> of 192" in snap["ledger_html"]
     # One card per seat, all from the same snapshot, so no two parts of the
     # page can show different moments of the draft.
     assert snap["rosters_html"].count("data-seat=") == 12
@@ -136,10 +140,58 @@ def test_replay_rewinds_a_finished_draft_to_mid_auction(poller):
     poller.replay = 60
     poller.refresh()
     snap = poller.snapshot()
-    assert "60 picks" in snap["subtitle"]
     # A rehearsal must never read as the live draft.
-    assert "REPLAY at pick 60" in snap["subtitle"]
-    assert "complete" not in snap["subtitle"]
+    assert snap["subtitle"] == "REPLAY at pick 60"
+    assert "60</b> of 192" in snap["ledger_html"]
+
+
+# -- the money band ----------------------------------------------------------
+
+
+def test_the_ledger_draws_every_seat_and_names_only_three(poller):
+    poller.replay = 60
+    poller.refresh()
+    ledger = poller.snapshot()["ledger_html"]
+    # One column and one seat tag per seat.
+    assert ledger.count('class="col ') == 12
+    # Three figures, because twelve would be a table.
+    assert ledger.count('class="amt"') == 3
+
+
+def test_the_ledger_reports_what_the_room_has_spent(poller):
+    poller.refresh()
+    ledger = poller.snapshot()["ledger_html"]
+    # The completed mock spends $2,344 of the $2,400 on the table.
+    assert "$2,344" in ledger
+    assert "of $2,400 spent" in ledger
+
+
+def test_an_unseated_board_draws_no_line_and_marks_no_seat(poller):
+    # The recorded mock has no draft_order, so --user cannot resolve. The band
+    # has to run anyway: this is the draft every rehearsal happens against.
+    poller.user = "yidinghou"
+    poller._user_tried = True
+    poller._user_id = "u-123"
+    poller.refresh()
+    snap = poller.snapshot()
+    assert snap["my_seat"] is None
+    assert 'class="gl"' not in snap["ledger_html"]
+    assert "not seated in this draft" in snap["ledger_html"]
+
+
+def test_a_seated_user_is_marked_and_sets_the_line(poller):
+    poller.feed["draft"] = dict(poller.feed["draft"], draft_order={"u-123": 7})
+    poller.user = "yidinghou"
+    poller._user_tried = True
+    poller._user_id = "u-123"
+    poller.replay = 60
+    poller.refresh()
+    snap = poller.snapshot()
+    assert snap["my_seat"] == 7
+    assert 'class="col me"' in snap["ledger_html"]
+    # The dashed line is your own ceiling, so it only exists once you have one.
+    assert 'class="gl"' in snap["ledger_html"]
+    assert "You are <b>S7</b>" in snap["ledger_html"]
 
 
 def test_stale_projections_are_surfaced_not_swallowed(poller):

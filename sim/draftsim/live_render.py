@@ -73,6 +73,15 @@ def _num(value: float) -> str:
     return f"{value:g}"
 
 
+def _ordinal(n: int) -> str:
+    """1 -> 1st. Used once, for where you stand in the room -- "4th of 12" is
+    read at a glance where "rank 4" needs a beat to place."""
+    if 10 <= n % 100 <= 20:
+        return f"{n}th"
+    suffix = {1: "st", 2: "nd", 3: "rd"}.get(n % 10, "th")
+    return f"{n}{suffix}"
+
+
 def _short_name(player: Player) -> str:
     """First initial + surname, for the compact view.
 
@@ -399,6 +408,108 @@ def _row_header(row: int) -> str:
     return (
         f'<div class="rowhd" data-row="{row}">'
         f"<h2>Row {row + 1}</h2><span class=\"note\"></span></div>"
+    )
+
+
+# The chart's box, in pixels, split between the plot and the room kept above it
+# for the three figures. A bar is drawn against the *budget*, not against the
+# tallest bar in the room: a seat that can still bid half of what it started
+# with should look like half whether or not someone else can bid all of it, and
+# a relative scale would have every bar grow as the room went broke.
+_LEDGER_H = 84
+_LEDGER_HEAD = 20
+
+
+def render_ledger(state: LeagueState, my_seat: Optional[int], note: str = "") -> str:
+    """What the room has spent, and what each seat can still do about it.
+
+    The band this replaces spent its height on a sentence of league constants --
+    teams, budget, roster size -- which were true before the draft opened and
+    stayed true all night. Only one number in it moved. So: that number, drawn,
+    and then the question the board actually exists to answer, which is not how
+    much money is left in the room but *who can outbid me*.
+
+    Hence twelve columns of `max_bid` rather than of `budget_left`. Balance
+    overstates a seat holding eight open slots -- a dollar of it per hole is
+    owed -- and the auction is decided on what can go on one player.
+
+    Ranked, deepest pocket first, so the answer is the leftmost column and the
+    fall from the leaders to the broke tail is the shape of the chart. Only the
+    top three carry a figure; annotating twelve would be a table, and the point
+    of a chart is the nine you *don't* have to read. Every bar is drawn
+    identically -- the figure is a label, not a louder mark.
+
+    The dashed line is your own ceiling, so every column standing above it is a
+    seat that can take a player off you. Without a seat there is no line: half
+    the budget was arbitrary and the field's average answers a question nobody
+    asks mid-auction.
+    """
+    config = state.config
+    seats = sorted(state.seats.values(), key=lambda s: (-s.max_bid, s.slot))
+    spent = sum(seat.spent for seat in state.seats.values())
+    pool = config.budget * config.teams
+    scale = _LEDGER_H - _LEDGER_HEAD
+    top3 = {seat.slot for seat in seats[:3]}
+    mine = next((s for s in seats if s.slot == my_seat), None)
+
+    cols = []
+    tags = []
+    for seat in seats:
+        state_cls = (
+            "me"
+            if seat.slot == my_seat
+            else "broke"
+            if seat.max_bid <= _OUT_OF_MARKET
+            else ""
+        )
+        # A seat that is out of the market still gets a mark. At $3 the honest
+        # height rounds to nothing, and nothing is not what $3 means -- red and
+        # nearly flat is.
+        height = max(2.0, scale * seat.max_bid / config.budget)
+        figure = (
+            f'<span class="amt">${seat.max_bid}</span>' if seat.slot in top3 else ""
+        )
+        cols.append(
+            f'<span class="col {state_cls}" title="S{seat.slot} &#xb7; spent '
+            f"${seat.spent} &#xb7; ${seat.budget_left} left &#xb7; max bid "
+            f'${seat.max_bid}">{figure}'
+            f'<span class="bar" style="height:{height:.1f}px"></span></span>'
+        )
+        tags.append(f'<span class="{state_cls}">S{seat.slot}</span>')
+
+    if mine is not None:
+        rank = seats.index(mine) + 1
+        line = (
+            f'<span class="me">You are <b>S{mine.slot}</b> — ${mine.budget_left} '
+            f"left, max bid <b>${mine.max_bid}</b> "
+            f"({_ordinal(rank)} of {len(seats)})</span>"
+        )
+        gridline = (
+            f'<span class="gl" style="top:'
+            f'{_LEDGER_H - scale * mine.max_bid / config.budget:.1f}px"></span>'
+        )
+        legend = "dashed = your ${}".format(mine.max_bid)
+    else:
+        line = f'<span class="me unseated">{_esc(note)}</span>' if note else ""
+        gridline = ""
+        legend = "seat unknown"
+
+    pct = 100 * spent / pool if pool else 0
+    return (
+        '<div class="led">'
+        '<div class="ledtop">'
+        f'<span class="ledbig">${spent:,}</span>'
+        f'<span class="ledof">of ${pool:,} spent</span>'
+        f'<span class="ledpct">pick <b>{len(state.picks)}</b> of '
+        f"{config.teams * config.roster_size} · <b>{pct:.0f}%</b> of the pool "
+        "gone</span></div>"
+        f'<div class="rail"><i style="width:{pct:.1f}%"></i></div>'
+        '<div class="ch">'
+        f'<div class="chhd"><span>Buying power · max bid as % of '
+        f"${config.budget} · {legend}</span>{line}</div>"
+        f'<div class="plot">{gridline}{"".join(cols)}</div>'
+        f'<div class="chft">{"".join(tags)}</div>'
+        "</div></div>"
     )
 
 

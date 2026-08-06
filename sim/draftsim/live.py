@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from .live_render import (
+    render_ledger,
     render_log,
     render_nomination,
     render_page,
@@ -37,7 +38,9 @@ from .sleeper import (
     draft_pulse,
     fetch_draft,
     fetch_picks,
+    fetch_user,
     parse_nomination,
+    seat_for_user,
 )
 from .valuation import Player, by_sleeper_id, load_players
 
@@ -59,10 +62,20 @@ class DraftPoller:
         csv_path: Optional[Path],
         interval: float,
         replay: Optional[int] = None,
+        user: Optional[str] = None,
     ):
         self.draft_id = draft_id
         self.interval = interval
         self.replay = replay
+        self.user = user
+        # Resolved on the first poll and then kept: the account lookup is one
+        # request that never changes its answer, while the seat it maps to has
+        # to be read off each draft payload anyway. `_user_id` doubles as the
+        # "already tried" flag -- a bad username should not be re-fetched every
+        # three seconds for the length of a draft.
+        self._user_id: Optional[str] = None
+        self._user_tried = False
+        self.seat_note = ""
         self.pool = load_players(csv_path)
         # The wider sheet identifies picks the draftable pool excludes; see
         # live_state.reconstruct.
@@ -74,6 +87,34 @@ class DraftPoller:
         self._stop = threading.Event()
 
     # -- polling ------------------------------------------------------------
+
+    def my_seat(self, draft: Dict[str, Any]) -> Optional[int]:
+        """Which slot is yours, or None if this draft cannot say.
+
+        Never fatal. A mock has no `draft_order` at all, and that is the draft
+        you rehearse against — so the board has to be willing to run unmarked
+        and say why, rather than refusing to start.
+        """
+        if not self.user:
+            return None
+        if not self._user_tried:
+            self._user_tried = True
+            try:
+                self._user_id = fetch_user(self.user)["user_id"]
+            except SleeperError as exc:
+                self.seat_note = str(exc)
+                return None
+        if self._user_id is None:
+            return None
+        seat = seat_for_user(draft, self._user_id)
+        if seat is None:
+            self.seat_note = (
+                f"{self.user} is not seated in this draft — a mock never "
+                "publishes a draft order, so no seat is marked"
+            )
+        else:
+            self.seat_note = ""
+        return seat
 
     def refresh(self) -> None:
         """Fetch once and replace the snapshot. Errors are recorded, not raised:
@@ -112,8 +153,6 @@ class DraftPoller:
 
     def _build(self, draft, state: LeagueState, nom, nominee: Optional[Player]):
         config = state.config
-        spent = sum(seat.spent for seat in state.seats.values())
-        pool = config.budget * config.teams
         status = draft.get("status") or "unknown"
         if self.replay is not None:
             # The feed's own status still reads "complete"; say what is
@@ -125,13 +164,15 @@ class DraftPoller:
             if state.unknown_player_ids
             else ""
         )
+        seat = self.my_seat(draft)
         return {
             "teams": config.teams,
-            "subtitle": (
-                f"{config.teams} teams · ${config.budget} budget · "
-                f"{config.roster_size} slots · {len(state.picks)} picks · "
-                f"${spent} of ${pool} spent · {status}"
-            ),
+            # Connection state and nothing else. The league's constants never
+            # changed mid-draft and did not earn a line; the one live number in
+            # the old subtitle -- what the room has spent -- is now drawn.
+            "subtitle": status,
+            "my_seat": seat,
+            "ledger_html": render_ledger(state, seat, self.seat_note),
             "nomination_html": render_nomination(state, nom, nominee),
             "rosters_html": render_rosters(state),
             "pressure_html": render_pressure(state),
@@ -170,6 +211,8 @@ class DraftPoller:
             return {
                 "teams": 0,
                 "subtitle": error or "waiting for the first poll…",
+                "my_seat": None,
+                "ledger_html": "",
                 "nomination_html": '<div class="block idle">connecting…</div>',
                 "rosters_html": "",
                 "pressure_html": "",
@@ -235,13 +278,23 @@ def main() -> None:
         "that has already finished",
     )
     parser.add_argument(
+        "--user",
+        default=None,
+        metavar="USERNAME",
+        help="your Sleeper username, to mark which seat is yours. Needs a "
+        "draft that has been seated — a mock has no draft order and stays "
+        "unmarked",
+    )
+    parser.add_argument(
         "--once",
         action="store_true",
         help="poll once, print the snapshot as JSON, and exit (no server)",
     )
     args = parser.parse_args()
 
-    poller = DraftPoller(args.draft_id, args.csv, args.interval, replay=args.replay)
+    poller = DraftPoller(
+        args.draft_id, args.csv, args.interval, replay=args.replay, user=args.user
+    )
     if args.once:
         poller.refresh()
         print(json.dumps(poller.snapshot(), indent=2))

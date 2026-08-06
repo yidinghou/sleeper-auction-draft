@@ -10,15 +10,17 @@
          fragments are replaced every two seconds and a control destroyed that
          often can hold neither focus nor state. Only the insides are swapped. -->
     <section class="band band-live" data-band="live">
+      <!-- Which seat is yours is passed once on the command line (`--user`),
+           not picked from a dropdown every session: it is a fact about you,
+           and a control that answers the same question every time is a control
+           that should not exist. The band spends the height on money instead. -->
       <div class="bandhd"><h2>Live draft board</h2>
         <span class="note" id="pulsewrap"><span class="dot" id="dot"></span>
-          <span id="pulse">polling</span></span></div>
+          <span id="pulse">polling</span> · <span id="sub"
+            >connecting to draft __DRAFT_ID__…</span></span>
+        <span id="warn" class="warn"></span></div>
       <div class="bandbody">
-        <p class="sub" id="sub">connecting to draft __DRAFT_ID__…</p>
-        <div class="bar">
-          <label>Seat <select id="seat"><option value="">—</option></select></label>
-          <span id="warn" class="warn"></span>
-        </div>
+        <div id="ledger"></div>
         <div id="block"></div>
       </div>
     </section>
