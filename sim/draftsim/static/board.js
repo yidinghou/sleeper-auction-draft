@@ -65,10 +65,20 @@ function applyPViews() {
 // and the ordering problem is gone with it.
 pressureEl.addEventListener("click", (e) => {
   const btn = e.target.closest(".pseg button");
-  if (!btn) return;
-  pviews[btn.closest(".pcard").dataset.pos] = btn.dataset.pane;
-  localStorage.setItem("draftsim.pviews", JSON.stringify(pviews));
-  applyPViews();
+  if (btn) {
+    pviews[btn.closest(".pcard").dataset.pos] = btn.dataset.pane;
+    localStorage.setItem("draftsim.pviews", JSON.stringify(pviews));
+    applyPViews();
+    return;
+  }
+  // The rest of the segment -- its gaps and its border -- is not the fold
+  // either, or a miss between two buttons would put the card away.
+  if (e.target.closest(".pseg")) return;
+  const head = e.target.closest(".phd");
+  // The same toggle the filter button pulls, so folding from the card and
+  // folding from the header are one act on one list. Works in the rail too:
+  // a folded card's header is the whole card, and clicking it brings it back.
+  if (head) toggleRun(head.closest(".pcard").dataset.pos);
 });
 
 // Which positions the run pressure band has open. The rest fold into the rail
@@ -116,19 +126,26 @@ function applyRuns() {
   });
 }
 
+function setRuns(next) {
+  runsel = next;
+  localStorage.setItem("draftsim.runsel", JSON.stringify(runsel));
+  applyRuns();
+}
+
+// One position on or off. Two things call this -- the filter button and the
+// card's own header -- and they are the same act on the same list, which is why
+// it is a function rather than two copies: a header that folded a card without
+// the filter hearing about it would leave the band showing one thing and the
+// buttons claiming another, and the next swap would decide which of them won.
+function toggleRun(pos) {
+  setRuns(runsel.includes(pos) ? runsel.filter((p) => p !== pos) : runsel.concat(pos));
+}
+
 document.addEventListener("click", (e) => {
   const btn = e.target.closest(".rseg button");
   if (!btn) return;
-  const pos = btn.dataset.pos;
-  if (!pos) {
-    runsel = POSITIONS.slice();
-  } else if (runsel.includes(pos)) {
-    runsel = runsel.filter((p) => p !== pos);
-  } else {
-    runsel.push(pos);
-  }
-  localStorage.setItem("draftsim.runsel", JSON.stringify(runsel));
-  applyRuns();
+  if (btn.dataset.pos) toggleRun(btn.dataset.pos);
+  else setRuns(POSITIONS.slice());
 });
 
 // Which position the pool and the log are narrowed to. Empty is everyone.
@@ -400,12 +417,13 @@ document.addEventListener("dblclick", (e) => {
 // in ten. The board holds the swap for a moment after a press on a foldable
 // header, the same way it holds it while a card is being dragged.
 //
-// `.phd` was on this list while a pressure card folded on a click of its header.
-// It comes off with the gesture: the card headers are not controls any more, and
-// the filter that replaced them lives in the shell, which no swap touches.
+// `.phd` is here for a nearer version of the same problem. A pressure card folds
+// on a single click, and a click is a mousedown and a mouseup on one element --
+// so a swap landing between them destroys the header that was pressed and the
+// click never fires at all. Holding covers the gap.
 let heldAt = 0;
 document.addEventListener("mousedown", (e) => {
-  if (e.target.closest(".rowhd")) {
+  if (e.target.closest(".rowhd") || e.target.closest(".phd")) {
     heldAt = Date.now();
   }
 });

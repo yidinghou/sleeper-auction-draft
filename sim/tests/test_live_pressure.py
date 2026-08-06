@@ -492,7 +492,7 @@ def test_the_rail_is_always_in_position_order():
     assert "(open ? grid : rail).appendChild(card)" in body
 
 
-def test_the_filter_is_the_only_thing_that_opens_a_card():
+def test_the_filter_says_which_positions_are_open():
     page = render_page("123")
     # Five buttons in the shell, not in the fragment: the fragment is replaced
     # every two seconds and a button rebuilt that often can hold neither focus
@@ -503,12 +503,14 @@ def test_the_filter_is_the_only_thing_that_opens_a_card():
     for pos in TIERS:
         assert f'<button data-pos="{pos}" type="button">{pos}</button>' in seg
     # Multi-select: a click toggles one position rather than replacing the set,
-    # which is what makes it a different control from the pool's.
-    handler = page.split('closest(".rseg button")')[1].split("\n});")[0]
-    assert "runsel.filter((p) => p !== pos)" in handler
-    assert "runsel.push(pos)" in handler
+    # which is what makes it a different control from the pool's. The toggling
+    # itself lives in `toggleRun`, which the card headers pull too.
+    body = page.split("function toggleRun(")[1].split("\n}")[0]
+    assert "runsel.filter((p) => p !== pos)" in body
+    assert "runsel.concat(pos)" in body
     # ALL restores every position, so an empty selection is never a dead end.
-    assert "runsel = POSITIONS.slice();" in handler
+    seg = page.split('closest(".rseg button")')[1].split("\n});")[0]
+    assert "setRuns(POSITIONS.slice())" in seg
 
 
 def test_the_selection_survives_a_refresh_and_a_reload():
@@ -569,21 +571,21 @@ def test_double_tapping_the_filter_does_not_fold_the_band():
 # -- collapsing ---------------------------------------------------------------
 
 
-def test_a_card_header_is_not_a_control(midway):
-    # The header used to fold the card and advertised it with a title. The band's
-    # filter owns folding now, so the affordance has to go with the gesture: a
-    # tooltip and a pointer for something that no longer happens is worse than
-    # neither, because it is a promise the card cannot keep.
+def test_a_card_header_folds_it_and_says_so(midway):
+    # The gesture is back, so the affordance comes back with it: a header that
+    # folds on a click has to look like something you can click.
+    page = render_page("123")
+    rule = page.split(".phd { display: flex")[1].split("}")[0]
+    assert "cursor: pointer" in rule
+    assert ".phd:hover { background: #f2f2f2; }" in page
+    # No tooltip, though. The one gesture reads "fold" on an open card and
+    # "unfold" on a railed one, and the server cannot know which a card will be
+    # -- that is the client's list. A fixed title would be wrong half the time.
     html = render_pressure(midway)
     for pos in TIERS:
         card = html.split(f'data-pos="{pos}"')[1]
         head = card.split('class="phd"')[1].split(">")[0]
-        assert "click to fold" not in head
         assert "title=" not in head
-    page = render_page("123")
-    rule = page.split(".phd { display: flex")[1].split("}")[0]
-    assert "cursor: pointer" not in rule
-    assert ".phd:hover" not in page
 
 
 def test_a_folded_card_shows_nothing_but_its_header_in_either_pane():
@@ -629,21 +631,44 @@ def test_a_folded_card_still_reports_the_position(midway):
         assert f'<span class="pcount"><b>{pr.drafted}</b>/{total}</span>' in head
 
 
-def test_a_click_inside_a_card_only_ever_switches_the_pane():
-    # This listener used to run two jobs -- the pane switch, then the fold -- in
-    # the one order that kept them apart. With folding gone to the filter there
-    # is a single job left, and nothing inside a card can put it away by
-    # accident.
+def test_the_pane_toggle_does_not_fold_the_card():
+    # Two jobs on one listener, in the order that keeps them apart: the RUNS /
+    # TIER buttons sit inside the header, so the pane switch has to claim the
+    # click first, or switching a pane would fold the card you were switching.
+    # The gaps between the buttons are excluded too -- a miss must not fold it.
     page = render_page("123")
     handler = page.split('pressureEl.addEventListener("click"')[1].split("\n});")[0]
-    assert 'closest(".pseg button")' in handler
-    assert 'closest(".phd")' not in handler
-    assert "toggleCollapsed" not in handler
-    # One gesture per action: the card no longer answers a double-click at all.
+    assert handler.index('closest(".pseg button")') < handler.index('closest(".phd")')
+    assert 'if (e.target.closest(".pseg")) return;' in handler
+    # One gesture per action: the card still does not answer a double-click.
     assert 'pressureEl.addEventListener("dblclick"' not in page
-    # And no `pos:` fold keys survive anywhere -- one control, one state.
+
+
+def test_the_header_and_the_filter_are_one_state():
+    # The header folds through the same toggle the filter button pulls, so the
+    # button un-presses when you fold from the card. Two lists would leave the
+    # band showing one thing and the buttons claiming another, and the next swap
+    # would decide which of them won.
+    page = render_page("123")
+    handler = page.split('pressureEl.addEventListener("click"')[1].split("\n});")[0]
+    assert "toggleRun(head.closest(\".pcard\").dataset.pos)" in handler
+    # The filter buttons reach the same function rather than a copy of it.
+    seg = page.split('closest(".rseg button")')[1].split("\n});")[0]
+    assert "toggleRun(btn.dataset.pos)" in seg
+    assert page.count("function toggleRun(") == 1
+    # And the old per-card fold keys stay gone -- one control, one state.
     assert 'toggleCollapsed("pos:"' not in page
     assert 'collapsed.includes("pos:"' not in page
+
+
+def test_the_swap_cannot_eat_the_fold():
+    # A click is a mousedown and a mouseup on one element, and these headers are
+    # rebuilt every two seconds -- so a swap landing between them destroys the
+    # header that was pressed and the click never fires at all.
+    page = render_page("123")
+    hold = page.split('document.addEventListener("mousedown"')[1].split("\n});")[0]
+    assert 'e.target.closest(".phd")' in hold
+    assert "heldAt = Date.now();" in hold
 
 
 def test_a_band_header_folds_on_double_click():

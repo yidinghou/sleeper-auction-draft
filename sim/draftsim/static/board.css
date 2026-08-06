@@ -518,14 +518,22 @@
   .pcard.done { opacity: 0.55; }
   .pcard.done:hover { opacity: 1; }
   .pcard:hover { border-color: #bbb; }
-  /* Not a control any more. The header used to be the fold, and the band's
-     filter has taken that over -- so the pointer and the hover fill go with it,
-     because an affordance for a gesture that no longer exists is worse than
-     none. What is left is a line of type with the pane toggle sitting on it.
-     `user-select: none` stays: it is there so the badge and the counts do not
-     highlight when a click near them lands slightly askew. */
+  /* The header folds the card, one single click, the same gesture on all four --
+     and the same act as the filter button above it, which un-presses when you
+     use it. In the rail it works the other way and brings the card back, so a
+     card you put away from the band is never something you have to go up to the
+     filter to undo.
+
+     No caret: the hover fill is the affordance, as it is on the band headers.
+     `user-select: none` so the badge and the counts do not highlight when the
+     click lands slightly askew. No `title`, because the one gesture reads
+     "fold" on an open card and "unfold" on a railed one, and a fixed tooltip
+     would be wrong half the time. */
   .phd { display: flex; align-items: center; gap: 4px; min-width: 0;
-    user-select: none; border-radius: 3px; }
+    cursor: pointer; user-select: none; border-radius: 3px; }
+  .phd:hover { background: #f2f2f2; }
+  /* The buttons inside the header are not the fold and must not look like it. */
+  .phd .pseg { cursor: default; }
   .phd .badge { min-width: calc(20px * var(--fs)); font-size: calc(8px * var(--fs));
     padding: 1px 3px; }
   /* The first thing in the header to give way when the card is narrow: the
