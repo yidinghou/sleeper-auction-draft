@@ -59,6 +59,16 @@ class Seat:
     """Who is sitting here, if anyone can say. Defaulted and filled in by the
     poller after the fact: a name is not derivable from the pick feed, and
     reconstruction must stay a pure function of the picks."""
+    bidding: str = ""
+    """Whether this seat is in the bidding on whatever is on the block right
+    now: "high" if it holds the current offer, "in" if it has held it at some
+    point since the lot opened, "" otherwise.
+
+    Decorated by the poller like `name`, and for a stronger version of the same
+    reason: it is about a bid that has not become a pick and may never become
+    one, which is the one thing the settled feed this module folds cannot say.
+    One field rather than two flags -- the three states are exclusive, and each
+    maps to exactly one class on the mark that draws it."""
 
     @property
     def filled(self) -> int:

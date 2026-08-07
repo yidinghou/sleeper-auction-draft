@@ -112,6 +112,15 @@ screen answering a question you glance at. Three things follow from the pin:
 * **what the room has spent moved into the band header**, next to the draft
   label. One line about the whole draft is what a header is for, and in the body
   it was thirty pixels off the chart;
+A caveat worth knowing, because it is the API's and not the board's: Sleeper
+publishes the bid **on the clock** and no history — one player, one price, one
+seat. So "bid by" is the board's own memory of every seat it has *seen* holding
+the offer since the lot opened, and a seat that raises and is outbid between two
+polls was never visible to it at all. That is why the poll drops to **1s while a
+player is on the block** (`live.LIVE_INTERVAL`) and goes back to `--interval`
+between lots: the picks are still there in an hour, a bid that was outbid is not.
+`--interval` faster than 1s is left alone.
+
 **The live board is light; the post-mortem report is dark.** That is deliberate:
 the board sits open beside Sleeper's own dark app for three hours, and looking
 nothing like it is how you never misread one for the other mid-auction. The two

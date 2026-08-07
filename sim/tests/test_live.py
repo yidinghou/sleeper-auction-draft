@@ -302,3 +302,59 @@ def test_stale_projections_are_surfaced_not_swallowed(poller):
     ]
     poller.refresh()
     assert "export:projections" in poller.snapshot()["warning"]
+
+
+# -- who is in the bidding ----------------------------------------------------
+#
+# Sleeper publishes the offer on the clock and no history, so every one of these
+# is about the board's own memory: what it saw, what it kept, and what it threw
+# away when the room moved on.
+
+
+def _bid(poller, *, player="KC", nominating=12, offering=12, amount="1"):
+    """Rewrite the in-flight auction state on the recorded feed."""
+    draft = json.loads(json.dumps(poller.feed["draft"]))
+    draft["metadata"].update(
+        nominated_player_id=player,
+        nominating_slot=str(nominating) if nominating else "",
+        offering_slot=str(offering) if offering else "",
+        highest_offer=amount,
+    )
+    poller.feed["draft"] = draft
+
+
+def test_a_new_player_on_the_block_empties_the_list(poller):
+    poller.refresh()
+    _bid(poller, offering=4)
+    poller.refresh()
+    _bid(poller, player="4034", nominating=7, offering=7)
+    poller.refresh()
+    assert poller._bidders == {7: 1}
+
+
+def test_a_lot_closing_empties_the_list(poller):
+    poller.refresh()
+    _bid(poller, player="", nominating=None, offering=None)
+    poller.refresh()
+    assert poller._lot is None
+    assert poller._bidders == {}
+    assert "Nothing nominated" in poller.snapshot()["nomination_html"]
+
+
+def test_the_board_looks_faster_while_a_player_is_on_the_block(poller):
+    # The only window in which something the board cannot reconstruct later goes
+    # past: the picks are still there in an hour, a bid that was outbid is not.
+    poller.interval = 3.0
+    poller.refresh()
+    assert poller.wait_for() == live_mod.LIVE_INTERVAL
+    _bid(poller, player="", nominating=None, offering=None)
+    poller.refresh()
+    assert poller.wait_for() == 3.0
+
+
+def test_a_faster_interval_than_the_lot_rate_is_left_alone(poller):
+    # `--interval 0.5` asked for half a second everywhere; this must never be
+    # the thing that slows a board down.
+    poller.interval = 0.5
+    poller.refresh()
+    assert poller.wait_for() == 0.5

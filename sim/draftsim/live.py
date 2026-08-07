@@ -59,6 +59,12 @@ DEFAULT_USER = "yidinghou"
 # season, and the draft feed is polled every three seconds -- so this is slow on
 # purpose, and the right-click menu has a rescan for the one time it matters.
 NAME_TTL = 300.0
+# How often to look while a player is actually on the block. Sleeper publishes
+# the bid on the clock and no history, so a seat that bids and is outbid between
+# two polls is never seen at all -- and the gap between two polls is the whole
+# resolution the board has. Cheap: the tick is one small `/draft` request unless
+# the pulse moved.
+LIVE_INTERVAL = 1.0
 
 
 class DraftPoller:
@@ -95,6 +101,16 @@ class DraftPoller:
         self.names = SeatNames(draft_id)
         self._names_at: Optional[float] = None
         self.names_note = ""
+        # Who is in the bidding on whatever is on the block, and how far each of
+        # them pushed it. Sleeper reports one seat and one figure -- whoever
+        # holds the offer this instant, at what -- so anyone who bid and was
+        # outbid is only ever known to the poller that watched it happen.
+        # A dict rather than a list because insertion order is the order the
+        # room bid in, which is worth reading, and the value is the highest
+        # offer that seat was *seen* holding. None means seen in the bidding
+        # with no figure attached -- the nominator, before anyone raised.
+        self._lot: Optional[str] = None
+        self._bidders: Dict[int, Optional[int]] = {}
         self.pool = load_players(csv_path)
         # The wider sheet identifies picks the draftable pool excludes; see
         # live_state.reconstruct.
@@ -189,6 +205,47 @@ class DraftPoller:
             with self._lock:
                 self._pulse = None
 
+    def watch_bidding(self, nom) -> None:
+        """Remember who has been in the bidding on the current lot, and at what.
+
+        Sleeper answers "who holds the offer right now, at what figure", never
+        "who has bid", so this is the board's own memory and the only place it
+        exists. A seat that raises and is immediately outbid shows up only if a
+        poll happened to land while it was in front -- hence `LIVE_INTERVAL`,
+        and hence the panel saying "led at" rather than claiming a bid history
+        it does not have. What is recorded is the highest offer each seat was
+        *seen* holding, which is a floor on how far they were willing to go and
+        not a bid anybody told us about.
+
+        `max` and not plain assignment: a seat can take the lead, lose it and
+        take it again, and the second visit is the one worth keeping. Only the
+        figure moves -- the seat keeps the position it first entered at.
+
+        The nominating seat goes in first: nominating a player *is* opening the
+        bidding at a dollar, and a room where the nominator is the only bidder
+        is a common and worth-seeing state. It carries no figure of its own
+        until it is also the seat holding the offer.
+
+        Safe on the rebuild path alone -- `draft_pulse` carries the nominated
+        player, the offer and the offering seat, so bidding cannot move without
+        the snapshot being rebuilt.
+        """
+        if nom.player_id != self._lot:
+            # A new player on the block, or the lot closing. Either way the
+            # previous lot's bidders are history: this is about what is in
+            # front of the room now.
+            self._lot = nom.player_id
+            self._bidders = {}
+        if nom.nominating_slot is not None:
+            self._bidders.setdefault(nom.nominating_slot, None)
+        slot = nom.offering_slot
+        if slot is not None:
+            if nom.high_bid is None:
+                self._bidders.setdefault(slot, None)
+            else:
+                seen = self._bidders.get(slot)
+                self._bidders[slot] = max(seen or 0, nom.high_bid)
+
     def rename_seat(self, slot: int, name: str) -> str:
         """Name a seat by hand. Returns the label it now carries.
 
@@ -239,8 +296,16 @@ class DraftPoller:
                 picks = picks[: self.replay]
             state = reconstruct(picks, config, self.pool, catalog=self.catalog)
             nom = parse_nomination(draft)
+            self.watch_bidding(nom)
             for slot, seat in state.seats.items():
                 seat.name = self.names.label(slot)
+                seat.bidding = (
+                    "high"
+                    if slot == nom.offering_slot
+                    else "in"
+                    if slot in self._bidders
+                    else ""
+                )
             nominee = by_sleeper_id(self.catalog).get(nom.player_id or "")
             snapshot = self._build(draft, state, nom, nominee)
             with self._lock:
@@ -300,10 +365,23 @@ class DraftPoller:
             "warning": stale,
         }
 
+    def wait_for(self) -> float:
+        """How long to sleep before looking again.
+
+        Faster while a player is on the block, because that is the only window
+        in which anything the board cannot reconstruct later goes past: the
+        picks are still there in an hour, a bid that was outbid is not. Between
+        lots there is nothing to miss and no reason to ask twice as often.
+
+        Never slower than `--interval` asked for -- someone who set it to half a
+        second wants half a second everywhere.
+        """
+        return min(self.interval, LIVE_INTERVAL) if self._lot else self.interval
+
     def run(self) -> None:
         while not self._stop.wait(0):
             self.refresh()
-            if self._stop.wait(self.interval):
+            if self._stop.wait(self.wait_for()):
                 break
 
     def start(self) -> threading.Thread:
