@@ -20,6 +20,12 @@ number is the only identifier that works both before and during a real draft.
 purpose of marking which seat is yours. It uses a third endpoint,
 ``GET /user/{username}``, and it is allowed to fail: on a mock there is no
 ``draft_order`` to look a user up in, and the board simply goes unmarked.
+
+``seat_names`` runs that bridge the other way and for all twelve seats, over
+``GET /league/{id}/users`` (and ``/rosters`` when the draft order alone can't
+place them). Same permission to fail, and it is used more often than not: a mock
+publishes a null ``league_id``, so a rehearsal has no names to fetch at all and
+falls back to the slot numbers.
 """
 
 from __future__ import annotations
@@ -29,7 +35,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
 from .config import BENCH, DraftConfig
 
@@ -117,6 +123,103 @@ def seat_for_user(draft: Dict[str, Any], user_id: str) -> Optional[int]:
     if not isinstance(order, dict):
         return None
     return _int_or_none(order.get(user_id))
+
+
+def fetch_league_users(league_id: str) -> List[Dict[str, Any]]:
+    """Everyone in the league, with the name each of them chose.
+
+    The only place the other eleven managers have names. Sleeper answers 200
+    with a null body for a league nobody has, the same way `/user` does.
+    """
+    users = _get(f"/league/{league_id}/users")
+    if not isinstance(users, list):
+        raise SleeperError(f"league {league_id} returned no user list")
+    return users
+
+
+def fetch_league_rosters(league_id: str) -> List[Dict[str, Any]]:
+    """Rosters, read only for their `owner_id`.
+
+    The fallback route from a seat to an account: a draft that has been seated
+    but publishes no `draft_order` still maps slots to roster ids, and a roster
+    knows whose it is.
+    """
+    rosters = _get(f"/league/{league_id}/rosters")
+    if not isinstance(rosters, list):
+        raise SleeperError(f"league {league_id} returned no roster list")
+    return rosters
+
+
+def _user_label(user: Dict[str, Any]) -> str:
+    """What to call a manager: the team name they picked for this league, and
+    only failing that their account name.
+
+    A league name is what gets said out loud in the room -- and it is the one
+    they chose knowing it would sit next to these eleven others.
+    """
+    meta = user.get("metadata") or {}
+    team = (meta.get("team_name") or "").strip()
+    return team or (user.get("display_name") or "").strip()
+
+
+def slot_for_user_map(
+    draft: Dict[str, Any], rosters: Optional[Sequence[Dict[str, Any]]] = None
+) -> Dict[str, int]:
+    """user_id -> draft slot, by whichever route this draft supports.
+
+    `draft_order` is the direct answer and is usually there. When it is not, a
+    seated draft still has `slot_to_roster_id`, and rosters carry `owner_id` --
+    two hops to the same fact. Both are absent on a mock, which is why the
+    return is a dict that is allowed to be empty.
+    """
+    order = draft.get("draft_order")
+    if isinstance(order, dict) and order:
+        placed = {
+            str(user_id): slot
+            for user_id, raw in order.items()
+            if (slot := _int_or_none(raw)) is not None
+        }
+        if placed:
+            return placed
+
+    slot_to_roster = draft.get("slot_to_roster_id")
+    if not isinstance(slot_to_roster, dict) or not rosters:
+        return {}
+    owner_of = {
+        int(roster["roster_id"]): str(roster.get("owner_id") or "")
+        for roster in rosters
+        if roster.get("roster_id") is not None
+    }
+    placed = {}
+    for raw_slot, roster_id in slot_to_roster.items():
+        slot = _int_or_none(raw_slot)
+        owner = owner_of.get(_int_or_none(roster_id) or -1, "")
+        if slot is not None and owner:
+            placed[owner] = slot
+    return placed
+
+
+def seat_names(
+    draft: Dict[str, Any],
+    users: Sequence[Dict[str, Any]],
+    rosters: Optional[Sequence[Dict[str, Any]]] = None,
+) -> Dict[int, str]:
+    """draft slot -> manager's name, for as many seats as can be placed.
+
+    Partial by design. A league where one seat is co-owned or unclaimed still
+    names the eleven it can, and the board falls back to `S{slot}` for the rest
+    -- which is strictly what it showed for all twelve before.
+    """
+    by_user = slot_for_user_map(draft, rosters)
+    if not by_user:
+        return {}
+    named: Dict[int, str] = {}
+    for user in users:
+        slot = by_user.get(str(user.get("user_id") or ""))
+        label = _user_label(user)
+        if slot is not None and label:
+            named[slot] = label
+    return named
 
 
 def config_from_draft(draft: Dict[str, Any]) -> DraftConfig:
