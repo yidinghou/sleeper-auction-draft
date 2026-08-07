@@ -356,7 +356,7 @@ class DraftPoller:
             "ledger_html": render_ledger(
                 state, seat, self.seat_note, self.user or ""
             ),
-            "nomination_html": render_nomination(state, nom, nominee),
+            "nomination_html": render_nomination(state, nom, nominee, self._bidders),
             "rosters_html": render_rosters(state),
             # Only the nominee's own card lights its bidders: the bidding is on
             # one player at one position, and repeating it across all four said

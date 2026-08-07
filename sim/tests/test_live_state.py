@@ -302,7 +302,66 @@ def test_nomination_strip_names_the_player_and_the_bid(midway):
     assert "Star Guy" in html
     assert "$17" in html
     assert "$44" in html  # the crowd's price, to bid against
-    assert "seat 8" in html
+    assert ">S8<" in html  # who holds it, by the same label the board uses
+    assert "nom. S3" in html
+    # Called without the poller's memory, the panel still cannot claim "no bids
+    # yet" over a price and a seat printed one line above it: the two slots the
+    # draft itself publishes are what it has, and it shows them.
+    assert "no bids yet" not in html
+    assert html.count('class="chip') == 2
+
+
+def test_the_two_figures_share_one_column(midway):
+    """$PROJ and the live bid are the only numbers you act on, and the read is
+    the gap between them -- which only exists if they are stacked in the same
+    fixed-width cell. Separately positioned, they are two facts; in a column,
+    they are one."""
+    star = Player(
+        id="star", name="Star Guy", pos="WR", team="KC", points=400.0,
+        proj_dollar=44,
+    )
+    nom = Nomination(
+        player_id="star", nominating_slot=3, high_bid=17, offering_slot=8
+    )
+    html = render_nomination(midway, nom, star)
+    money = html.split('class="onmoney"')[1].split("</div></div>")[0]
+    assert money.index("$44") < money.index("$17")  # opinion above fact
+    assert money.count('class="figv') == 2
+    # The dot between the facts is drawn, not typed. As a `·` character it sat
+    # on the text baseline and inherited its neighbours' leading, which is what
+    # made the old line wander; an empty element cannot.
+    assert '<span class="onsep"></span>' in html
+    assert "·" not in html.split('class="onsub"')[1].split("</div>")[0]
+
+
+def test_a_teamless_player_does_not_draw_a_dangling_separator(midway):
+    """Free agents carry no team. The dot between the facts is drawn rather than
+    typed, so an empty span between two of them is a visible dot with nothing on
+    one side -- which is what the old `·` run did too, less noticeably."""
+    fa = Player(
+        id="fa", name="Free Agent", pos="RB", team="", points=12.0,
+        proj_dollar=1,
+    )
+    nom = Nomination(player_id="fa", nominating_slot=3, high_bid=1, offering_slot=3)
+    sub = render_nomination(midway, nom, fa).split('class="onsub"')[1]
+    sub = sub.split("</div>")[0]
+    assert sub.count('class="onsep"') == 1  # pts | nom, and nothing before pts
+    assert not sub.lstrip('">').startswith('<span class="onsep"')
+
+
+def test_a_bid_of_nothing_is_not_money_green(midway):
+    """At 20.8px the em dash in #1a7f37 reads as a filled bar -- a small green
+    amount rather than the absence of one."""
+    star = Player(
+        id="star", name="Star Guy", pos="WR", team="KC", points=400.0,
+        proj_dollar=44,
+    )
+    nom = Nomination(
+        player_id="star", nominating_slot=3, high_bid=None, offering_slot=None
+    )
+    html = render_nomination(midway, nom, star)
+    assert 'class="figv bidamt none">—<' in html
+    assert ".bidamt.none { color: #949494" in render_page("123")
 
 
 def test_nomination_strip_is_idle_between_lots(midway):

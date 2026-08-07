@@ -324,6 +324,45 @@ def _bid(poller, *, player="KC", nominating=12, offering=12, amount="1"):
     poller.feed["draft"] = draft
 
 
+def test_the_nominator_is_in_the_bidding_from_the_start(poller):
+    # Nominating a player is opening the bidding at a dollar, and a lot where
+    # the nominator is still the only bidder is a common and worth-seeing state.
+    poller.refresh()
+    assert poller._bidders == {12: 1}
+    assert 'class="chip bid-high"' in poller.snapshot()["nomination_html"]
+
+
+def test_a_seat_that_is_outbid_stays_in_the_bidding(poller):
+    # The whole reason this is accumulated rather than read: the API forgets
+    # seat 12 the instant seat 4 raises, and "who wants this player" does not.
+    poller.refresh()
+    _bid(poller, offering=4, amount="9")
+    poller.refresh()
+    assert poller._bidders == {12: 1, 4: 9}
+    html = poller.snapshot()["nomination_html"]
+    assert html.count('class="chip') == 2
+    assert html.count('class="chip bid-high"') == 1  # only one holds it now
+
+
+def test_each_seat_keeps_the_highest_figure_it_was_seen_holding(poller):
+    """Sleeper reports one seat at one figure, so the amount on a chip is the
+    furthest that seat was *watched* getting -- a floor on what they would pay,
+    not a bid anybody published. A seat that leads, loses it and leads again
+    keeps the later figure and its original place in the row."""
+    poller.refresh()                                    # S12 opens at $1
+    _bid(poller, offering=4, amount="9")
+    poller.refresh()                                    # S4 takes it at $9
+    _bid(poller, offering=12, amount="14")
+    poller.refresh()                                    # S12 back in front
+    _bid(poller, offering=4, amount="20")
+    poller.refresh()                                    # S4 again, higher
+    assert poller._bidders == {12: 14, 4: 20}
+    assert list(poller._bidders) == [12, 4]  # entry order, not bid order
+    html = poller.snapshot()["nomination_html"]
+    assert "$14" in html and "$20" in html
+    assert "$9" not in html  # superseded by the same seat's later figure
+
+
 def test_a_new_player_on_the_block_empties_the_list(poller):
     poller.refresh()
     _bid(poller, offering=4)

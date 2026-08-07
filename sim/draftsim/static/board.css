@@ -258,14 +258,119 @@
   .chft span.bid-in, .chft span.bid-high { color: #b26a00; font-weight: 700; }
 
   /* What is on the block. The one panel on the page that is not white, because
-     it is the thing you look up at between bids. */
+     it is the thing you look up at between bids.
+
+     A column now rather than a strip: beside the chart it has two fifths of the
+     width and the chart's full height, so the three questions asked mid-auction
+     -- what is it worth, what is it at, who is still in -- each get a line
+     instead of sharing one. It fills its half, so the two panels square off
+     against each other rather than one floating at the top of a tall box. */
   .block { background: #f6f6f6; border: 1px solid #ddd; border-radius: 8px;
-    padding: 4px 10px; display: flex; gap: 10px;
-    justify-content: space-between; align-items: center; flex-wrap: wrap; }
-  .block.idle { color: #888; font-size: calc(11px * var(--fs)); }
-  .who { font-size: calc(13px * var(--fs)); font-weight: 700; margin-right: 4px; }
-  .bidamt { color: #1a7f37; font-weight: 700; font-size: calc(13px * var(--fs)); }
-  .proj { color: #1a7f37; font-weight: 700; }
+    padding: 4px 9px; display: flex; flex-direction: column; gap: 4px;
+    justify-content: center; flex: 1; min-height: 0; overflow: hidden;
+    box-sizing: border-box; }
+  .block.idle { color: #888; font-size: calc(11px * var(--fs));
+    align-items: center; justify-content: center; text-align: center; }
+
+  /* Two halves, split by what the fact is for rather than by how much room it
+     needs. This was one wrapping line of `·`-separated spans, and the run of
+     them was the whole problem: nothing held a column, so the gaps moved with
+     every player, and the pill brought its own leading and sat off the baseline
+     of the text beside it. Neither can happen to a two-box row. */
+  .onmain { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .onid { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column;
+    gap: 1px; }
+  /* The pill beside the name, not above the team: it says which of the four
+     boards this lot belongs to, which is part of who he is. */
+  .onhead { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  /* Bigger than it was as a strip, because the panel it now sits in is as tall
+     as the chart beside it and this is what the height is for: the player on
+     the block is the thing you look up at, and it should be readable from
+     further away than anything else on the page. */
+  .who { font-size: calc(15px * var(--fs)); font-weight: 700;
+    line-height: 1.1; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; min-width: 0; }
+  /* The pill was set for a strip that had a whole row to itself; next to the
+     name it is the tallest thing in the panel and the panel is a fifth of a
+     fifth of the screen. Same colour, same job, one line's worth of it. */
+  .onhead .badge { font-size: calc(8px * var(--fs)); padding: 1px 5px;
+    line-height: 1.5; flex: none; }
+  /* The three things about the lot that never move, on one quiet line. #777 and
+     not `.muted`: these carry facts, so the page's own contrast floor applies. */
+  .onsub { display: flex; align-items: center; gap: 6px; min-width: 0;
+    font-size: calc(9.5px * var(--fs)); color: #777; white-space: nowrap;
+    line-height: 1.25; }
+  /* A drawn dot rather than a `·` in the text. The character sat on the text
+     baseline and inherited its leading, so it moved whenever its neighbours
+     did; a 3px circle centred by the flex row cannot. */
+  .onsep { width: 3px; height: 3px; border-radius: 50%; background: #c4c4c4;
+    flex: none; }
+  .onsub .nm { overflow: hidden; text-overflow: ellipsis; }
+
+  /* The two figures you act on, and nothing else. Stacked and right-aligned in
+     a fixed column so they line up digit for digit -- the gap between them is
+     itself the read: how far under the crowd's price the bidding still is. */
+  .onmoney { flex: none; display: flex; flex-direction: column;
+    align-items: flex-end; gap: 1px; border-left: 1px solid #dcdcdc;
+    padding-left: 10px; }
+  .onrow { display: flex; align-items: baseline; gap: 7px; }
+  .figl { font-size: calc(7.5px * var(--fs)); color: #949494; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.05em; }
+  /* Fixed, not content-sized: a column that resizes around $9 and $52 is a
+     column that fails at exactly the moment the bidding gets interesting. */
+  .figv { width: calc(45px * var(--fs)); text-align: right;
+    font-variant-numeric: tabular-nums; }
+  /* The price, in the biggest type in the panel: it is the one number on this
+     page that decides whether you say anything. */
+  .bidamt { color: #1a7f37; font-weight: 700; font-size: calc(16px * var(--fs));
+    line-height: 1.05; font-variant-numeric: tabular-nums; }
+  /* A bid of nothing is not a small green amount of money -- at this size the
+     dash in money green reads as a filled bar rather than as an absence. */
+  .bidamt.none { color: #949494; font-weight: 600; }
+  /* Deliberately not money green. The live bid owns that colour here, and two
+     green figures one above the other are read as the same kind of number when
+     the whole point of the pair is that one is real and one is an opinion. */
+  .onproj { font-size: calc(11px * var(--fs)); font-weight: 700; color: #777;
+    line-height: 1.2; }
+
+  /* Everyone who has been in front on this lot, in the order they got there,
+     and the figure each got to. "Held the high bid at some point", precisely --
+     Sleeper publishes the offer on the clock and no history, so this is the
+     board's own memory and never a count of bids it did not see. Unlabelled:
+     the row is the one part of the panel that has to hold twelve seats, and a
+     word across the front of it cost a chip and a half of the axis that was
+     short. The qualification lives in the chips' tooltips instead. */
+  /* A strip of their own under the figures, rather than sharing the price's
+     line. Beside a 20.8px number the 11px chips had to baseline-align to it and
+     hung low, and a fourth bidder arriving squeezed the one figure on the panel
+     that must never be squeezed. Down here the room to grow is sideways.
+     Still clips rather than wrapping -- a twelfth bidder must not push the
+     panel taller than the band allows, and the seats that matter are the ones
+     that got there first. */
+  .bidders { display: flex; align-items: center; gap: 3px; min-width: 0;
+    overflow: hidden; border-top: 1px solid #dcdcdc; padding-top: 3px; }
+  .blbl { font-size: calc(8px * var(--fs)); color: #949494; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.04em; margin-right: 2px;
+    flex: none; }
+  /* A chip carries a seat and the figure it got to, so it is a two-part thing
+     and inline-flex rather than a clipped run of text: the name may ellipsize,
+     the number never may -- a chip reading "S1 $4" when the seat led at $41 is
+     worse than no chip at all. Hence the cap on the name alone. */
+  .chip { font-size: calc(8.5px * var(--fs)); font-weight: 700; padding: 0 4px;
+    border-radius: 3px; border: 1px solid #e0b878; color: #b26a00;
+    background: #fff4e0; white-space: nowrap; line-height: 1.5; flex: none;
+    display: inline-flex; align-items: baseline; gap: 4px; }
+  .chip .cn { max-width: calc(46px * var(--fs)); overflow: hidden;
+    text-overflow: ellipsis; }
+  .chip .ca { font-variant-numeric: tabular-nums; }
+  /* Whoever holds it now is filled rather than outlined: of the chips, one is a
+     fact about this second and the rest are about the last thirty. */
+  .chip.bid-high { background: #b26a00; border-color: #b26a00; color: #fff; }
+  /* The seats that have been outbid keep the amber for the figure and give up
+     the tint: what they got to is still the point, but it is history, and a row
+     of eight filled chips is a row with no high bidder in it. */
+  .chip.bid-in { background: #fff; border-color: #e6e6e6; color: #777; }
+  .chip.bid-in .ca { color: #b26a00; }
 
   /* Four across, three down: twelve seats, one screen, fixed positions so a
      card stays where you last saw it between refreshes. Wider than it is tall,

@@ -25,7 +25,7 @@ from __future__ import annotations
 import html
 import math
 from pathlib import Path
-from typing import Dict, Optional, Sequence, Tuple
+from typing import Dict, Mapping, Optional, Sequence, Tuple, Union
 
 from .config import BENCH
 from .live_pressure import PositionPressure, pressure
@@ -1093,42 +1093,158 @@ def render_log(state: LeagueState) -> str:
     return f'<div class="loglist{named}">{rows}</div>'
 
 
-def render_nomination(
-    state: LeagueState, nom: Nomination, player: Optional[Player]
+def _bidder_chips(
+    state: LeagueState,
+    bidders: Union[Mapping[int, Optional[int]], Sequence[int]],
+    high: Optional[int],
 ) -> str:
-    """The header strip: what's on the block and what the room has bid."""
+    """Who is in the bidding, in the order they entered it, and how far each got.
+
+    "Led at", precisely -- Sleeper publishes the offer on the clock and no
+    history, so a seat that raised and was outbid between two polls was never
+    visible to anybody but the room. The figure on a chip is the highest offer
+    that seat was *seen* holding, so it is a floor on what they were willing to
+    pay and not a bid anybody reported.
+
+    The row carries no label. It ran the full height of the strip to say `led
+    at` once, and the strip is the one part of the panel that has to hold twelve
+    seats -- so the words cost a chip and a half of the only axis that was
+    short. What the figures mean survives in the tooltip, which is where the
+    qualification was always going to be read anyway: nobody parses `led at`
+    mid-auction, they read `S6 $34`. The chips are already amber, already under
+    a bid, and already next to the price they are bidding into.
+
+    The seat holding it now is filled and its figure is live; the rest are
+    outlined and theirs are historical. Same amber the chart's columns and the
+    pressure tiles take, because one hue meaning one thing across three places
+    is what makes a glance work.
+
+    Takes the poller's mapping, or a bare sequence of slots for the fallback
+    path where no figures are known.
+    """
+    if not bidders:
+        return '<div class="bidders"><span class="blbl">no bids yet</span></div>'
+    if isinstance(bidders, dict):
+        led = dict(bidders)
+    else:
+        led = {slot: None for slot in bidders}
+    chips = []
+    for slot, amount in led.items():
+        seat = state.seats.get(slot)
+        # From the nomination rather than from `seat.bidding`: who holds the
+        # offer is a fact on the draft payload, and the chips must say the same
+        # thing as the price above them even when nobody has decorated a seat.
+        state_cls = "bid-high" if slot == high else "bid-in"
+        label = _seat_tag(seat) if seat is not None else f"S{slot}"
+        tip = _seat_tip(seat) if seat is not None else f"S{slot}"
+        # The figure rides in the tooltip too: the chip clips at 72px and the
+        # seats that get squeezed are the ones you most want the number for.
+        body = f'<span class="cn">{label}</span>'
+        if amount is not None:
+            body += f'<span class="ca">${amount}</span>'
+            tip += f" · led at ${amount}"
+        chips.append(
+            f'<span class="chip {state_cls}" title="{_esc(tip)}">{body}</span>'
+        )
+    return f'<div class="bidders">{"".join(chips)}</div>'
+
+
+def render_nomination(
+    state: LeagueState,
+    nom: Nomination,
+    player: Optional[Player],
+    bidders: Union[Mapping[int, Optional[int]], Sequence[int]] = (),
+) -> str:
+    """The left panel: what is on the block, at what, and who wants it.
+
+    A strip across the whole band until it moved beside the money chart, where
+    it has two fifths of the width and the height of the chart to fill -- so the
+    price and the room's interest in it get room of their own rather than
+    sharing a line with the player's name.
+
+    Laid out by what each fact is *for* rather than by how much room it needs.
+    The run of `·`-separated spans this used to be put six unlike things on one
+    wrapping line, where the gaps moved with every player and the pill sat off
+    the baseline of the text beside it. Now: identity on the left, and on the
+    right the only two figures you act on, in a fixed right-aligned column so
+    $PROJ and the live bid line up digit for digit. The three questions asked
+    mid-auction are still in the order they are asked -- what is it worth, what
+    is it at, who is still in -- but the first two are read down, not across.
+    """
     if not nom.is_live:
         return (
             '<div class="block idle">Nothing nominated — '
             f"{len(state.picks)} picks in.</div>"
         )
+    # The identity half. `facts` are the quiet second line under the name; the
+    # pill sits beside the name itself, where it reads as part of who this is
+    # rather than as the first item in a list.
     if player is None:
         name = f"player {_esc(nom.player_id)}"
-        meta = '<span class="muted">not in projections</span>'
+        pill = ""
+        proj_txt = "—"
+        facts = ['<span class="onfact">not in projections</span>']
     else:
         name = _esc(player.name)
+        pill = badge(player.pos, light=True)
         proj = market_value(player)
         proj_txt = f"${proj:.0f}" if proj else "—"
-        meta = (
-            f'{badge(player.pos, light=True)} <span class="muted">{_esc(player.team)}</span> '
-            f'· <span class="muted">$PROJ</span> <span class="proj">{proj_txt}</span> '
-            f'· <span class="muted">{player.points:.0f} pts</span>'
-        )
+        # Free agents carry no team, and an empty span between two separators
+        # draws a dot with nothing on one side of it. Absent facts leave, and
+        # take their separator with them.
+        facts = []
+        if player.team:
+            facts.append(f'<span class="onfact">{_esc(player.team)}</span>')
+        facts.append(f'<span class="onfact">{player.points:.0f} pts</span>')
+    # A bid of nothing is not a small green amount of money: at this size the
+    # dash in money green reads as a filled bar, so the placeholder greys out.
     bid = f"${nom.high_bid}" if nom.high_bid is not None else "—"
-    by = (
-        f'<span class="muted">seat {nom.offering_slot}</span>'
-        if nom.offering_slot
-        else '<span class="muted">no bids</span>'
-    )
-    nominator = (
-        f'<span class="muted">nom. by seat {nom.nominating_slot}</span>'
-        if nom.nominating_slot
-        else ""
-    )
+    bid_cls = "figv bidamt" if nom.high_bid is not None else "figv bidamt none"
+    # Who nominated rides with the team and the points, not with the money --
+    # it is a fact about the lot, settled when it opened and never changing
+    # again, and up in the figures it was a third thing competing with two
+    # that move. The chips below carry who is *bidding*.
+    nominator = state.seats.get(nom.nominating_slot or 0)
+    if nominator is not None:
+        facts.append(f'<span class="onfact nm">nom. {_seat_label(nominator)}</span>')
+    sub = '<span class="onsep"></span>'.join(facts)
+    # The poller's memory is the fuller answer and normally arrives. Without it,
+    # the two slots the draft itself publishes are everything there is to know
+    # -- and a panel reading "$17 · S8" above "no bids yet" would be lying about
+    # a fact printed one line up. The offering seat gets the live figure even on
+    # this path: it is the one chip whose amount the draft payload states
+    # outright rather than the poller having had to watch for it.
+    if isinstance(bidders, dict):
+        seen: Dict[int, Optional[int]] = dict(bidders)
+    else:
+        seen = {slot: None for slot in bidders}
+    if not seen:
+        for slot in (nom.nominating_slot, nom.offering_slot):
+            if slot is not None:
+                seen.setdefault(slot, None)
+        if nom.offering_slot is not None and nom.high_bid is not None:
+            seen[nom.offering_slot] = nom.high_bid
+    # Split by what the fact is *for*, not by how much room it needs. Left is
+    # identity -- who is on the block, and the three things about him that do
+    # not move. Right is the only two numbers you act on, stacked so the gap
+    # between them is itself the read: how far under the crowd's price the
+    # bidding still is. The chips take a strip of their own underneath, which
+    # is what lets a fourth and fifth bidder arrive without squeezing the price.
     return (
         '<div class="block">'
-        f'<div class="onblock"><span class="who">{name}</span> {meta}</div>'
-        f'<div class="bidnow"><span class="bidamt">{bid}</span> {by} {nominator}</div>'
+        '<div class="onmain">'
+        '<div class="onid">'
+        f'<div class="onhead">{pill}<span class="who">{name}</span></div>'
+        f'<div class="onsub">{sub}</div>'
+        "</div>"
+        '<div class="onmoney">'
+        '<div class="onrow"><span class="figl">$PROJ</span>'
+        f'<span class="figv onproj">{proj_txt}</span></div>'
+        '<div class="onrow"><span class="figl">Bid</span>'
+        f'<span class="{bid_cls}">{bid}</span></div>'
+        "</div>"
+        "</div>"
+        f"{_bidder_chips(state, seen, nom.offering_slot)}"
         "</div>"
     )
 

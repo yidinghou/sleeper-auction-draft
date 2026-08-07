@@ -112,6 +112,9 @@ screen answering a question you glance at. Three things follow from the pin:
 * **what the room has spent moved into the band header**, next to the draft
   label. One line about the whole draft is what a header is for, and in the body
   it was thirty pixels off the chart;
+* the bid panel is three rows, with the price and the bidder chips sharing the
+  last one — the filled chip *is* the seat holding that price.
+
 **Every seat in the bidding lights up amber** — in the money chart's column and
 tag, and on that seat's four run-pressure tiles. Pale for a seat that has been in
 front at some point on this lot, solid for whoever holds the offer right now.
