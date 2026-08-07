@@ -106,6 +106,12 @@ It is also pinned to **20% of the column** (`.band-live { flex: 0 0 20% }`)
 rather than sized to its content, which is how it had grown to a third of the
 screen answering a question you glance at. Three things follow from the pin:
 
+* the chart's bars are drawn as **percentages, not pixels** — the plot takes
+  whatever is left after the legend, the tags and your standing line, a height
+  the server cannot know and no longer needs to (`_LEDGER_H` is now `100.0`);
+* **what the room has spent moved into the band header**, next to the draft
+  label. One line about the whole draft is what a header is for, and in the body
+  it was thirty pixels off the chart;
 **The live board is light; the post-mortem report is dark.** That is deliberate:
 the board sits open beside Sleeper's own dark app for three hours, and looking
 nothing like it is how you never misread one for the other mid-auction. The two

@@ -30,6 +30,7 @@ from .live_render import (
     render_pool,
     render_pressure,
     render_rosters,
+    render_spend,
 )
 from .live_state import LeagueState, reconstruct
 from .seat_names import MAX_NAME, SeatNames
@@ -283,6 +284,10 @@ class DraftPoller:
             "seat_names": {
                 str(slot): seat_.name for slot, seat_ in state.seats.items()
             },
+            # In the band's header, not in the chart: one line summarising the
+            # whole draft is what a header is for, and the chart under it needs
+            # every pixel now that the band is a fixed share of the column.
+            "spend_html": render_spend(state),
             "ledger_html": render_ledger(
                 state, seat, self.seat_note, self.user or ""
             ),
@@ -327,6 +332,7 @@ class DraftPoller:
                 "draft_label": f"…{str(self.draft_id)[-6:]}",
                 "my_seat": None,
                 "seat_names": {},
+                "spend_html": "",
                 "ledger_html": "",
                 "nomination_html": '<div class="block idle">connecting…</div>',
                 "rosters_html": "",

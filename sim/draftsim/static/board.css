@@ -158,21 +158,26 @@
     display: inline-block; }
   .dot.stale { background: #c0392b; }
 
-  /* The money band. What the room has spent, and what every seat can still do
-     about it. This replaced a sentence of league constants -- teams, budget,
-     roster size -- that were settled before the draft opened; only the spend
-     figure in it ever moved, so it is the only one that stayed, and it is
-     drawn rather than written. */
-  .led { display: flex; flex-direction: column; gap: 5px; }
-  .ledtop { display: flex; align-items: baseline; gap: 6px; }
-  .ledbig { font-size: calc(15px * var(--fs)); font-weight: 700; color: #1a7f37;
+  /* What the room has spent, in the band's own header: one line about the whole
+     draft, which is what a header is for. It sat above the chart until the band
+     became a fixed share of the column, where it was thirty pixels the chart
+     needed more. The rail comes with it -- it is the same fact drawn, and five
+     pixels of it fit on a header row.
+
+     Pushed right, so it lands away from the connection state on the left and
+     the two never read as one sentence. */
+  .led { display: flex; flex-direction: column; gap: 4px; }
+  .spend { margin-left: auto; display: flex; align-items: baseline; gap: 5px;
+    flex: none; }
+  .ledbig { font-size: calc(12px * var(--fs)); font-weight: 700; color: #1a7f37;
     line-height: 1.1; font-variant-numeric: tabular-nums; }
-  .ledof { font-size: calc(10px * var(--fs)); color: #767676;
+  .ledof { font-size: calc(9px * var(--fs)); color: #767676;
     font-variant-numeric: tabular-nums; }
-  .ledpct { margin-left: auto; font-size: calc(9.5px * var(--fs));
+  .ledpct { font-size: calc(9px * var(--fs));
     color: #767676; font-variant-numeric: tabular-nums; }
   .ledpct b { color: #1a1a1a; font-weight: 700; }
-  .rail { height: 5px; border-radius: 3px; background: #eee; overflow: hidden; }
+  .rail { height: 5px; width: calc(70px * var(--fs)); border-radius: 3px;
+    background: #eee; overflow: hidden; align-self: center; flex: none; }
   .rail i { display: block; height: 100%; background: #1a7f37; }
 
   /* Twelve columns of max bid, ranked. `budget_left` would have been the
@@ -185,6 +190,12 @@
   .chhd { display: flex; align-items: baseline; gap: 8px;
     font-size: calc(8px * var(--fs)); color: #767676; font-weight: 700;
     text-transform: uppercase; letter-spacing: 0.04em; }
+  /* Your own standing, under the chart rather than beside the legend: in three
+     fifths of the band there is no row wide enough for both, and of the two
+     this is the sentence that gets read. */
+  .ch > .me { font-weight: 400; text-transform: none; letter-spacing: 0;
+    font-size: calc(9.5px * var(--fs)); color: #767676; }
+  .ch > .me b { color: #1a1a1a; }
   /* What the league calls your seat, next to what your account is called. Held
      back because it is the check, not the fact: you read the username to know
      the seat is yours and this to know the scan agreed. */
@@ -192,22 +203,28 @@
   /* No seat to mark. Amber rather than red: nothing is broken, the draft simply
      has not published an order to find you in -- which is every mock, and so
      every rehearsal. */
-  .chhd .me.unseated { color: #b26a00; }
+  .ch > .me.unseated { color: #b26a00; }
 
-  /* Heights are written inline by the server, which is the side that knows the
-     budget; `_LEDGER_H` there and this height are the same number. The dashed
-     line is your own ceiling, so every bar above it is a seat that can take a
-     player off you -- and it is left unlabelled because a tick sitting on the
-     plot collides with whichever column happens to be under it. */
-  .plot { position: relative; height: 84px; display: flex; align-items: flex-end;
-    gap: 4px; border-bottom: 1px solid #ddd; }
+  /* Heights are written inline by the server as percentages -- it knows the
+     budget, which is what a bar is a share of, and it no longer needs to know
+     the box, which is whatever this flex line is given. The dashed line is your
+     own ceiling, so every bar above it is a seat that can take a player off you
+     -- and it is left unlabelled because a tick sitting on the plot collides
+     with whichever column happens to be under it. */
+  .plot { position: relative; flex: 1; min-height: 24px; display: flex;
+    align-items: flex-end; gap: 4px; border-bottom: 1px solid #ddd; }
   .gl { position: absolute; left: 0; right: 0; border-top: 1px dashed #e4e4e4; }
   .col { flex: 1; min-width: 0; display: flex; flex-direction: column;
     justify-content: flex-end; align-items: center; height: 100%; }
   .col .amt { font-size: calc(9px * var(--fs)); font-weight: 700; color: #1a1a1a;
     line-height: 1.1; margin-bottom: 2px; font-variant-numeric: tabular-nums;
     white-space: nowrap; }
-  .col .bar { width: 100%; background: #1a7f37; border-radius: 2px 2px 0 0; }
+  /* The floor a seat that is out of the market still gets: at $3 the honest
+     height rounds to nothing, and nothing is not what $3 means. Here rather
+     than in the figure the server writes, because it is two pixels and pixels
+     are the one unit that side no longer speaks. */
+  .col .bar { width: 100%; min-height: 2px; background: #1a7f37;
+    border-radius: 2px 2px 0 0; }
   .col.broke .bar { background: #c0392b; }
   /* Your own column is tinted for its full height, not just coloured at the
      bar. Late in a draft your max bid is a few dollars and the bar is the 2px

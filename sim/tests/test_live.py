@@ -70,7 +70,9 @@ def test_a_poll_produces_a_renderable_snapshot(poller):
     # The subtitle is connection state now and nothing else; what the room has
     # spent moved into the ledger, where it is drawn.
     assert snap["subtitle"] == "complete"
-    assert "192</b> of 192" in snap["ledger_html"]
+    # How far in the draft is rides in the band header now -- one line about the
+    # whole draft, where the chart under it needs the height.
+    assert "192</b> of 192" in snap["spend_html"]
     # One card per seat, all from the same snapshot, so no two parts of the
     # page can show different moments of the draft.
     assert snap["rosters_html"].count("data-seat=") == 12
@@ -149,7 +151,7 @@ def test_replay_rewinds_a_finished_draft_to_mid_auction(poller):
     snap = poller.snapshot()
     # A rehearsal must never read as the live draft.
     assert snap["subtitle"] == "REPLAY at pick 60"
-    assert "60</b> of 192" in snap["ledger_html"]
+    assert "60</b> of 192" in snap["spend_html"]
 
 
 # -- the money band ----------------------------------------------------------
@@ -180,12 +182,26 @@ def test_the_ledger_draws_every_seat_and_names_only_three(poller):
     assert ledger.count('class="amt"') == 3
 
 
-def test_the_ledger_reports_what_the_room_has_spent(poller):
+def test_the_band_header_reports_what_the_room_has_spent(poller):
+    poller.refresh()
+    snap = poller.snapshot()
+    # The completed mock spends $2,344 of the $2,400 on the table.
+    assert "$2,344" in snap["spend_html"]
+    assert "of $2,400" in snap["spend_html"]
+    # And it is out of the chart's way: the band is a fixed share of the column
+    # now, so every line in it is competing with the plot for height.
+    assert "$2,344" not in snap["ledger_html"]
+
+
+def test_the_chart_is_drawn_in_shares_not_pixels(poller):
+    # The plot takes whatever the band has left after the labels and the tags,
+    # which is a height the server cannot know. A bar is a share of the budget,
+    # and a share is the same fact at any height the browser hands it.
+    poller.replay = 60
     poller.refresh()
     ledger = poller.snapshot()["ledger_html"]
-    # The completed mock spends $2,344 of the $2,400 on the table.
-    assert "$2,344" in ledger
-    assert "of $2,400 spent" in ledger
+    assert "px" not in ledger
+    assert ledger.count("%") >= 12
 
 
 def test_an_unseated_board_draws_no_line_and_marks_no_seat(poller):

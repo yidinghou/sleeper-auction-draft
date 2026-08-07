@@ -17,11 +17,16 @@
       <!-- The header names the draft it is reading. A finished mock and
            tonight's league draft are the same picture, so an id typed from the
            wrong tab is otherwise invisible. -->
+      <!-- What the room has spent rides in the header. It is one line about the
+           whole draft, which is what a header is for -- and in the body it was
+           taking thirty pixels off a chart that now has a fixed share of the
+           column to fit in. -->
       <div class="bandhd"><h2>Live draft board</h2>
         <span class="note" id="pulsewrap"><span class="dot" id="dot"></span>
           <span id="pulse">polling</span> ·
           <b id="draft">__DRAFT_ID__</b> ·
           <span id="sub">connecting…</span></span>
+        <span id="spend" class="spend"></span>
         <span id="warn" class="warn"></span></div>
       <!-- Two panels across, not two rows down. Both of these are wider than
            they need to be and the band was taller than it needed to be: the

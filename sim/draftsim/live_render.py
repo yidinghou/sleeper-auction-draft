@@ -466,13 +466,18 @@ def _row_header(row: int) -> str:
     )
 
 
-# The chart's box, in pixels, split between the plot and the room kept above it
-# for the three figures. A bar is drawn against the *budget*, not against the
-# tallest bar in the room: a seat that can still bid half of what it started
-# with should look like half whether or not someone else can bid all of it, and
-# a relative scale would have every bar grow as the room went broke.
-_LEDGER_H = 84
-_LEDGER_HEAD = 20
+# The chart's box, split between the plot and the room kept above it for the
+# three figures. A bar is drawn against the *budget*, not against the tallest bar
+# in the room: a seat that can still bid half of what it started with should look
+# like half whether or not someone else can bid all of it, and a relative scale
+# would have every bar grow as the room went broke.
+#
+# In percent, not pixels. The band is a fixed share of the column's height now,
+# so the plot is whatever is left after the labels and the tags -- a number the
+# server cannot know and does not need to: a bar that is 40% of its column is
+# 40% of the room's budget at any height the browser hands it.
+_LEDGER_H = 100.0
+_LEDGER_HEAD = 24.0
 
 
 def render_ledger(
@@ -506,8 +511,6 @@ def render_ledger(
     """
     config = state.config
     seats = sorted(state.seats.values(), key=lambda s: (-s.max_bid, s.slot))
-    spent = sum(seat.spent for seat in state.seats.values())
-    pool = config.budget * config.teams
     scale = _LEDGER_H - _LEDGER_HEAD
     # Before the first pick every seat holds the same $200 and the ranking is
     # entirely an artefact of the tie-break. Naming three of twelve identical
@@ -527,18 +530,19 @@ def render_ledger(
             if seat.max_bid <= _OUT_OF_MARKET
             else ""
         )
-        # A seat that is out of the market still gets a mark. At $3 the honest
-        # height rounds to nothing, and nothing is not what $3 means -- red and
-        # nearly flat is.
-        height = max(2.0, scale * seat.max_bid / config.budget)
+        # A seat that is out of the market still gets a mark -- at $3 the honest
+        # height rounds to nothing, and nothing is not what $3 means. The floor
+        # is `min-height` in the stylesheet rather than a number here: it is two
+        # pixels, and pixels are the one unit this function no longer speaks.
+        height = scale * seat.max_bid / config.budget
         figure = (
             f'<span class="amt">${seat.max_bid}</span>' if seat.slot in top3 else ""
         )
         cols.append(
-            f'<span class="col {state_cls}" title="S{seat.slot} &#xb7; spent '
-            f"${seat.spent} &#xb7; ${seat.budget_left} left &#xb7; max bid "
-            f'${seat.max_bid}">{figure}'
-            f'<span class="bar" style="height:{height:.1f}px"></span></span>'
+            f'<span class="col {state_cls}" title="{_esc(_seat_tip(seat))}'
+            f" &#xb7; spent ${seat.spent} &#xb7; ${seat.budget_left} left "
+            f'&#xb7; max bid ${seat.max_bid}">{figure}'
+            f'<span class="bar" style="height:{height:.1f}%"></span></span>'
         )
         # Twelve tags across the width of the band, so the name is cut to its
         # first word: enough to find your column, and the tooltip has the whole
@@ -575,7 +579,7 @@ def render_ledger(
         )
         gridline = (
             f'<span class="gl" style="top:'
-            f'{_LEDGER_H - scale * mine.max_bid / config.budget:.1f}px"></span>'
+            f'{_LEDGER_H - scale * mine.max_bid / config.budget:.1f}%"></span>'
         )
         legend = "dashed = your ${}".format(mine.max_bid)
     else:
@@ -583,22 +587,42 @@ def render_ledger(
         gridline = ""
         legend = "seat unknown"
 
-    pct = 100 * spent / pool if pool else 0
     return (
         '<div class="led">'
-        '<div class="ledtop">'
-        f'<span class="ledbig">${spent:,}</span>'
-        f'<span class="ledof">of ${pool:,} spent</span>'
-        f'<span class="ledpct">pick <b>{len(state.picks)}</b> of '
-        f"{config.teams * config.roster_size} · <b>{pct:.0f}%</b> of the pool "
-        "gone</span></div>"
-        f'<div class="rail"><i style="width:{pct:.1f}%"></i></div>'
         '<div class="ch">'
+        # This line is the panel's title as well as its legend. A separate
+        # heading over it would be a second row saying less, and in a band held
+        # to a fifth of the column every row is taken off the plot.
         f'<div class="chhd"><span>Buying power · max bid as % of '
-        f"${config.budget} · {legend}</span>{line}</div>"
+        f"${config.budget} · {legend}</span></div>"
         f'<div class="plot">{gridline}{"".join(cols)}</div>'
         f'<div class="chft">{"".join(tags)}</div>'
+        # Under the chart rather than beside the legend: in three fifths of the
+        # band there is no row wide enough to hold both, and of the two this is
+        # the sentence that is read.
+        f"{line}"
         "</div></div>"
+    )
+
+
+def render_spend(state: LeagueState) -> str:
+    """What the room has spent, for the band's own header.
+
+    One line summarising the whole draft, which is what a band header is for --
+    and it was costing the chart under it thirty pixels of height in a band that
+    is now a fixed share of the column. The rail rides along: it is the same
+    fact drawn, and three pixels of it fit on a header row.
+    """
+    config = state.config
+    spent = sum(seat.spent for seat in state.seats.values())
+    pool = config.budget * config.teams
+    pct = 100 * spent / pool if pool else 0
+    return (
+        f'<span class="ledbig">${spent:,}</span>'
+        f'<span class="ledof">of ${pool:,}</span>'
+        f'<span class="rail"><i style="width:{pct:.1f}%"></i></span>'
+        f'<span class="ledpct">pick <b>{len(state.picks)}</b> of '
+        f"{config.teams * config.roster_size} · <b>{pct:.0f}%</b> gone</span>"
     )
 
 

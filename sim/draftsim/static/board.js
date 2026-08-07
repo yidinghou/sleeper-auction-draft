@@ -659,6 +659,7 @@ async function tick() {
     if (menuSeat === null) seatNames = s.seat_names || {};
     document.getElementById("sub").textContent = s.subtitle;
     document.getElementById("draft").textContent = s.draft_label || "";
+    document.getElementById("spend").innerHTML = s.spend_html || "";
     document.getElementById("ledger").innerHTML = s.ledger_html;
     document.getElementById("block").innerHTML = s.nomination_html;
     // Everything else refreshes; the cards hold still until the drag lands, so

@@ -221,6 +221,20 @@ def test_the_live_band_is_two_panels_across():
     assert '<div id="ledger"></div>' in page
 
 
+def test_the_live_band_is_a_fifth_of_the_column_and_stays_there():
+    # A share, not "whatever the content wants". Content-sized it grew to a
+    # third of the screen answering a question you glance at -- so the band is
+    # pinned and the one thing in it that can scale, the chart, takes what is
+    # left. Which is why the bars are drawn in percentages: the server cannot
+    # know the height and no longer needs to.
+    page = render_page("123")
+    assert ".band-live { flex: 0 0 20%" in page
+    assert ".plot { position: relative; flex: 1" in page
+    # The spend line moved out to the header to buy that height back.
+    assert 'id="spend"' in page
+    assert "s.spend_html" in page
+
+
 def test_collapse_is_remembered_and_reapplied_after_every_swap():
     page = render_page("123")
     assert "draftsim.collapsed" in page
