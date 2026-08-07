@@ -204,6 +204,23 @@ def test_the_column_is_three_bands_and_the_chrome_is_in_the_shell():
     assert ".band > .bandhd { cursor: pointer" in page
 
 
+def test_the_live_band_is_two_panels_across():
+    # Both halves were wider than they needed to be and the band was taller than
+    # it needed to be. Side by side it costs the height of the taller one, and
+    # the bands under it grow into the difference.
+    page = render_page("123")
+    assert 'class="bandbody live2"' in page
+    assert ".band-live > .bandbody.live2 { flex-direction: row" in page
+    # The bid is the left two fifths, the chart the right three.
+    assert page.index('id="block"') < page.index('id="ledger"')
+    assert ".bidpane { flex: 2 1 0; }" in page
+    assert ".moneypane { flex: 3 1 0; }" in page
+    # Still the two swap targets, and still empty in the shell: the panel titles
+    # are chrome and stay put, the fragments inside them are replaced.
+    assert '<div id="block"></div>' in page
+    assert '<div id="ledger"></div>' in page
+
+
 def test_collapse_is_remembered_and_reapplied_after_every_swap():
     page = render_page("123")
     assert "draftsim.collapsed" in page

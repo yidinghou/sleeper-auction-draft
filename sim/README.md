@@ -95,6 +95,17 @@ full-screen overlay with the bye/points columns revealed; it is a CSS toggle
 over the same markup, so opening it costs no fetch and can never show a
 different moment of the draft than the compact view.
 
+### The live band: two panels, and who is bidding
+
+The top band runs **across**, not down — **on the block** on the left two fifths,
+**buying power** on the right three. Both halves used to take the column's full
+~930px for a name and a price on one and twelve columns on the other, and the
+band was as tall as the two of them stacked.
+
+It is also pinned to **20% of the column** (`.band-live { flex: 0 0 20% }`)
+rather than sized to its content, which is how it had grown to a third of the
+screen answering a question you glance at. Three things follow from the pin:
+
 **The live board is light; the post-mortem report is dark.** That is deliberate:
 the board sits open beside Sleeper's own dark app for three hours, and looking
 nothing like it is how you never misread one for the other mid-auction. The two

@@ -23,9 +23,28 @@
           <b id="draft">__DRAFT_ID__</b> ·
           <span id="sub">connecting…</span></span>
         <span id="warn" class="warn"></span></div>
-      <div class="bandbody">
-        <div id="ledger"></div>
-        <div id="block"></div>
+      <!-- Two panels across, not two rows down. Both of these are wider than
+           they need to be and the band was taller than it needed to be: the
+           chart is twelve columns and the block is a name and a price, and
+           each was given the whole ~930px. Side by side the band costs the
+           height of the taller one instead of the sum, and the run pressure
+           and pool/log bands below grow into what it gives back.
+
+           The panel titles live out here with the rest of the chrome -- the
+           two divs inside them are replaced every two seconds. -->
+      <div class="bandbody live2">
+        <section class="lpane bidpane">
+          <h3>On the block</h3>
+          <div id="block"></div>
+        </section>
+        <!-- No title of its own: the chart's legend line is already in that
+             position and in that type, and in a band pinned to a fifth of the
+             column a second line saying "Buying power" costs the plot under it
+             a fifth of its height. So the legend carries the name, as it did
+             before this band had two halves. -->
+        <section class="lpane moneypane">
+          <div id="ledger"></div>
+        </section>
       </div>
     </section>
 

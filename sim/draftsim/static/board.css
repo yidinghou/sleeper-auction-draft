@@ -52,7 +52,37 @@
      under them, and worse: folding a band below handed this one a third of the
      freed height, which pushed the header you had just double-clicked a hundred
      pixels down the screen. Content-sized, it never moves and never takes. */
-  .band-live { flex: 0 0 auto; }
+  /* A fixed fifth of the column, not "whatever the content wants". It used to be
+     content-sized on the argument that the things in it were fixed, and they
+     were -- but three of them stacked, and the band grew to a third of the
+     screen answering a question you glance at. A share instead, and the one
+     thing in it that can scale (the chart) takes what is left after the labels.
+     Folding still wins: `.band.collapsed` is two classes to this one's one. */
+  .band-live { flex: 0 0 20%; min-height: 0; }
+  /* Band 1 runs across rather than down. Two fifths for the bid and three for
+     the chart: the bid panel holds a name, a price and a row of chips, and the
+     chart holds twelve columns and twelve tags -- so the chart gets the wider
+     half and the panel that changes every few seconds is the one you reach
+     first, reading left to right. */
+  .band-live > .bandbody.live2 { flex-direction: row; align-items: stretch;
+    gap: 8px; }
+  .lpane { display: flex; flex-direction: column; gap: 4px; min-width: 0;
+    min-height: 0; }
+  .bidpane { flex: 2 1 0; }
+  .moneypane { flex: 3 1 0; }
+  /* The chart is the one thing on this band that can be any height, so it is
+     the one that absorbs the difference: the labels, the tags and your standing
+     line take what they need and the plot gets the rest. Which is why the bar
+     heights arrive as percentages -- see `_LEDGER_H`. */
+  .led, .ch { flex: 1; min-height: 0; }
+  /* The same type the chart's own legend uses -- these are labels on two halves
+     of one band, not headings over two sections. */
+  .lpane h3 { margin: 0; font-size: calc(8px * var(--fs)); color: #767676;
+    font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+  /* The swap targets themselves. A column, so the fragment inside can claim the
+     pane's height rather than sizing to its own content and leaving the chart
+     to draw itself in whatever it happened to need. */
+  .lpane > div { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .band-runs { flex: 2 1 0; }
   /* A wrapper, not a section: the pool and the log carry their own headers and
      their own frames, and a box around the pair would only double every line. */
