@@ -55,6 +55,10 @@ class Seat:
     open_slots: int
     needs: Dict[str, int]
     max_bid: int
+    name: str = ""
+    """Who is sitting here, if anyone can say. Defaulted and filled in by the
+    poller after the fact: a name is not derivable from the pick feed, and
+    reconstruction must stay a pure function of the picks."""
 
     @property
     def filled(self) -> int:

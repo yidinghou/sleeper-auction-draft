@@ -138,9 +138,10 @@
   .chhd { display: flex; align-items: baseline; gap: 8px;
     font-size: calc(8px * var(--fs)); color: #767676; font-weight: 700;
     text-transform: uppercase; letter-spacing: 0.04em; }
-  .chhd .me { margin-left: auto; font-weight: 400; text-transform: none;
-    letter-spacing: 0; font-size: calc(9.5px * var(--fs)); }
-  .chhd .me b { color: #1a1a1a; }
+  /* What the league calls your seat, next to what your account is called. Held
+     back because it is the check, not the fact: you read the username to know
+     the seat is yours and this to know the scan agreed. */
+  .ch > .me .asnm { color: #767676; }
   /* No seat to mark. Amber rather than red: nothing is broken, the draft simply
      has not published an order to find you in -- which is every mock, and so
      every rehearsal. */
@@ -169,9 +170,13 @@
   .col.me { background: #f2f2f2; border-radius: 2px 2px 0 0; }
   .col.me .bar { background: #1a1a1a; }
   .chft { display: flex; gap: 4px; }
+  /* Twelve tags under twelve columns, so each is a twelfth of the band whatever
+     is in it: the tag has to stay under its own bar, which means it clips rather
+     than widening the column it labels. The full name is in the bar's tooltip. */
   .chft span { flex: 1; min-width: 0; text-align: center;
     font-size: calc(8.5px * var(--fs)); color: #949494;
-    font-variant-numeric: tabular-nums; }
+    font-variant-numeric: tabular-nums; overflow: hidden; white-space: nowrap;
+    text-overflow: ellipsis; }
   .chft span.me { color: #1a1a1a; font-weight: 700; }
   .chft span.broke { color: #c0392b; }
 
@@ -234,6 +239,33 @@
     font-size: calc(9px * var(--fs)); }
   .card header .top { display: flex; align-items: baseline; gap: 5px; }
   .team { font-weight: 700; font-size: calc(11px * var(--fs)); color: #444; }
+  /* A named seat leads with the manager and keeps the slot beside it, small and
+     grey: the number is what this card and Sleeper's own board have in common,
+     and the board can be dragged out of seat order. A name is typed or comes
+     from a league, so it can be long -- it gets the room the segment does not
+     need, and clips rather than pushing LINEUP/BN/NEED off the card. */
+  .card header .top.named { gap: 4px; }
+  .card header .top.named .team, .teamf { min-width: 0; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; color: #1a1a1a; }
+  /* Smaller than the "S5" it replaces, because it is longer than "S5" and the
+     row it shares with the segment is 30-odd pixels wide. A name at 11px reads
+     four characters there; at 9px it reads seven, which is a first name. */
+  .card header .top.named .team { font-size: calc(9px * var(--fs)); }
+  /* Compact shows the name cut to its first word, maximized the whole of it.
+     Both are in the markup so the swap is free -- the same bargain the player
+     rows make. The segment beside it takes two thirds of this row on the
+     compact board, and that is the room there is. */
+  .teamf { display: none; font-weight: 700;
+    font-size: calc(11px * var(--fs)); }
+  .slot { flex: none; font-size: calc(8px * var(--fs)); color: #999;
+    font-weight: 700; }
+  /* Your own card, once it has a name, says so with the slot badge rather than
+     with " (you)". The words fit beside "S5" and do not fit beside a name --
+     they pushed the name itself into an ellipsis, which is the one thing on the
+     card that must not be guessed at. The heavy border says the same thing and
+     was always the louder half of the mark. */
+  .card.me .top.named .team::after { content: none; }
+  .card.me .slot { color: #1a1a1a; }
 
   /* The header is money and nothing else. Balance in the biggest type on the
      card, the reach beside it, and a bar of both -- everything else a seat
@@ -640,7 +672,8 @@
   .tile { border: 1px solid #eee; border-radius: 3px; padding: 1px 3px 2px;
     min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .ttop { display: flex; align-items: baseline; gap: 2px; min-width: 0; }
-  .ttop b { font-size: calc(8px * var(--fs)); font-weight: 700; color: #444; }
+  .ttop b { font-size: calc(8px * var(--fs)); font-weight: 700; color: #444;
+    min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: clip; }
   .ttop i { font-style: normal; margin-left: auto; font-size: calc(8px * var(--fs));
     color: #1a7f37; font-weight: 700; font-variant-numeric: tabular-nums; }
   .tile .pips { gap: 1px; }
@@ -924,6 +957,16 @@
     calc(22px * var(--fs)) calc(18px * var(--fs)) calc(28px * var(--fs))
     minmax(0, 1fr) calc(20px * var(--fs)) calc(14px * var(--fs))
     calc(22px * var(--fs)) calc(22px * var(--fs)) calc(26px * var(--fs)); }
+  /* Once any seat has a name the buyer column carries "S5 · Marc" and needs
+     more than the two characters a slot number takes -- but only then, or every
+     mock would run a third of an inch of white space down the log. The width
+     comes out of the player's name, which has ~400px to give. It clips rather
+     than wrapping: which seat bought a player is read by running down this
+     column, and a row taller than its neighbours breaks that scan. */
+  .loglist.named .lrow { grid-template-columns:
+    calc(22px * var(--fs)) calc(46px * var(--fs)) calc(28px * var(--fs))
+    minmax(0, 1fr) calc(20px * var(--fs)) calc(14px * var(--fs))
+    calc(22px * var(--fs)) calc(22px * var(--fs)) calc(26px * var(--fs)); }
   .prow:not(:last-child), .lrow:not(:last-child) { border-bottom: 1px solid #f7f7f7; }
   .prow b, .lrow b { font-weight: 400; min-width: 0; overflow: hidden;
     white-space: nowrap; text-overflow: ellipsis; }
@@ -940,7 +983,8 @@
   .prow .pby, .lrow .lby { color: #949494; }
   .prow .ppr { color: #1a7f37; font-weight: 700; }
   .lrow .lno { text-align: left; color: #777; }
-  .lrow .lst { text-align: left; color: #888; font-weight: 700; }
+  .lrow .lst { text-align: left; color: #888; font-weight: 700; min-width: 0;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
   .lrow .lpr { color: #1a1a1a; font-weight: 700; }
   /* Over and under are a status pair, so they carry a sign as well as a hue --
      the percentage is legible without the colour and vice versa. */
@@ -985,6 +1029,8 @@
   body.maxed .menubar { padding-right: 30px; }
   body.maxed .card { padding: 6px 8px; }
   body.maxed .team { font-size: calc(12px * var(--fs)); }
+  body.maxed .top.named .team { display: none; }
+  body.maxed .teamf { display: block; font-size: calc(12px * var(--fs)); }
   body.maxed .big { font-size: calc(15px * var(--fs)); }
   body.maxed .max { font-size: calc(10px * var(--fs)); }
   body.maxed .seg button { font-size: calc(8.5px * var(--fs)); }

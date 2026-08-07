@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from draftsim import live as live_mod
+from draftsim import seat_names as names_mod
 from draftsim.live import DraftPoller
 from draftsim.sleeper import SleeperError
 
@@ -22,8 +23,14 @@ def _load(name: str):
 
 
 @pytest.fixture
-def poller(monkeypatch):
-    """A poller wired to the recorded mock draft instead of the network."""
+def poller(monkeypatch, tmp_path):
+    """A poller wired to the recorded mock draft instead of the network.
+
+    Seat-name overrides are pointed at a temp directory: they are the one thing
+    the board writes to disk, and a test suite that named seats in the repo's
+    own `data/` would leave them there for the next real draft.
+    """
+    monkeypatch.setattr(names_mod, "NAMES_DIR", tmp_path)
     calls = {"draft": 0, "picks": 0}
     state = {"draft": _load("draft-mock"), "picks": _load("picks-mock")}
 

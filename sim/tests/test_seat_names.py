@@ -7,11 +7,38 @@ it drew before either existed.
 """
 
 import json
+from pathlib import Path
 
 import pytest
 
+from draftsim import live as live_mod
+from draftsim import seat_names as names_mod
+from draftsim.live import DraftPoller
 from draftsim.seat_names import MAX_NAME, SeatNames, clean_name
-from draftsim.sleeper import seat_names, slot_for_user_map
+from draftsim.sleeper import SleeperError, seat_names, slot_for_user_map
+
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def _load(name: str):
+    return json.loads((FIXTURES / f"{name}.json").read_text())
+
+
+@pytest.fixture
+def poller(monkeypatch, tmp_path):
+    """The same poller `test_live` builds, on the recorded mock feed.
+
+    Overrides are pointed at a temp directory: they are the one thing the board
+    writes to disk, and a suite that named seats in the repo's own `data/` would
+    leave them there for the next real draft.
+    """
+    monkeypatch.setattr(names_mod, "NAMES_DIR", tmp_path)
+    state = {"draft": _load("draft-mock"), "picks": _load("picks-mock")}
+    monkeypatch.setattr(live_mod, "fetch_draft", lambda _: state["draft"])
+    monkeypatch.setattr(live_mod, "fetch_picks", lambda _: state["picks"])
+    p = DraftPoller("mock-id", None, interval=0.01)
+    p.feed = state
+    return p
 
 
 def _users(*pairs):
@@ -120,3 +147,152 @@ def test_a_name_is_cleaned_before_it_is_stored_or_drawn():
     assert clean_name("a" * 80) == "a" * MAX_NAME
     assert clean_name("") == ""
     assert clean_name(None) == ""
+
+
+# -- the board, named and unnamed ---------------------------------------------
+
+
+def test_the_mock_board_still_reads_in_seat_numbers(poller):
+    # No league on a mock, so nothing is named -- and every seat has to keep the
+    # label it had before any of this existed. This is the rehearsal path.
+    poller.refresh()
+    snap = poller.snapshot()
+    assert snap["rosters_html"].count(">S1<") >= 1
+    assert ">S12<" in snap["rosters_html"]
+    assert ">S12<" in snap["ledger_html"]
+    assert snap["seat_names"] == {str(n): "" for n in range(1, 13)}
+
+
+def test_a_named_seat_keeps_its_number_on_the_card(poller):
+    # The number is what this card and Sleeper's own board have in common, and
+    # this one can be dragged out of seat order. Losing it costs the card the
+    # only thing it can be checked against.
+    poller.names.set_scanned({5: "Bagel Boys"})
+    poller.refresh()
+    cards = poller.snapshot()["rosters_html"]
+    assert ">Bagel Boys<" in cards
+    assert '<span class="slot">S5</span>' in cards
+
+
+def test_a_name_reaches_every_place_a_seat_is_drawn(poller):
+    poller.names.set_scanned({5: "Bagel Boys"})
+    poller.replay = 60
+    poller.refresh()
+    snap = poller.snapshot()
+    # The card, the ledger's tags, the run-pressure tiles and the log's buyer
+    # column: one seat, one name, wherever it is read.
+    assert ">Bagel Boys<" in snap["rosters_html"]
+    assert ">Bagel<" in snap["ledger_html"]
+    assert ">Bagel<" in snap["pressure_html"]
+    assert "S5 · Bagel" in snap["log_html"]
+    # And the tooltip carries both halves, everywhere.
+    assert "Bagel Boys · S5" in snap["ledger_html"]
+    assert "Bagel Boys · S5" in snap["pressure_html"]
+
+
+def test_a_name_is_escaped_into_every_fragment(poller):
+    poller.names.set_override(5, "Marc & <b>Co</b>")
+    poller.replay = 60
+    poller.refresh()
+    snap = poller.snapshot()
+    for html in (snap["rosters_html"], snap["ledger_html"], snap["log_html"]):
+        assert "<b>Co</b>" not in html
+    # Cleaned on the way in, then escaped on the way out -- both, because either
+    # alone is one missed path away from injecting markup into every fragment.
+    assert poller.names.label(5) == "Marc & bCo/b"
+    assert "Marc &amp; bCo/b" in snap["rosters_html"]
+
+
+def test_the_ledger_names_your_seat_as_well_as_your_account(poller):
+    poller.feed["draft"] = dict(poller.feed["draft"], draft_order={"u-123": 7})
+    poller.user = "yidinghou"
+    poller._user_tried = True
+    poller._user_id = "u-123"
+    poller.names.set_scanned({7: "Bagel Boys"})
+    poller.refresh()
+    ledger = poller.snapshot()["ledger_html"]
+    # Both halves of the lookup are checkable: the username says the seat is
+    # yours, the team name says the scan put the right name on it.
+    assert "<b>yidinghou</b> · <b>S7</b>" in ledger
+    assert "Bagel Boys" in ledger
+
+
+# -- scanning, and when -------------------------------------------------------
+
+
+@pytest.fixture
+def league(poller, monkeypatch):
+    """The mock feed, promoted to a real league with three named seats."""
+    calls = {"users": 0, "rosters": 0}
+    roll = _users(
+        ("u-1", "yidinghou", "Bagel Boys"), ("u-2", "marc", ""), ("u-3", "dan", "Dan")
+    )
+
+    def fake_users(league_id):
+        calls["users"] += 1
+        return roll
+
+    def fake_rosters(league_id):
+        calls["rosters"] += 1
+        return []
+
+    monkeypatch.setattr(live_mod, "fetch_league_users", fake_users)
+    monkeypatch.setattr(live_mod, "fetch_league_rosters", fake_rosters)
+    poller.feed["draft"] = dict(
+        poller.feed["draft"],
+        league_id="L1",
+        draft_order={"u-1": 1, "u-2": 2, "u-3": 3},
+    )
+    poller.roll = roll
+    poller.name_calls = calls
+    return poller
+
+
+def test_a_real_league_names_its_seats_without_being_asked(league):
+    league.refresh()
+    assert league.names.scanned == {1: "Bagel Boys", 2: "marc", 3: "Dan"}
+    assert ">Bagel Boys<" in league.snapshot()["rosters_html"]
+
+
+def test_the_league_is_read_once_per_ttl_not_once_per_poll(league):
+    # The draft feed is polled every three seconds; team names change about
+    # twice a season. Scanning on every tick would double the request rate for
+    # an answer that does not move.
+    for _ in range(5):
+        league.refresh()
+    assert league.name_calls["users"] == 1
+    assert league.name_calls["rosters"] == 0  # draft_order answered it alone
+
+    league.rescan_names()
+    league.refresh()
+    assert league.name_calls["users"] == 2
+
+
+def test_a_rename_on_sleeper_redraws_a_board_nobody_has_bid_on(league):
+    # The trap this exists for: `refresh` skips the rebuild when the draft has
+    # not moved, and between nominations that is every tick for minutes. A name
+    # that changed would sit invisible until somebody bid.
+    league.refresh()
+    league.roll[1]["metadata"] = {"team_name": "Marc's Team"}
+    league._names_at = None  # the TTL has expired
+    league.refresh()
+    # Escaped on the way out: a name from the API gets the same treatment as one
+    # typed into the box, and half the teams in a league have an apostrophe.
+    assert ">Marc&#x27;s Team<" in league.snapshot()["rosters_html"]
+
+
+def test_a_failed_scan_keeps_the_last_good_names_and_says_so(league, monkeypatch):
+    league.refresh()
+    monkeypatch.setattr(
+        live_mod,
+        "fetch_league_users",
+        lambda _: (_ for _ in ()).throw(SleeperError("league unreachable")),
+    )
+    league._names_at = None
+    league.refresh()
+    snap = league.snapshot()
+    # Never fatal: the names are a courtesy on top of a board that worked
+    # without them, and a bad minute at the league endpoint must not cost you
+    # the auction.
+    assert ">Bagel Boys<" in snap["rosters_html"]
+    assert "league unreachable" in snap["warning"]

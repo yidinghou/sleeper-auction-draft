@@ -20,7 +20,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from .live_render import (
     render_ledger,
@@ -32,15 +32,19 @@ from .live_render import (
     render_rosters,
 )
 from .live_state import LeagueState, reconstruct
+from .seat_names import MAX_NAME, SeatNames
 from .sleeper import (
     SleeperError,
     config_from_draft,
     draft_pulse,
     fetch_draft,
+    fetch_league_rosters,
+    fetch_league_users,
     fetch_picks,
     fetch_user,
     parse_nomination,
     seat_for_user,
+    seat_names,
 )
 from .valuation import Player, by_sleeper_id, load_players
 
@@ -50,6 +54,10 @@ DEFAULT_INTERVAL = 3.0
 # help the night it was left off -- the board came up anonymous and looked
 # exactly like a bug. `--user someone-else` overrides it; `--user ""` opts out.
 DEFAULT_USER = "yidinghou"
+# How long a scanned set of names is trusted. Team names change about twice a
+# season, and the draft feed is polled every three seconds -- so this is slow on
+# purpose, and the right-click menu has a rescan for the one time it matters.
+NAME_TTL = 300.0
 
 
 class DraftPoller:
@@ -80,6 +88,12 @@ class DraftPoller:
         self._user_id: Optional[str] = None
         self._user_tried = False
         self.seat_note = ""
+        # Who everyone else is. Scanned names are refreshed on a slow timer of
+        # their own -- they answer to the league, not to the pick feed, and
+        # nothing about a pick landing makes them any staler.
+        self.names = SeatNames(draft_id)
+        self._names_at: Optional[float] = None
+        self.names_note = ""
         self.pool = load_players(csv_path)
         # The wider sheet identifies picks the draftable pool excludes; see
         # live_state.reconstruct.
@@ -123,12 +137,75 @@ class DraftPoller:
             self.seat_note = ""
         return seat
 
+    def scan_names(self, draft: Dict[str, Any]) -> None:
+        """Refresh the scanned seat names, at most once every `NAME_TTL`.
+
+        Never fatal, for the same reason `my_seat` isn't: the names are a
+        courtesy on top of a board that worked without them, and a league
+        endpoint having a bad minute must not cost you the auction. A failure
+        keeps the last good map and leaves a note.
+
+        A mock has no `league_id`, so there is nothing to scan and no error
+        either -- that is the normal case for every rehearsal, and the seats
+        keep whatever was typed by hand.
+        """
+        league_id = draft.get("league_id")
+        if not league_id:
+            # Silent, not a warning. Every mock is in this state, the seats
+            # simply keep their numbers, and a red line saying so on every
+            # rehearsal would train you to stop reading the warning row.
+            return
+        # `rescan_names` expires the cache rather than passing a flag down here:
+        # the rescan is asked for by a request handler and answered by the poll
+        # thread, so it has to be a piece of state and not an argument.
+        fresh = (
+            self._names_at is not None
+            and time.monotonic() - self._names_at < NAME_TTL
+        )
+        if fresh:
+            return
+        before = (self.names.labels(), self.names_note)
+        try:
+            users = fetch_league_users(str(league_id))
+            # Only worth a second request when the draft cannot place people on
+            # its own; `slot_for_user_map` prefers `draft_order` and would
+            # ignore these.
+            rosters = (
+                None
+                if draft.get("draft_order")
+                else fetch_league_rosters(str(league_id))
+            )
+            self.names.set_scanned(seat_names(draft, users, rosters))
+            self._names_at = time.monotonic()
+            self.names_note = ""
+        except SleeperError as exc:
+            self.names_note = f"seat names not refreshed: {exc}"
+        if (self.names.labels(), self.names_note) != before:
+            # A rename on Sleeper -- or a scan that started failing -- has to be
+            # able to redraw the board on its own. Between nominations the pulse
+            # does not move for minutes at a time, and both the new name and the
+            # warning about the old one would wait for somebody to bid.
+            with self._lock:
+                self._pulse = None
+
+    def rescan_names(self) -> None:
+        """Force the next poll to re-read the league. Same trick as above: the
+        board has to be allowed to redraw even though no pick has landed."""
+        self._names_at = None
+        with self._lock:
+            self._pulse = None
+
     def refresh(self) -> None:
         """Fetch once and replace the snapshot. Errors are recorded, not raised:
         a blip must not kill the poll thread and leave the board frozen with no
         explanation."""
         try:
             draft = fetch_draft(self.draft_id)
+            # Before the pulse check, and a no-op until its own TTL expires: the
+            # names answer to the league rather than to the pick feed, and an
+            # idle room between nominations is exactly where a board that only
+            # rescanned on a pick would never rescan at all.
+            self.scan_names(draft)
             pulse = draft_pulse(draft)
             with self._lock:
                 unchanged = pulse == self._pulse and self._snapshot is not None
@@ -148,6 +225,8 @@ class DraftPoller:
                 picks = picks[: self.replay]
             state = reconstruct(picks, config, self.pool, catalog=self.catalog)
             nom = parse_nomination(draft)
+            for slot, seat in state.seats.items():
+                seat.name = self.names.label(slot)
             nominee = by_sleeper_id(self.catalog).get(nom.player_id or "")
             snapshot = self._build(draft, state, nom, nominee)
             with self._lock:
@@ -169,7 +248,7 @@ class DraftPoller:
             f"{len(state.unknown_player_ids)} picks not in the projections CSV — "
             "re-run npm run export:projections"
             if state.unknown_player_ids
-            else ""
+            else self.names_note
         )
         seat = self.my_seat(draft)
         # Which draft this actually is. A finished mock and tonight's league
@@ -185,6 +264,12 @@ class DraftPoller:
             "subtitle": status,
             "draft_label": f"{name} · …{str(self.draft_id)[-6:]}",
             "my_seat": seat,
+            # Not for drawing -- every fragment already carries its own names.
+            # This is what the rename box is prefilled from, so editing a name
+            # starts from the one on screen rather than from an empty field.
+            "seat_names": {
+                str(slot): seat_.name for slot, seat_ in state.seats.items()
+            },
             "ledger_html": render_ledger(
                 state, seat, self.seat_note, self.user or ""
             ),
@@ -228,6 +313,7 @@ class DraftPoller:
                 "subtitle": error or "waiting for the first poll…",
                 "draft_label": f"…{str(self.draft_id)[-6:]}",
                 "my_seat": None,
+                "seat_names": {},
                 "ledger_html": "",
                 "nomination_html": '<div class="block idle">connecting…</div>',
                 "rosters_html": "",

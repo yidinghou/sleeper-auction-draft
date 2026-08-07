@@ -82,6 +82,41 @@ def _ordinal(n: int) -> str:
     return f"{n}{suffix}"
 
 
+# How much of a manager's name survives where twelve of them sit side by side --
+# the ledger's footer tags and the run-pressure tiles. First word only, because a
+# team name's first word is the part that is theirs, and clipped because twelve
+# of anything longer is a wall.
+_TAG_CHARS = 8
+
+
+def _seat_label(seat: Seat) -> str:
+    """What to call a seat: the manager, or the slot number if nobody knows.
+
+    Escaped here rather than at every call site -- a name is the one string on
+    this board that came from a text box and from Sleeper, and it is drawn in
+    seven places.
+    """
+    return _esc(seat.name) if seat.name else f"S{seat.slot}"
+
+
+def _seat_tag(seat: Seat) -> str:
+    """The same, for the places twelve seats sit shoulder to shoulder."""
+    if not seat.name:
+        return f"S{seat.slot}"
+    first = seat.name.split()[0] if seat.name.split() else seat.name
+    return _esc(first[:_TAG_CHARS])
+
+
+def _seat_tip(seat: Seat) -> str:
+    """Unescaped "Marc · S5", for tooltips.
+
+    The slot rides along in every tooltip even where the label is a name: the
+    board is dragged out of seat order and read next to Sleeper's own, and the
+    number is what the two have in common. Callers escape.
+    """
+    return f"{seat.name} · S{seat.slot}" if seat.name else f"S{seat.slot}"
+
+
 def _short_name(player: Player) -> str:
     """First initial + surname, for the compact view.
 
@@ -291,9 +326,29 @@ def _card_header(state: LeagueState, seat: Seat) -> str:
     budget = state.config.budget
     held = max(0, seat.open_slots - 1)
     spendable = max(0, seat.budget_left - held)
+    # The name leads and the slot stays beside it, small. Dropping the number
+    # would cost the card the one thing it can be checked against -- Sleeper's
+    # own board is numbered, this one can be dragged out of order, and "S5" is
+    # what the two have in common. Unnamed, the number is the whole label rather
+    # than a badge next to a blank.
+    #
+    # Short and full both ship, and CSS shows one: the segmented control takes
+    # two thirds of this row on the compact board, so a name gets about four
+    # characters there and the whole of it maximized. The same bargain the
+    # player rows make a few lines down, and for the same reason -- the swap is
+    # free, and a fetch to widen a card would not be.
+    if seat.name:
+        who = (
+            f'<span class="team">{_seat_tag(seat)}</span>'
+            f'<span class="teamf">{_esc(seat.name)}</span>'
+            f'<span class="slot">S{seat.slot}</span>'
+        )
+    else:
+        who = f'<span class="team">S{seat.slot}</span>'
     return (
         '<header>'
-        f'<div class="top"><span class="team">S{seat.slot}</span>'
+        f'<div class="top{" named" if seat.name else ""}"'
+        f' title="{_esc(_seat_tip(seat))} · right-click to rename">{who}'
         '<span class="seg">'
         '<button data-pane="lineup" type="button">LINEUP</button>'
         '<button data-pane="bench" type="button">BN</button>'
@@ -485,7 +540,12 @@ def render_ledger(
             f'${seat.max_bid}">{figure}'
             f'<span class="bar" style="height:{height:.1f}px"></span></span>'
         )
-        tags.append(f'<span class="{state_cls}">S{seat.slot}</span>')
+        # Twelve tags across the width of the band, so the name is cut to its
+        # first word: enough to find your column, and the tooltip has the whole
+        # of it next to the seat number. No tooltip on an unnamed seat -- one
+        # that repeats the two characters already on screen is noise.
+        tip = f' title="{_esc(_seat_tip(seat))}"' if seat.name else ""
+        tags.append(f'<span class="{state_cls}"{tip}>{_seat_tag(seat)}</span>')
 
     if mine is not None:
         # The account is named, not just the seat. A username resolves through
@@ -493,6 +553,15 @@ def render_ledger(
         # wrong account the board would mark a seat that is not yours and say
         # nothing -- "S5" is not checkable, "yidinghou · S5" is.
         who = f"<b>{_esc(user)}</b> · " if user else "You are "
+        # The account named the seat; this says what the *league* calls it. Both,
+        # because they check different halves of the same lookup -- the username
+        # proves the seat is yours, and the team name proves the scan put the
+        # right name on it. Silent when they are the same word.
+        as_named = (
+            f' · <span class="asnm">{_esc(mine.name)}</span>'
+            if mine.name and mine.name != user
+            else ""
+        )
         # A place in the room only means something once the room has spread out.
         standing = (
             "level with the room"
@@ -500,8 +569,9 @@ def render_ledger(
             else f"{_ordinal(seats.index(mine) + 1)} of {len(seats)}"
         )
         line = (
-            f'<span class="me">{who}<b>S{mine.slot}</b> — ${mine.budget_left} '
-            f"left, max bid <b>${mine.max_bid}</b> ({standing})</span>"
+            f'<span class="me">{who}<b>S{mine.slot}</b>{as_named} — '
+            f"${mine.budget_left} left, max bid <b>${mine.max_bid}</b> "
+            f"({standing})</span>"
         )
         gridline = (
             f'<span class="gl" style="top:'
@@ -586,13 +656,15 @@ def _seat_tile(seat: Seat, line: PositionLine, color: str) -> str:
         else _pips(line.have, line.want, color, cap=True)
     )
     tip = (
-        f"S{seat.slot} — {line.have}/{_num(line.want)} {line.pos} · "
+        f"{_seat_tip(seat)} — {line.have}/{_num(line.want)} {line.pos} · "
         + ("full" if not line.need else f"{_num(line.need)} to go")
         + f" · ${seat.budget_left} left, max ${seat.max_bid}"
     )
     return (
-        f'<span class="tile{done}" data-seat="{seat.slot}" title="{_esc(tip)}">'
-        f'<span class="ttop"><b>S{seat.slot}</b><i>${seat.budget_left}</i></span>'
+        f'<span class="tile{done}" data-seat="{seat.slot}"'
+        f' title="{_esc(tip)}">'
+        f'<span class="ttop"><b>{_seat_tag(seat)}</b>'
+        f"<i>${seat.budget_left}</i></span>"
         f"{body}</span>"
     )
 
@@ -930,11 +1002,24 @@ def render_log(state: LeagueState) -> str:
     a couple of hundred picks, so the whole thing is cheap to carry.
     """
     ranks = _pos_ranks(state)
+    # Who bought it, in the log's one narrow column: the slot leads here rather
+    # than the name, because these rows are read in a column and a number is
+    # scanned down one where a name has to be read. The name follows when there
+    # is one, and the tooltip carries both.
+    def buyer(pick: SeatPick) -> str:
+        seat = state.seats.get(pick.slot)
+        if seat is None or not seat.name:
+            return f'<i class="lst">S{pick.slot}</i>'
+        return (
+            f'<i class="lst" title="{_esc(_seat_tip(seat))}">'
+            f"S{pick.slot} · {_seat_tag(seat)}</i>"
+        )
+
     rows = "".join(
         f'<div class="lrow" data-pos="{_esc(pick.player.pos)}"'
         f' title="{_esc(_meta_tip(pick.player))} · ${pick.price}">'
         f'<i class="lno">#{pick.pick_no}</i>'
-        f'<i class="lst">S{pick.slot}</i>'
+        f"{buyer(pick)}"
         f"{badge(pick.player.pos, light=True, label=ranks.get(pick.pick_no))}"
         f'<b>{_esc(pick.player.name)}</b>'
         f'<i class="ltm">{_esc(pick.player.team or "FA")}</i>'
@@ -945,7 +1030,11 @@ def render_log(state: LeagueState) -> str:
     )
     if not rows:
         rows = '<div class="pnone">no picks yet</div>'
-    return f'<div class="loglist">{rows}</div>'
+    # The buyer column is two characters wide until somebody has a name, and
+    # then it needs room for one. Said once on the list rather than per row, so
+    # every row keeps the same grid and the column still reads as a column.
+    named = " named" if any(seat.name for seat in state.seats.values()) else ""
+    return f'<div class="loglist{named}">{rows}</div>'
 
 
 def render_nomination(

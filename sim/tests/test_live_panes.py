@@ -160,6 +160,7 @@ def test_a_zero_projection_is_treated_as_no_projection():
 def test_an_empty_log_says_so():
     class _S:
         picks = []
+        seats = {}  # who bought what, asked of a log with nothing in it
 
     assert "no picks yet" in render_log(_S())
 

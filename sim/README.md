@@ -57,6 +57,19 @@ publishes no order yet. The header names the draft too (`L13 · …854144`), sin
 a finished mock and tonight's league draft otherwise render the same picture —
 which is exactly how an id from the wrong tab goes unnoticed.
 
+### Who is in each seat
+
+The other eleven managers are named too, from `GET /league/{league_id}/users` —
+their **team name** if they set one, their account name otherwise. Rescanned
+every five minutes, so a team renamed mid-draft catches up on its own.
+
+Every seat keeps its **slot number** beside the name: Sleeper's own board is
+numbered, this one can be dragged out of seat order, and `S5` is what the two
+have in common. Where twelve seats sit shoulder to shoulder — the money band's
+tags, the run-pressure tiles, the log's buyer column — the name is cut to its
+first word, and the tooltip has the whole of it. Maximize for the full name on
+every card.
+
 The screen splits in two: **left** is the draft's live state — what the room has
 spent, every seat's buying power, what's on the block — and **right** is all 12 rosters
 in **one viewport height**, nothing to scroll mid-auction. Splitting it this way
