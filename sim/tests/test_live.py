@@ -6,6 +6,7 @@ slightly stale one.
 """
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -339,6 +340,92 @@ def test_a_lot_closing_empties_the_list(poller):
     assert poller._lot is None
     assert poller._bidders == {}
     assert "Nothing nominated" in poller.snapshot()["nomination_html"]
+
+
+def _cards(pressure_html):
+    """The pressure band split into {pos: card html}.
+
+    Split on the card element, not on `data-pos` -- the tier rows inside a card
+    carry that attribute too, so keying off it lands on the last match in the
+    card rather than the card.
+    """
+    out = {}
+    for chunk in pressure_html.split('<section class="pcard')[1:]:
+        pos = chunk.split('data-pos="')[1].split('"')[0]
+        out[pos] = chunk
+    return out
+
+
+def test_the_lights_reach_the_chart_and_the_tiles(poller):
+    # One fact, marked in both places it is asked about: the chart answers "who
+    # can outbid me" and the tiles answer "who else needs this position", and
+    # while a lot is live both questions are about the seat that is bidding.
+    poller.replay = 60  # mid-auction, where a seat is neither broke nor done
+    _bid(poller, player="4034", nominating=12, offering=12)  # McCaffrey, an RB
+    poller.refresh()
+    _bid(poller, player="4034", offering=4, amount="9")
+    poller.refresh()
+    snap = poller.snapshot()
+    assert 'class="col bid-high"' in snap["ledger_html"]
+    assert 'class="col bid-in"' in snap["ledger_html"]
+    assert 'class="bid-high"' in snap["ledger_html"]  # and the tag under it
+    # `bid-*` rides on top of `done`, so match the class list rather than a
+    # literal: a seat that has filled its RBs can still be bidding on one.
+    assert re.search(r'class="tile[^"]*\bbid-high"', snap["pressure_html"])
+    assert re.search(r'class="tile[^"]*\bbid-in"', snap["pressure_html"])
+
+
+def test_only_the_nominee_s_own_card_lights_its_bidders(poller):
+    """The bidding is on one player, and that player has one position. The same
+    amber on all four cards said "these seats are bidding" four times over and
+    answered the question the grid is for -- who is in on *this* run -- in none
+    of them."""
+    poller.replay = 60
+    _bid(poller, player="4034", nominating=12, offering=12)  # McCaffrey, an RB
+    poller.refresh()
+    _bid(poller, player="4034", offering=4, amount="9")
+    poller.refresh()
+    cards = _cards(poller.snapshot()["pressure_html"])
+    assert set(cards) == {"QB", "RB", "WR", "TE"}
+    assert re.search(r'class="tile[^"]*\bbid-high"', cards["RB"])
+    assert re.search(r'class="tile[^"]*\bbid-in"', cards["RB"])
+    for pos in ("QB", "WR", "TE"):
+        assert "bid-high" not in cards[pos]
+        assert "bid-in" not in cards[pos]
+
+
+def test_a_position_with_no_card_lights_nothing(poller):
+    """A defense on the block belongs to none of the four runs, so none of them
+    light -- rather than all of them, which is what a bare `seat.bidding` did."""
+    poller.replay = 60
+    poller.refresh()  # the feed nominates "KC", the Chiefs defense
+    snap = poller.snapshot()
+    assert "DEF" in snap["nomination_html"] or "Chiefs" in snap["nomination_html"]
+    assert "bid-high" not in snap["pressure_html"]
+    assert "bid-in" not in snap["pressure_html"]
+    # ...but the money chart still marks them: "who can outbid me" is a question
+    # about budgets, and budgets do not have a position.
+    assert 'class="col bid-high"' in snap["ledger_html"]
+
+
+def test_nothing_lights_between_lots(poller):
+    poller.replay = 60
+    _bid(poller, player="", nominating=None, offering=None)
+    poller.refresh()
+    assert "bid-high" not in poller.snapshot()["pressure_html"]
+
+
+def test_bidding_is_marked_on_top_of_being_yours_or_broke(poller):
+    # A third fact, not a fourth state. Your own seat can be bidding and so can
+    # a seat that is nearly broke -- and those are the two you most want to see
+    # at once, so neither may be overwritten by the other.
+    poller.feed["draft"] = dict(poller.feed["draft"], draft_order={"u-123": 12})
+    poller.user = "yidinghou"
+    poller._user_tried = True
+    poller._user_id = "u-123"
+    poller.replay = 60
+    poller.refresh()
+    assert 'class="col me bid-high"' in poller.snapshot()["ledger_html"]
 
 
 def test_the_board_looks_faster_while_a_player_is_on_the_block(poller):

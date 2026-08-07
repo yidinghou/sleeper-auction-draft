@@ -530,6 +530,13 @@ def render_ledger(
             if seat.max_bid <= _OUT_OF_MARKET
             else ""
         )
+        # Bidding is a third fact and not one of the three, so it is added
+        # rather than chosen between: your own seat can be bidding, and so can a
+        # seat that is nearly broke -- which is the pair you most want to see at
+        # once. What a seat *can* spend is the column; whether it is spending it
+        # right now is the tint behind it.
+        if seat.bidding:
+            state_cls = f"{state_cls} bid-{seat.bidding}".strip()
         # A seat that is out of the market still gets a mark -- at $3 the honest
         # height rounds to nothing, and nothing is not what $3 means. The floor
         # is `min-height` in the stylesheet rather than a number here: it is two
@@ -659,7 +666,9 @@ def render_rosters(state: LeagueState) -> str:
 _BOARD_SHOWN = 3
 
 
-def _seat_tile(seat: Seat, line: PositionLine, color: str) -> str:
+def _seat_tile(
+    seat: Seat, line: PositionLine, color: str, lit: bool = True
+) -> str:
     """One seat's fill at one position: who, what's left, and the pips.
 
     `data-seat` is what the client's `applyOrder()` reorders on, so this tile
@@ -674,6 +683,18 @@ def _seat_tile(seat: Seat, line: PositionLine, color: str) -> str:
     shuffle every time a seat fills up.
     """
     done = "" if line.need else " done"
+    # A seat in the bidding is marked here too, and the same amber it takes in
+    # the money chart. This grid is read while a lot is live -- "who else still
+    # needs a receiver" is asked *about the player on the block* -- so which of
+    # these twelve are actually in on him belongs on the same tiles.
+    #
+    # `lit` is what keeps that sentence true. The bidding is on one player, and
+    # that player has one position, so the same amber repeated across all four
+    # cards said "these seats are bidding" four times over and answered the
+    # question the grid is for -- who is in on *this* run -- in none of them. On
+    # the nominee's card alone it reads as one fact about one lot; everywhere
+    # else it was decoration that moved whenever the bidding did.
+    bidding = f" bid-{seat.bidding}" if lit and seat.bidding else ""
     body = (
         '<span class="tfull">✓</span>'
         if not line.need
@@ -685,7 +706,7 @@ def _seat_tile(seat: Seat, line: PositionLine, color: str) -> str:
         + f" · ${seat.budget_left} left, max ${seat.max_bid}"
     )
     return (
-        f'<span class="tile{done}" data-seat="{seat.slot}"'
+        f'<span class="tile{done}{bidding}" data-seat="{seat.slot}"'
         f' title="{_esc(tip)}">'
         f'<span class="ttop"><b>{_seat_tag(seat)}</b>'
         f"<i>${seat.budget_left}</i></span>"
@@ -723,13 +744,20 @@ def _health_bar(pr: PositionPressure, total: int) -> str:
     )
 
 
-def _pressure_card(state: LeagueState, pr: PositionPressure) -> str:
-    """One position: supply on the board over the league's fill state."""
+def _pressure_card(
+    state: LeagueState, pr: PositionPressure, nom_pos: str = ""
+) -> str:
+    """One position: supply on the board over the league's fill state.
+
+    `nom_pos` is the position of whatever is on the block. Only that card lights
+    its bidders -- see `_seat_tile`.
+    """
     color = POS_COLOR_LIGHT.get(pr.pos, POS_FALLBACK_LIGHT)
     total = round(DRAFT_TARGETS.get(pr.pos, 0.0) * state.config.teams)
 
+    lit = bool(nom_pos) and pr.pos == nom_pos
     tiles = "".join(
-        _seat_tile(state.seats[slot], pr.lines[slot], color)
+        _seat_tile(state.seats[slot], pr.lines[slot], color, lit)
         for slot in sorted(state.seats)
     )
 
@@ -861,8 +889,12 @@ def _pressure_detail(pr: PositionPressure) -> str:
     )
 
 
-def render_pressure(state: LeagueState) -> str:
+def render_pressure(state: LeagueState, nom_pos: str = "") -> str:
     """Run pressure, one card per position, in `TIERS` order.
+
+    `nom_pos` is the position of the player on the block, and the only card that
+    lights its bidders. Empty between lots, when nothing is being bid on and so
+    nothing should be lit.
 
     Fixed order and fixed positions, for the same reason the roster cards are in
     seat order: a card that reshuffles itself the moment a run starts is a card
@@ -891,7 +923,7 @@ def render_pressure(state: LeagueState) -> str:
     cards a row of their own to divide. So the shape is two boxes, and the only
     thing the server owes them is that both exist, in that order.
     """
-    cards = "".join(_pressure_card(state, pr) for pr in pressure(state))
+    cards = "".join(_pressure_card(state, pr, nom_pos) for pr in pressure(state))
     return f'<div class="prail"></div><div class="pgrid">{cards}</div>'
 
 

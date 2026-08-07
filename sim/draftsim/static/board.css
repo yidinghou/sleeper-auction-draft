@@ -243,6 +243,19 @@
     text-overflow: ellipsis; }
   .chft span.me { color: #1a1a1a; font-weight: 700; }
   .chft span.broke { color: #c0392b; }
+  /* Who is actually bidding on the player next door. Amber, and the same amber
+     on the pressure tiles and on the bid panel's chips: one hue meaning one
+     thing in three places is what lets the pair of panels be read in a glance
+     rather than cross-referenced.
+
+     The tint sits behind the column and the bar keeps its own colour -- green
+     is what a seat can spend and that must not change meaning because the seat
+     is spending it. Declared after `.col.me` so a bidding seat of your own
+     shows the bid: which of the two you need is never in question mid-auction.
+     Stronger for whoever holds the offer right now. */
+  .col.bid-in { background: #fff4e0; border-radius: 2px 2px 0 0; }
+  .col.bid-high { background: #ffe3b8; border-radius: 2px 2px 0 0; }
+  .chft span.bid-in, .chft span.bid-high { color: #b26a00; font-weight: 700; }
 
   /* What is on the block. The one panel on the page that is not white, because
      it is the thing you look up at between bids. */
@@ -752,6 +765,19 @@
   .tile.done { background: #e7e7e7; border-color: #dadada; }
   .tile.done .ttop b { color: #8c8c8c; font-weight: 400; }
   .tile.done .ttop i { color: #949494; font-weight: 400; }
+  /* In the bidding on whatever is on the block, in the same amber the money
+     chart's columns take -- this grid is read *about that player*, so which of
+     these twelve are actually in on him belongs on the tiles you are already
+     looking at.
+
+     After `.done`, so a seat that has filled the position still shows that it
+     is bidding: a seat with four receivers bidding on a fifth is the most
+     interesting thing this grid can tell you, and the settled grey is exactly
+     what would hide it. */
+  .tile.bid-in { background: #fff4e0; border-color: #e0b878; }
+  .tile.bid-high { background: #ffe3b8; border-color: #b26a00; }
+  .tile.bid-in .ttop b, .tile.bid-high .ttop b { color: #b26a00;
+    font-weight: 700; }
   .tfull { display: flex; align-items: center; justify-content: center;
     height: calc(4px * var(--fs)); font-size: calc(7px * var(--fs));
     line-height: 1; color: #8c8c8c; }

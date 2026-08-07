@@ -358,7 +358,12 @@ class DraftPoller:
             ),
             "nomination_html": render_nomination(state, nom, nominee),
             "rosters_html": render_rosters(state),
-            "pressure_html": render_pressure(state),
+            # Only the nominee's own card lights its bidders: the bidding is on
+            # one player at one position, and repeating it across all four said
+            # nothing about which run is actually on.
+            "pressure_html": render_pressure(
+                state, nominee.pos if nominee is not None else ""
+            ),
             "pool_html": render_pool(state),
             "log_html": render_log(state),
             "polled_at": time.strftime("%H:%M:%S"),
