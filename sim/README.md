@@ -40,15 +40,22 @@ now, and where all twelve rosters stand.
 python -m draftsim.live --draft-id 1387809050569240576            # a mock
 python -m draftsim.live --draft-id 1387809050569240576 --replay 60  # rehearse mid-draft
 python -m draftsim.live --draft-id 1387810431371853824            # the real thing
-python -m draftsim.live --draft-id <id> --user yidinghou         # mark your seat
+python -m draftsim.live --draft-id <id> --user someone-else       # another account
 ```
 
 Then open <http://127.0.0.1:8765>.
 
-`--user` takes your Sleeper username and finds your slot in the draft's own
-`draft_order`, so your card is marked and the money band's dashed line is your
-own ceiling. It is not required: a draft that has not been seated yet publishes
-no order, and the board runs unmarked and says so.
+`--user` takes a Sleeper username and finds that account's slot in the draft's
+own `draft_order`, so the card is marked and the money band's dashed line is
+your own ceiling. **It defaults to `yidinghou`** (`live.DEFAULT_USER`) — one
+person runs this, and a board that comes up anonymous looks exactly like a bug.
+`--user ""` opts out.
+
+The band always says which of these it is, because they used to look identical:
+seated (`yidinghou · S7 — …`), no username, no such account, or a draft that
+publishes no order yet. The header names the draft too (`L13 · …854144`), since
+a finished mock and tonight's league draft otherwise render the same picture —
+which is exactly how an id from the wrong tab goes unnoticed.
 
 The screen splits in two: **left** is the draft's live state — what the room has
 spent, every seat's buying power, what's on the block — and **right** is all 12 rosters
