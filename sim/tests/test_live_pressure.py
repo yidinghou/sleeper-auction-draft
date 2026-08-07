@@ -437,10 +437,13 @@ def test_the_pane_choice_is_remembered_per_position():
     assert "applyPViews();" in page
 
 
-def test_escape_has_one_job_again():
-    # Nothing covers anything now, so Escape means "leave the maximized board".
+def test_escape_leaves_the_innermost_thing_open():
+    # Escape means "leave the maximized board" -- unless the seat menu is open,
+    # which is the one thing on this page that covers anything. Innermost first,
+    # so naming a seat on a maximized board and changing your mind does not also
+    # throw you out of the board.
     page = render_page("123")
-    assert 'if (e.key === "Escape") setMaxed(false);' in page
+    assert 'if (e.key === "Escape" && menuSeat === null) setMaxed(false);' in page
     assert "openTier" not in page
 
 

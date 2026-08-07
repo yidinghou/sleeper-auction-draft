@@ -188,6 +188,19 @@ class DraftPoller:
             with self._lock:
                 self._pulse = None
 
+    def rename_seat(self, slot: int, name: str) -> str:
+        """Name a seat by hand. Returns the label it now carries.
+
+        Clearing `_pulse` is what makes the rename visible: `refresh` skips the
+        rebuild when the draft has not moved, and between nominations that is
+        every tick for minutes at a time -- so a rename would sit invisible
+        until somebody bid.
+        """
+        label = self.names.set_override(slot, name)
+        with self._lock:
+            self._pulse = None
+        return label
+
     def rescan_names(self) -> None:
         """Force the next poll to re-read the league. Same trick as above: the
         board has to be allowed to redraw even though no pick has landed."""
@@ -348,6 +361,73 @@ def _handler(poller: DraftPoller):
                 self._send(body, "application/json")
             else:
                 self.send_error(404)
+
+        def _read_json(self) -> Optional[Dict[str, Any]]:
+            """The request body, or None having already answered the client.
+
+            The JSON content type is required rather than assumed. This server
+            binds 127.0.0.1 and has no other defence, and a page in another tab
+            can POST a form here without being asked -- but it cannot set this
+            header without a preflight it will not get. So the one endpoint
+            that writes a file is closed to a drive-by form.
+            """
+            ctype = (self.headers.get("Content-Type") or "").split(";")[0].strip()
+            if ctype != "application/json":
+                self.send_error(415, "send application/json")
+                return None
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = 0
+            # A name is capped at MAX_NAME; anything near a kilobyte is not one.
+            if length <= 0 or length > 1024:
+                self.send_error(400, "expected a small JSON body")
+                return None
+            try:
+                body = json.loads(self.rfile.read(length).decode("utf-8"))
+            except (ValueError, UnicodeDecodeError):
+                self.send_error(400, "malformed JSON")
+                return None
+            if not isinstance(body, dict):
+                self.send_error(400, "expected a JSON object")
+                return None
+            return body
+
+        def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler's API
+            path = self.path.split("?", 1)[0]
+            if path == "/api/rescan-names":
+                poller.rescan_names()
+                self._send(b'{"ok":true}', "application/json")
+                return
+            if path != "/api/seat-name":
+                self.send_error(404)
+                return
+
+            body = self._read_json()
+            if body is None:
+                return
+            teams = poller.snapshot().get("teams") or 0
+            try:
+                slot = int(body.get("slot"))
+            except (TypeError, ValueError):
+                self.send_error(400, "slot must be a number")
+                return
+            # Named against the board that is actually up. Without the bound a
+            # typo'd slot would write an override into the file for a seat that
+            # does not exist, where nothing would ever show it again.
+            if not teams:
+                self.send_error(409, "the board has not polled yet")
+                return
+            if not 1 <= slot <= teams:
+                self.send_error(400, f"slot must be 1..{teams}")
+                return
+            name = body.get("name", "")
+            if not isinstance(name, str) or len(name) > MAX_NAME * 4:
+                self.send_error(400, f"name must be a string of at most {MAX_NAME}")
+                return
+            label = poller.rename_seat(slot, name)
+            payload = json.dumps({"slot": slot, "label": label}).encode("utf-8")
+            self._send(payload, "application/json")
 
         def log_message(self, *args) -> None:
             """Silence per-request logging: the board polls twice a second and

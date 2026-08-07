@@ -185,9 +185,12 @@ document.addEventListener("click", (e) => {
   applyFilters();
 });
 
-// Nothing on this page covers anything any more, so Escape has one job again.
+// Escape minimizes -- unless the seat menu is open, which is the one thing on
+// this page that covers anything. Innermost first: the key closes what it opened
+// last, and does not also throw you out of the maximized board you were naming
+// a seat on.
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") setMaxed(false);
+  if (e.key === "Escape" && menuSeat === null) setMaxed(false);
 });
 
 // Per-card pane. "lineup" first: it is what the board loads on, and it is the
@@ -524,6 +527,104 @@ document.getElementById("reorder").addEventListener("click", () => {
   applyRows();
 });
 
+// Naming a seat by hand.
+//
+// The names on the board come from the league and are the server's business --
+// the same argument `--user` settled above. This is the override for the two
+// cases the scan cannot answer: a mock, which publishes no league at all, so
+// every rehearsal starts with twelve numbered seats; and a real draft the scan
+// got wrong or that moved somebody after it ran.
+//
+// So the override goes to the server too, which writes it beside the draft.
+// Nothing about a name belongs in this tab's localStorage: it would be re-typed
+// on every machine, and invisible to the fragments that draw it.
+const seatMenu = document.getElementById("seatmenu");
+const seatInput = document.getElementById("smname");
+// Which seat the open menu is naming, and the guard that freezes the two-second
+// swap while it is open -- the third of its kind, next to `dragging` and
+// `heldAt`, and for the same reason: the board must not delete what is in hand.
+let menuSeat = null;
+
+// Names as the last snapshot had them, so the box opens on the name you can see
+// rather than empty -- editing "Marc's Team" into "Marc" should not mean typing
+// it out again.
+let seatNames = {};
+
+function closeMenu() {
+  menuSeat = null;
+  seatMenu.hidden = true;
+}
+
+function openMenu(slot, x, y) {
+  menuSeat = slot;
+  document.getElementById("smslot").textContent = "S" + slot;
+  seatInput.value = seatNames[slot] || "";
+  seatMenu.hidden = false;
+  // Placed after unhiding, when the box has a size to keep inside the window:
+  // right-clicking the bottom row otherwise opens a menu half off the screen.
+  const box = seatMenu.getBoundingClientRect();
+  const left = Math.min(x, window.innerWidth - box.width - 6);
+  const top = Math.min(y, window.innerHeight - box.height - 6);
+  seatMenu.style.left = Math.max(6, left) + "px";
+  seatMenu.style.top = Math.max(6, top) + "px";
+  seatInput.focus();
+  seatInput.select();
+}
+
+async function post(path, body) {
+  // The JSON content type is what the server checks for, and it is the check:
+  // a form posted from another tab cannot set this header without a preflight.
+  return fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body || {}),
+  });
+}
+
+async function saveName() {
+  const slot = menuSeat;
+  if (slot === null) return;
+  const name = seatInput.value.trim();
+  closeMenu();
+  // Optimistic, so the name is on the card before the next poll comes back --
+  // and corrected by that poll if the server cleaned it up or refused it.
+  seatNames[slot] = name;
+  await post("/api/seat-name", { slot: +slot, name: name });
+}
+
+// Anything carrying a seat: a roster card, or one of the twelve tiles inside a
+// run-pressure card. They are the same seat, and either is a reasonable place to
+// notice you have been reading an anonymous column for ten minutes.
+document.addEventListener("contextmenu", (e) => {
+  const el = e.target.closest("[data-seat]");
+  if (!el || seatMenu.contains(e.target)) return;
+  e.preventDefault();
+  openMenu(el.dataset.seat, e.clientX, e.clientY);
+});
+
+seatInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") saveName();
+  else if (e.key === "Escape") { closeMenu(); e.stopPropagation(); }
+});
+
+document.getElementById("smscan").addEventListener("click", async () => {
+  closeMenu();
+  await post("/api/rescan-names");
+});
+
+// Clicking away is the ordinary way out of a menu, and the board is one big
+// click target -- so this closes rather than saving. A half-typed name is not
+// worth committing, and the gesture that commits is the one in the box.
+document.addEventListener("mousedown", (e) => {
+  if (menuSeat !== null && !seatMenu.contains(e.target)) closeMenu();
+}, true);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeMenu();
+});
+// Fixed position, so a scrolled page would leave the menu hanging over whatever
+// scrolled under it.
+window.addEventListener("scroll", closeMenu, true);
+
 function highlight() {
   const mine = mySeat === null ? "" : String(mySeat);
   document.querySelectorAll("section.card").forEach((card) => {
@@ -552,6 +653,10 @@ async function tick() {
     const res = await fetch("/api/state", { cache: "no-store" });
     const s = await res.json();
     mySeat = s.my_seat === undefined ? null : s.my_seat;
+    // Only for prefilling the rename box: every fragment already arrives with
+    // its own names drawn in. Skipped while the box is open, or a poll landing
+    // mid-edit would argue with what is being typed.
+    if (menuSeat === null) seatNames = s.seat_names || {};
     document.getElementById("sub").textContent = s.subtitle;
     document.getElementById("draft").textContent = s.draft_label || "";
     document.getElementById("ledger").innerHTML = s.ledger_html;
@@ -560,7 +665,7 @@ async function tick() {
     // the element in hand isn't deleted out from under it. The pressure tiles
     // freeze with them rather than on their own: they are the same seats in the
     // same order, and half of that pair moving mid-drag is worse than neither.
-    if (dragging === null && Date.now() - heldAt > 500) {
+    if (dragging === null && menuSeat === null && Date.now() - heldAt > 500) {
       rosters.innerHTML = s.rosters_html;
       document.getElementById("pressure").innerHTML = s.pressure_html;
       // Replacing the rows empties the scroller for an instant, which drops it

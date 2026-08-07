@@ -91,11 +91,27 @@
       <button id="reorder" type="button"
               title="Put the cards back in seat order">Seat order</button>
       <span class="hint">drag a card to reorder<span class="foldhint"> ·
-        double-click a row bar to fold the row</span> · LINEUP / BN / NEED per
-        card</span>
+        double-click a row bar to fold the row</span> · right-click a card to
+        name the seat</span>
     </div>
     <div id="rosters"></div>
   </main>
+
+  <!-- Naming a seat. Out here in the shell rather than in #rosters, which is
+       replaced wholesale twice a second: a text box rebuilt that often could
+       hold neither focus nor a half-typed name.
+
+       The names themselves come from the league and are refreshed on the
+       server's own timer. This is for the two cases the scan cannot answer: a
+       mock, which publishes no league at all, and a real draft the scan got
+       wrong or that changed a seat mid-session. -->
+  <div id="seatmenu" hidden>
+    <div class="smhd">Seat <b id="smslot"></b></div>
+    <input id="smname" type="text" maxlength="24" autocomplete="off"
+           placeholder="name this seat" aria-label="Seat name">
+    <div class="smhint">Enter to save · empty clears it</div>
+    <button id="smscan" type="button">Rescan names from Sleeper</button>
+  </div>
 
 <script>/*__JS__*/</script>
 </body></html>

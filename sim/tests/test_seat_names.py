@@ -7,6 +7,10 @@ it drew before either existed.
 """
 
 import json
+import threading
+import urllib.error
+import urllib.request
+from http.server import ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -296,3 +300,84 @@ def test_a_failed_scan_keeps_the_last_good_names_and_says_so(league, monkeypatch
     # the auction.
     assert ">Bagel Boys<" in snap["rosters_html"]
     assert "league unreachable" in snap["warning"]
+
+
+# -- the endpoint the box posts to --------------------------------------------
+
+
+@pytest.fixture
+def board(poller):
+    """The board's own HTTP server, on a port the OS picks."""
+    poller.refresh()
+    server = ThreadingHTTPServer(("127.0.0.1", 0), live_mod._handler(poller))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    yield f"http://127.0.0.1:{server.server_address[1]}", poller
+    server.shutdown()
+    server.server_close()
+
+
+def _post(url, body=b"{}", ctype="application/json"):
+    req = urllib.request.Request(url, data=body, method="POST")
+    if ctype:
+        req.add_header("Content-Type", ctype)
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return resp.status, json.loads(resp.read().decode())
+    except urllib.error.HTTPError as exc:
+        return exc.code, None
+
+
+def test_naming_a_seat_over_http_writes_it_and_answers_with_the_label(board):
+    url, poller = board
+    status, body = _post(
+        url + "/api/seat-name", json.dumps({"slot": 5, "name": "Marc"}).encode()
+    )
+    assert (status, body) == (200, {"slot": 5, "label": "Marc"})
+    assert poller.names.label(5) == "Marc"
+    assert json.loads(poller.names.path.read_text())["overrides"] == {"5": "Marc"}
+
+
+def test_the_endpoint_refuses_what_it_cannot_draw(board):
+    url, _ = board
+    seat = url + "/api/seat-name"
+    # A slot outside the board would write an override for a seat nothing will
+    # ever show again.
+    assert _post(seat, json.dumps({"slot": 13, "name": "x"}).encode())[0] == 400
+    assert _post(seat, json.dumps({"slot": 0, "name": "x"}).encode())[0] == 400
+    assert _post(seat, json.dumps({"slot": "five"}).encode())[0] == 400
+    assert _post(seat, b"{not json")[0] == 400
+    assert _post(seat, json.dumps([1, 2]).encode())[0] == 400
+    assert _post(seat, json.dumps({"slot": 5, "name": "x" * 500}).encode())[0] == 400
+
+
+def test_a_form_from_another_tab_cannot_name_a_seat(board):
+    # This server binds 127.0.0.1 and has no other defence. A cross-origin form
+    # post can reach it, but it cannot set a JSON content type without a
+    # preflight it will not get -- so the one endpoint that writes a file is
+    # closed to a drive-by.
+    url, poller = board
+    body = json.dumps({"slot": 5, "name": "Marc"}).encode()
+    status, _ = _post(
+        url + "/api/seat-name", body, ctype="application/x-www-form-urlencoded"
+    )
+    assert status == 415
+    assert poller.names.label(5) == ""
+
+
+def test_a_rescan_is_asked_for_over_http_too(board):
+    url, poller = board
+    poller._names_at = 123.0
+    assert _post(url + "/api/rescan-names")[0] == 200
+    assert poller._names_at is None
+
+
+def test_a_hand_typed_name_redraws_the_board_and_outranks_the_scan(league):
+    league.refresh()
+    assert league.rename_seat(1, "Marc") == "Marc"
+    league.refresh()
+    cards = league.snapshot()["rosters_html"]
+    assert ">Marc<" in cards
+    assert "Bagel Boys" not in cards
+    # And the scan still knows what Sleeper said, so clearing gives it back.
+    assert league.rename_seat(1, "") == "Bagel Boys"

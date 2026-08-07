@@ -70,6 +70,21 @@ tags, the run-pressure tiles, the log's buyer column — the name is cut to its
 first word, and the tooltip has the whole of it. Maximize for the full name on
 every card.
 
+**Right-click any card or pressure tile to name a seat by hand.** Enter saves,
+an empty box clears back to whatever the league says. This is for the two cases
+the scan cannot answer:
+
+* **a mock**, which publishes `league_id: null` — there is no league to read, so
+  every rehearsal starts with twelve numbered seats and stays that way unless
+  you type the names;
+* **a real draft** the scan got wrong, or that moved somebody after it ran.
+
+Hand-typed names are the only thing the board writes to disk, at
+`data/seat-names-<draft_id>.json`. Per draft rather than per league: slots
+belong to the draft, and last year's sat the same twelve people in different
+chairs. Scanned names are never written there — a team renamed on Sleeper must
+not find last season's name frozen in a file the board then trusts over the API.
+
 The screen splits in two: **left** is the draft's live state — what the room has
 spent, every seat's buying power, what's on the block — and **right** is all 12 rosters
 in **one viewport height**, nothing to scroll mid-auction. Splitting it this way

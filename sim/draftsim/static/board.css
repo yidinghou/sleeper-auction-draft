@@ -107,6 +107,23 @@
   button { background: #f6f6f6; color: #1a1a1a; border: 1px solid #ddd;
     border-radius: 6px; padding: 2px 8px; font: inherit; cursor: pointer; }
   button:hover { border-color: #1a1a1a; }
+
+  /* Naming a seat. Positioned at the cursor by the client, above everything --
+     including the maximized board, which is `z-index: 10` and fixed, so this
+     has to clear it or right-clicking a card maximized would open a menu behind
+     the card. */
+  #seatmenu { position: fixed; z-index: 20; background: #fff;
+    border: 1px solid #ccc; border-radius: 6px; padding: 6px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16); display: flex;
+    flex-direction: column; gap: 4px; width: 190px; }
+  #seatmenu[hidden] { display: none; }
+  .smhd { font-size: calc(9px * var(--fs)); color: #767676; }
+  .smhd b { color: #1a1a1a; }
+  #smname { font: inherit; font-size: calc(11px * var(--fs)); padding: 3px 5px;
+    border: 1px solid #ccc; border-radius: 4px; width: 100%; box-sizing: border-box; }
+  #smname:focus { outline: none; border-color: #1a1a1a; }
+  .smhint { font-size: calc(8px * var(--fs)); color: #949494; }
+  #smscan { font-size: calc(9px * var(--fs)); padding: 2px 4px; }
   .dot { width: 7px; height: 7px; border-radius: 50%; background: #1a7f37;
     display: inline-block; }
   .dot.stale { background: #c0392b; }
