@@ -420,7 +420,12 @@ _LEDGER_H = 84
 _LEDGER_HEAD = 20
 
 
-def render_ledger(state: LeagueState, my_seat: Optional[int], note: str = "") -> str:
+def render_ledger(
+    state: LeagueState,
+    my_seat: Optional[int],
+    note: str = "",
+    user: str = "",
+) -> str:
     """What the room has spent, and what each seat can still do about it.
 
     The band this replaces spent its height on a sentence of league constants --
@@ -449,7 +454,12 @@ def render_ledger(state: LeagueState, my_seat: Optional[int], note: str = "") ->
     spent = sum(seat.spent for seat in state.seats.values())
     pool = config.budget * config.teams
     scale = _LEDGER_H - _LEDGER_HEAD
-    top3 = {seat.slot for seat in seats[:3]}
+    # Before the first pick every seat holds the same $200 and the ranking is
+    # entirely an artefact of the tie-break. Naming three of twelve identical
+    # bars as the leaders is worse than naming none, and this is the state the
+    # board sits in for the whole half hour before a draft opens.
+    level = seats[0].max_bid == seats[-1].max_bid
+    top3 = set() if level else {seat.slot for seat in seats[:3]}
     mine = next((s for s in seats if s.slot == my_seat), None)
 
     cols = []
@@ -478,11 +488,20 @@ def render_ledger(state: LeagueState, my_seat: Optional[int], note: str = "") ->
         tags.append(f'<span class="{state_cls}">S{seat.slot}</span>')
 
     if mine is not None:
-        rank = seats.index(mine) + 1
+        # The account is named, not just the seat. A username resolves through
+        # two lookups before it reaches a slot, and if either one lands on the
+        # wrong account the board would mark a seat that is not yours and say
+        # nothing -- "S5" is not checkable, "yidinghou · S5" is.
+        who = f"<b>{_esc(user)}</b> · " if user else "You are "
+        # A place in the room only means something once the room has spread out.
+        standing = (
+            "level with the room"
+            if level
+            else f"{_ordinal(seats.index(mine) + 1)} of {len(seats)}"
+        )
         line = (
-            f'<span class="me">You are <b>S{mine.slot}</b> — ${mine.budget_left} '
-            f"left, max bid <b>${mine.max_bid}</b> "
-            f"({_ordinal(rank)} of {len(seats)})</span>"
+            f'<span class="me">{who}<b>S{mine.slot}</b> — ${mine.budget_left} '
+            f"left, max bid <b>${mine.max_bid}</b> ({standing})</span>"
         )
         gridline = (
             f'<span class="gl" style="top:'

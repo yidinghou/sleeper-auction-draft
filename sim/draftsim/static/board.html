@@ -14,10 +14,14 @@
            not picked from a dropdown every session: it is a fact about you,
            and a control that answers the same question every time is a control
            that should not exist. The band spends the height on money instead. -->
+      <!-- The header names the draft it is reading. A finished mock and
+           tonight's league draft are the same picture, so an id typed from the
+           wrong tab is otherwise invisible. -->
       <div class="bandhd"><h2>Live draft board</h2>
         <span class="note" id="pulsewrap"><span class="dot" id="dot"></span>
-          <span id="pulse">polling</span> · <span id="sub"
-            >connecting to draft __DRAFT_ID__…</span></span>
+          <span id="pulse">polling</span> ·
+          <b id="draft">__DRAFT_ID__</b> ·
+          <span id="sub">connecting…</span></span>
         <span id="warn" class="warn"></span></div>
       <div class="bandbody">
         <div id="ledger"></div>

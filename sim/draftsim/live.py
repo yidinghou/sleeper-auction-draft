@@ -46,6 +46,10 @@ from .valuation import Player, by_sleeper_id, load_players
 
 DEFAULT_PORT = 8765
 DEFAULT_INTERVAL = 3.0
+# Whose board this is. One person runs this tool, and the flag existing did not
+# help the night it was left off -- the board came up anonymous and looked
+# exactly like a bug. `--user someone-else` overrides it; `--user ""` opts out.
+DEFAULT_USER = "yidinghou"
 
 
 class DraftPoller:
@@ -91,11 +95,14 @@ class DraftPoller:
     def my_seat(self, draft: Dict[str, Any]) -> Optional[int]:
         """Which slot is yours, or None if this draft cannot say.
 
-        Never fatal. A mock has no `draft_order` at all, and that is the draft
-        you rehearse against — so the board has to be willing to run unmarked
-        and say why, rather than refusing to start.
+        Never fatal — but never silent either. There are three separate ways to
+        end up without a seat and they used to produce one identical unmarked
+        board: no username, a username nobody has, and a draft with no order to
+        look you up in. Two of those are mistakes and one is normal, so each
+        leaves its own note and the band prints whichever applies.
         """
         if not self.user:
+            self.seat_note = "no --user given — no seat marked"
             return None
         if not self._user_tried:
             self._user_tried = True
@@ -109,8 +116,8 @@ class DraftPoller:
         seat = seat_for_user(draft, self._user_id)
         if seat is None:
             self.seat_note = (
-                f"{self.user} is not seated in this draft — a mock never "
-                "publishes a draft order, so no seat is marked"
+                f"{self.user} is not seated in this draft — it publishes no "
+                "draft order, so no seat is marked"
             )
         else:
             self.seat_note = ""
@@ -165,14 +172,22 @@ class DraftPoller:
             else ""
         )
         seat = self.my_seat(draft)
+        # Which draft this actually is. A finished mock and tonight's league
+        # draft render identically, so pointing the board at last week's id is
+        # a mistake it used to keep to itself -- the name and the tail of the
+        # id are cheap and make it a glance.
+        name = (draft.get("metadata") or {}).get("name") or "draft"
         return {
             "teams": config.teams,
             # Connection state and nothing else. The league's constants never
             # changed mid-draft and did not earn a line; the one live number in
             # the old subtitle -- what the room has spent -- is now drawn.
             "subtitle": status,
+            "draft_label": f"{name} · …{str(self.draft_id)[-6:]}",
             "my_seat": seat,
-            "ledger_html": render_ledger(state, seat, self.seat_note),
+            "ledger_html": render_ledger(
+                state, seat, self.seat_note, self.user or ""
+            ),
             "nomination_html": render_nomination(state, nom, nominee),
             "rosters_html": render_rosters(state),
             "pressure_html": render_pressure(state),
@@ -211,6 +226,7 @@ class DraftPoller:
             return {
                 "teams": 0,
                 "subtitle": error or "waiting for the first poll…",
+                "draft_label": f"…{str(self.draft_id)[-6:]}",
                 "my_seat": None,
                 "ledger_html": "",
                 "nomination_html": '<div class="block idle">connecting…</div>',
@@ -254,7 +270,9 @@ def _handler(poller: DraftPoller):
     return Handler
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
+    """Split out from `main` so the defaults can be asserted without starting a
+    server -- `--user` defaulting is the whole point of the flag now."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
         "--draft-id", required=True, help="Sleeper draft id (from the draft URL)"
@@ -279,18 +297,22 @@ def main() -> None:
     )
     parser.add_argument(
         "--user",
-        default=None,
+        default=DEFAULT_USER,
         metavar="USERNAME",
-        help="your Sleeper username, to mark which seat is yours. Needs a "
-        "draft that has been seated — a mock has no draft order and stays "
-        "unmarked",
+        help=f"Sleeper username, to mark which seat is yours (default: "
+        f"{DEFAULT_USER}). Needs a draft that has been seated; pass an empty "
+        f"string to run anonymous",
     )
     parser.add_argument(
         "--once",
         action="store_true",
         help="poll once, print the snapshot as JSON, and exit (no server)",
     )
-    args = parser.parse_args()
+    return parser
+
+
+def main() -> None:
+    args = build_parser().parse_args()
 
     poller = DraftPoller(
         args.draft_id, args.csv, args.interval, replay=args.replay, user=args.user

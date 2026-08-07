@@ -553,6 +553,7 @@ async function tick() {
     const s = await res.json();
     mySeat = s.my_seat === undefined ? null : s.my_seat;
     document.getElementById("sub").textContent = s.subtitle;
+    document.getElementById("draft").textContent = s.draft_label || "";
     document.getElementById("ledger").innerHTML = s.ledger_html;
     document.getElementById("block").innerHTML = s.nomination_html;
     // Everything else refreshes; the cards hold still until the drag lands, so

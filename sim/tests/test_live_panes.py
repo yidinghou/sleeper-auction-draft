@@ -176,14 +176,15 @@ def test_the_page_arrives_whole_with_its_stylesheet_and_client_inlined():
     page = render_page("123")
     assert "  .pcard { border" in page          # from board.css
     assert "function applyRows()" in page       # from board.js
-    assert "connecting to draft 123" in page    # the shell's one interpolation
+    assert '<b id="draft">123</b>' in page      # the shell's one interpolation
     for token in ("/*__CSS__*/", "/*__JS__*/", "__DRAFT_ID__"):
         assert token not in page, token
 
 
 def test_the_draft_id_is_escaped_into_the_shell():
-    # It comes off the command line and lands in the page's opening line.
-    assert "draft &lt;b&gt;" in render_page("<b>")
+    # It comes off the command line and lands in the band header, which names
+    # the draft being read so a stale id cannot hide.
+    assert '<b id="draft">&lt;b&gt;</b>' in render_page("<b>")
 
 
 # -- the bands ----------------------------------------------------------------

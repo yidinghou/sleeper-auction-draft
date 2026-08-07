@@ -148,6 +148,21 @@ def test_replay_rewinds_a_finished_draft_to_mid_auction(poller):
 # -- the money band ----------------------------------------------------------
 
 
+def test_before_the_first_pick_nobody_is_a_leader(poller):
+    # Twelve seats holding the same $200: the ranking is entirely the
+    # tie-break, so naming three of them is worse than naming none. This is the
+    # state the board sits in for the half hour before a draft opens.
+    poller.feed["picks"] = []
+    poller.user = "yidinghou"
+    poller._user_tried = True
+    poller._user_id = poller.feed["draft"]["creators"][0]
+    poller.refresh()
+    ledger = poller.snapshot()["ledger_html"]
+    assert 'class="amt"' not in ledger
+    assert "level with the room" in ledger
+    assert "of 12)" not in ledger
+
+
 def test_the_ledger_draws_every_seat_and_names_only_three(poller):
     poller.replay = 60
     poller.refresh()
@@ -167,8 +182,8 @@ def test_the_ledger_reports_what_the_room_has_spent(poller):
 
 
 def test_an_unseated_board_draws_no_line_and_marks_no_seat(poller):
-    # The recorded mock has no draft_order, so --user cannot resolve. The band
-    # has to run anyway: this is the draft every rehearsal happens against.
+    # A user the draft's order does not list. The band has to run anyway: this
+    # is the state every pre-draft rehearsal is in.
     poller.user = "yidinghou"
     poller._user_tried = True
     poller._user_id = "u-123"
@@ -177,6 +192,63 @@ def test_an_unseated_board_draws_no_line_and_marks_no_seat(poller):
     assert snap["my_seat"] is None
     assert 'class="gl"' not in snap["ledger_html"]
     assert "not seated in this draft" in snap["ledger_html"]
+
+
+def test_the_three_ways_to_have_no_seat_do_not_look_alike(poller):
+    """The bug this whole change exists for.
+
+    An anonymous board, a mistyped username and a draft with no order used to
+    render one identical unmarked chart, so a mistake was indistinguishable
+    from the normal case -- and from a bug in the board.
+    """
+    said = {}
+
+    poller.user = ""
+    poller.refresh()
+    said["anonymous"] = poller.snapshot()["ledger_html"]
+
+    poller.user = "nobody"
+    poller._user_tried = True
+    poller._user_id = None
+    poller.seat_note = "no Sleeper account named 'nobody'"
+    poller._pulse = None  # force a rebuild; the feed itself has not moved
+    poller.refresh()
+    said["bad name"] = poller.snapshot()["ledger_html"]
+
+    poller.user = "yidinghou"
+    poller._user_id = "u-123"
+    poller._pulse = None
+    poller.refresh()
+    said["unseated"] = poller.snapshot()["ledger_html"]
+
+    assert "no --user given" in said["anonymous"]
+    assert "no Sleeper account named" in said["bad name"]
+    assert "not seated in this draft" in said["unseated"]
+    assert len(set(said.values())) == 3
+
+
+def test_the_board_names_the_draft_it_is_reading(poller):
+    # Pointing at last week's finished mock is the mistake this catches, and it
+    # is invisible without a label: every draft renders the same picture.
+    poller.refresh()
+    snap = poller.snapshot()
+    assert snap["draft_label"].endswith("…ock-id")  # "mock-id" tail
+    # Present before the first poll too, or the wrong id hides until it lands.
+    fresh = DraftPoller("1391215167026511872", None, interval=0.01)
+    assert "511872" in fresh.snapshot()["draft_label"]
+
+
+def test_a_bare_command_line_still_knows_who_you_are():
+    # The command that failed was exactly this one, with no --user at all.
+    args = live_mod.build_parser().parse_args(["--draft-id", "123"])
+    assert args.user == live_mod.DEFAULT_USER
+    assert args.user  # and it is a real name, not None or ""
+
+
+def test_the_user_flag_still_overrides_and_can_opt_out():
+    parse = live_mod.build_parser().parse_args
+    assert parse(["--draft-id", "1", "--user", "someone"]).user == "someone"
+    assert parse(["--draft-id", "1", "--user", ""]).user == ""
 
 
 def test_a_seated_user_is_marked_and_sets_the_line(poller):
@@ -191,7 +263,9 @@ def test_a_seated_user_is_marked_and_sets_the_line(poller):
     assert 'class="col me"' in snap["ledger_html"]
     # The dashed line is your own ceiling, so it only exists once you have one.
     assert 'class="gl"' in snap["ledger_html"]
-    assert "You are <b>S7</b>" in snap["ledger_html"]
+    # Named, not just numbered: a username resolves through two lookups, and a
+    # bare "S7" gives you no way to notice it landed on the wrong account.
+    assert "<b>yidinghou</b> · <b>S7</b>" in snap["ledger_html"]
 
 
 def test_stale_projections_are_surfaced_not_swallowed(poller):
