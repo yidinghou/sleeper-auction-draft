@@ -546,10 +546,10 @@ def test_all_three_filters_read_the_same_way():
     # convention in it, and the position colour is already spoken by the badge on
     # every card, the rail and the health bar.
     page = render_page("123")
-    assert (
-        ".fseg button, .rseg button { padding: 0 3px; "
-        "font-size: calc(7.5px * var(--fs)); }" in page
-    )
+    # Sized from `.seg button` with everything else on the board; what a band
+    # header buys them is tighter padding, and only that.
+    assert ".fseg button, .rseg button { padding: 0 3px; }" in page
+    assert "font-size: calc(8.5px * var(--fs)); line-height: 1.4;" in page
     # Nothing left that tints a button by position, and no palette handed to the
     # stylesheet to do it with -- every colour on this page is rendered inline by
     # Python again.

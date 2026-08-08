@@ -602,7 +602,13 @@
      these hid until hover because twelve cards' worth of lit chrome drowned the
      data; on white they can simply be visible. */
   .seg { display: flex; gap: 2px; margin-left: auto; flex: none; }
-  .seg button { padding: 1px 5px; font-size: calc(7.5px * var(--fs)); line-height: 1.4;
+  /* 8.5px, not the 7.5px these were: at the smaller size a two-letter button was
+     nearly all border, and the roster filter that joined them is a control you
+     aim at rather than glance over. One number for all of them -- the card tabs,
+     the three position filters and the row filter are the same control doing the
+     same job in different panels, and one of them sized to look more important
+     than the rest is a board with no convention in it. */
+  .seg button { padding: 1px 5px; font-size: calc(8.5px * var(--fs)); line-height: 1.4;
     font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase;
     border: 1px solid #e2e2e2; background: #f6f6f6; color: #888;
     border-radius: 3px; }
@@ -1082,9 +1088,9 @@
     scrollbar-width: thin; scrollbar-color: #ccc transparent; }
 
   /* The position filters, riding at the right of each band's header: the pool's,
-     the log's, and run pressure's. Smaller than the roster cards' segment -- five
-     buttons where those have three, and a header that already carries a title
-     and a note.
+     the log's, and run pressure's. The same type as every other segment on the
+     board -- what a band header buys them is tighter padding, since five buttons
+     have to sit beside a title and a note.
 
      One treatment for all three, though run pressure's does a heavier job: the
      pool's narrows a list you are already reading, where that one decides which
@@ -1093,11 +1099,11 @@
      different ways is a column with no convention in it, and the position colour
      is already spoken everywhere it matters here: the badge on every card, the
      rail, the health bar. The filter does not need to say it a fourth time. */
-  .fseg button, .rseg button { padding: 0 3px; font-size: calc(7.5px * var(--fs)); }
+  .fseg button, .rseg button { padding: 0 3px; }
   /* Not one of the three filters above -- the nav steps through picks, it
      does not narrow anything -- but it rides in a band header the same way,
-     so it takes the same smaller header-row sizing rather than its own. */
-  .navseg button { padding: 0 3px; font-size: calc(7.5px * var(--fs)); }
+     so it takes the same tighter header-row padding rather than its own. */
+  .navseg button { padding: 0 3px; }
   /* A folded band is a title and nothing else; its filter goes with the rest.
      The checkpoint nav is not a filter on this band's own list -- it is what
      moment the whole board is showing -- so it stays visible even folded. */
@@ -1212,7 +1218,7 @@
   body.maxed .teamf { display: block; font-size: calc(12px * var(--fs)); }
   body.maxed .big { font-size: calc(15px * var(--fs)); }
   body.maxed .max { font-size: calc(10px * var(--fs)); }
-  body.maxed .seg button { font-size: calc(8.5px * var(--fs)); }
+  body.maxed .seg button { font-size: calc(9.5px * var(--fs)); }
   body.maxed .proj .pl { font-size: calc(9px * var(--fs)); }
   body.maxed .proj b { font-size: calc(13px * var(--fs)); }
   /* Barely larger type than compact, because at four across on a laptop there
