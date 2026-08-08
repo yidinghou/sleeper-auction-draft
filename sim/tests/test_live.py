@@ -193,6 +193,32 @@ def test_a_checkpoint_at_pick_zero_has_nothing_to_show(poller):
     assert "bid-high" not in snap["ledger_html"]
 
 
+def test_a_checkpoint_shows_the_full_bidding_trail_when_the_poller_saw_it(poller):
+    # Unlike `test_goto_rewinds_the_board_to_a_pick_boundary`, which rewinds a
+    # poller that only ever saw the finished feed and so falls back to a
+    # single winner chip, this one watches pick #30 (Bo Nix, S6, $28) close in
+    # real time first -- so the checkpoint should show everyone who bid on it.
+    poller.replay = 29
+    poller.refresh()
+    _bid(poller, player="11563", nominating=6, offering=6, amount="20")
+    poller.refresh()                                    # S6 opens at $20
+    _bid(poller, player="11563", nominating=6, offering=9, amount="25")
+    poller.refresh()                                    # S9 raises to $25
+    _bid(poller, player="11563", nominating=6, offering=6, amount="28")
+    poller.refresh()                                    # S6 retakes at $28
+    poller.replay = 30
+    _bid(poller, player="", nominating=None, offering=None)
+    poller.refresh()                                    # the lot closes
+    assert poller._bid_history["11563"] == {6: 28, 9: 25}
+    poller.view_goto(30)
+    snap = poller.snapshot()
+    assert "Bo Nix" in snap["nomination_html"]
+    assert snap["nomination_html"].count('class="chip') == 2
+    assert 'class="chip bid-high"' in snap["nomination_html"]
+    assert "$28" in snap["nomination_html"]
+    assert "$25" in snap["nomination_html"]
+
+
 def test_live_returns_to_the_pulse_driven_snapshot(poller):
     poller.refresh()
     live_snap = poller.snapshot()
@@ -495,6 +521,19 @@ def test_a_new_player_on_the_block_empties_the_list(poller):
     assert poller._bidders == {7: 1}
 
 
+def test_a_closing_lot_is_archived_into_bid_history(poller):
+    # The whole point of the archive: the field of bidders a closed lot had is
+    # gone from `_bidders` the instant the room moves on, so a checkpoint that
+    # rewinds to the pick it became needs it kept somewhere that outlives that.
+    poller.refresh()               # S12 opens KC at $1
+    _bid(poller, offering=4, amount="9")
+    poller.refresh()               # S4 takes it at $9
+    _bid(poller, player="4034", nominating=7, offering=7)
+    poller.refresh()               # a new lot opens; KC's is done
+    assert poller._bid_history == {"KC": {12: 1, 4: 9}}
+    assert poller._bidders == {7: 1}
+
+
 def test_a_lot_closing_empties_the_list(poller):
     poller.refresh()
     _bid(poller, player="", nominating=None, offering=None)
@@ -502,6 +541,10 @@ def test_a_lot_closing_empties_the_list(poller):
     assert poller._lot is None
     assert poller._bidders == {}
     assert "Nothing nominated" in poller.snapshot()["nomination_html"]
+    # Nothing on the block is a lot closing too, and its bidders are worth
+    # keeping the same as any other -- the KC lot from the fixture's default
+    # nomination, archived under the player rather than under "nothing".
+    assert poller._bid_history == {"KC": {12: 1}}
 
 
 def _cards(pressure_html):

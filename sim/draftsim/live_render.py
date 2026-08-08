@@ -709,7 +709,7 @@ def _seat_tile(
         f'<span class="tile{done}{bidding}" data-seat="{seat.slot}"'
         f' title="{_esc(tip)}">'
         f'<span class="ttop"><b>{_seat_tag(seat)}</b>'
-        f"<i>${seat.budget_left}</i></span>"
+        f"<i>${seat.max_bid}</i></span>"
         f"{body}</span>"
     )
 
@@ -1249,19 +1249,24 @@ def render_nomination(
     )
 
 
-def render_settled_lot(state: LeagueState) -> str:
+def render_settled_lot(
+    state: LeagueState,
+    bidders: Optional[Mapping[int, Optional[int]]] = None,
+) -> str:
     """The block panel for a checkpoint: not a lot in progress -- a checkpoint
     is always after a bid cleared -- but the pick that just settled, so the
     panel is never simply blank.
 
     Same markup and classes as `render_nomination`'s live panel, on purpose:
     a checkpoint is a different moment of the same draft, not a different kind
-    of screen. Only the two things a checkpoint actually still knows differ
-    from a live lot -- there is one winner instead of a field of bidders, and
-    the number is what it sold for rather than what it is at -- everything
-    else, including who bid and dropped out along the way, is memory the live
-    poller alone ever had (`DraftPoller._bidders`) and does not survive a
-    rewind.
+    of screen. The number is what it sold for rather than what it is at, and
+    the chip row is `DraftPoller._bid_history`'s record of that lot if the
+    poller was running to see it close -- the same chips the live panel showed
+    while it was open, the winner's figure forced to the settled price rather
+    than whatever was last polled. Without that record -- an older checkpoint
+    from before this process started, or a `--replay` rehearsal -- there is
+    only the one chip a settled pick can vouch for on its own: who won it, and
+    at what.
     """
     if not state.picks:
         return (
@@ -1282,14 +1287,22 @@ def render_settled_lot(state: LeagueState) -> str:
     label = _seat_label(seat) if seat is not None else f"S{pick.slot}"
     facts.append(f'<span class="onfact nm">won by {label}</span>')
     sub = '<span class="onsep"></span>'.join(facts)
-    tag = _seat_tag(seat) if seat is not None else f"S{pick.slot}"
-    tip = _seat_tip(seat) if seat is not None else f"S{pick.slot}"
-    chips = (
-        '<div class="bidders">'
-        f'<span class="chip bid-high" title="{_esc(tip)} · won at ${pick.price}">'
-        f'<span class="cn">{tag}</span><span class="ca">${pick.price}</span>'
-        "</span></div>"
-    )
+    if bidders:
+        # The winner's figure is forced to the settled price -- the one
+        # number this pick can vouch for on its own -- rather than whatever
+        # `_bid_history` last saw them holding, which normally agree but need
+        # not (a poll can land between the winning offer and the pick itself).
+        seen = {**bidders, pick.slot: pick.price}
+        chips = _bidder_chips(state, seen, pick.slot)
+    else:
+        tag = _seat_tag(seat) if seat is not None else f"S{pick.slot}"
+        tip = _seat_tip(seat) if seat is not None else f"S{pick.slot}"
+        chips = (
+            '<div class="bidders">'
+            f'<span class="chip bid-high" title="{_esc(tip)} · won at ${pick.price}">'
+            f'<span class="cn">{tag}</span><span class="ca">${pick.price}</span>'
+            "</span></div>"
+        )
     return (
         '<div class="block">'
         '<div class="onmain">'

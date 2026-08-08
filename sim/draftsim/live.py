@@ -112,6 +112,12 @@ class DraftPoller:
         # with no figure attached -- the nominator, before anyone raised.
         self._lot: Optional[str] = None
         self._bidders: Dict[int, Optional[int]] = {}
+        # Every lot's `_bidders`, kept past the lot's own close under its
+        # player_id -- so a checkpoint on the pick it became can still show who
+        # was in on it, not just who won. Same memory, longer leash: still
+        # nothing but what this poller itself watched happen, and still gone
+        # the moment the process restarts.
+        self._bid_history: Dict[str, Dict[int, Optional[int]]] = {}
         self.pool = load_players(csv_path)
         # The wider sheet identifies picks the draftable pool excludes; see
         # live_state.reconstruct.
@@ -240,11 +246,19 @@ class DraftPoller:
         Safe on the rebuild path alone -- `draft_pulse` carries the nominated
         player, the offer and the offering seat, so bidding cannot move without
         the snapshot being rebuilt.
+
+        The outgoing lot's bidders are archived into `_bid_history` under its
+        player_id before being cleared -- that is the one moment they are
+        still known, and a checkpoint that later rewinds to the pick this lot
+        became needs them to still be there.
         """
         if nom.player_id != self._lot:
-            # A new player on the block, or the lot closing. Either way the
-            # previous lot's bidders are history: this is about what is in
-            # front of the room now.
+            # A new player on the block, or the lot closing. Either way this
+            # lot's bidders stop moving -- archive them under the player who
+            # was on the block, then clear for whatever is in front of the
+            # room now.
+            if self._lot is not None and self._bidders:
+                self._bid_history[self._lot] = dict(self._bidders)
             self._lot = nom.player_id
             self._bidders = {}
         if nom.nominating_slot is not None:
@@ -463,7 +477,12 @@ class DraftPoller:
             "ledger_html": render_ledger(
                 state, seat, self.seat_note, self.user or ""
             ),
-            "nomination_html": render_settled_lot(state),
+            "nomination_html": render_settled_lot(
+                state,
+                self._bid_history.get(winner.player.sleeper_id)
+                if winner is not None
+                else None,
+            ),
             "rosters_html": render_rosters(state),
             "pressure_html": render_pressure(
                 state, winner.player.pos if winner is not None else ""
