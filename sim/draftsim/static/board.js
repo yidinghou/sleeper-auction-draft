@@ -697,6 +697,12 @@ function swapKeepingScroll(id, html) {
 // lets go.
 let navSliding = false;
 
+// How many picks had landed the moment we left live, so returning here after
+// more land while rewound is a fact worth flashing rather than a permanent
+// "you are not live" state that never lets up. Null while live, or before the
+// first checkpoint has told us anything.
+let rewindBaseline = null;
+
 function applyNav(nav) {
   if (!nav) return;
   const slider = document.getElementById("navslider");
@@ -710,8 +716,15 @@ function applyNav(nav) {
   }
   document.getElementById("navprev").disabled = nav.total === 0 || nav.index === 0;
   document.getElementById("navnext").disabled = nav.index >= nav.total;
-  document.getElementById("navlive")
-    .setAttribute("aria-pressed", nav.live ? "true" : "false");
+  const liveBtn = document.getElementById("navlive");
+  liveBtn.setAttribute("aria-pressed", nav.live ? "true" : "false");
+  if (nav.live) {
+    rewindBaseline = null;
+    liveBtn.classList.remove("flash");
+  } else {
+    if (rewindBaseline === null) rewindBaseline = nav.total;
+    liveBtn.classList.toggle("flash", nav.total > rewindBaseline);
+  }
 }
 
 // The one place a snapshot -- live or a rewound checkpoint -- is drawn.

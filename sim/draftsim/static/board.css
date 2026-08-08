@@ -621,6 +621,16 @@
      out, which says the two halves do different things. */
   .seg button:disabled[aria-pressed="true"] { background: #ececec;
     border-color: #e2e2e2; color: #999; }
+  /* Rewound with a pick landing behind your back: the LIVE button pulses in
+     the same purple the bidding chips use, rather than a colour of its own --
+     it is telling you the same kind of fact (something moved) in the same
+     palette as everywhere else that fact is drawn. Stops the moment you're
+     back live, since `applyNav` drops the class as soon as `nav.live` is true. */
+  .seg button#navlive.flash { animation: navlive-pulse 1s ease-in-out infinite; }
+  @keyframes navlive-pulse {
+    0%, 100% { background: #9333ea; border-color: #9333ea; color: #fff; }
+    50% { background: #fff; border-color: #9333ea; color: #9333ea; }
+  }
 
   /* The pick position, between the step buttons -- not a button itself, so it
      shares the segment's box without taking part in its aria-pressed states. */
