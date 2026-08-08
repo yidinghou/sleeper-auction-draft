@@ -59,17 +59,15 @@
      thing in it that can scale (the chart) takes what is left after the labels.
      Folding still wins: `.band.collapsed` is two classes to this one's one. */
   .band-live { flex: 0 0 20%; min-height: 0; }
-  /* Band 1 runs across rather than down. Two fifths for the bid and three for
-     the chart: the bid panel holds a name, a price and a row of chips, and the
-     chart holds twelve columns and twelve tags -- so the chart gets the wider
-     half and the panel that changes every few seconds is the one you reach
-     first, reading left to right. */
+  /* Band 1 runs across rather than down. Even split: the bid panel is the one
+     that changes every few seconds and the chart is the one with the most to
+     show, so neither gets to crowd the other out. */
   .band-live > .bandbody.live2 { flex-direction: row; align-items: stretch;
     gap: 8px; }
   .lpane { display: flex; flex-direction: column; gap: 4px; min-width: 0;
     min-height: 0; }
-  .bidpane { flex: 2 1 0; }
-  .moneypane { flex: 3 1 0; }
+  .bidpane { flex: 1 1 0; }
+  .moneypane { flex: 1 1 0; }
   /* The chart is the one thing on this band that can be any height, so it is
      the one that absorbs the difference: the labels, the tags and your standing
      line take what they need and the plot gets the rest. Which is why the bar
