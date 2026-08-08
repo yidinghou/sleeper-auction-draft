@@ -256,19 +256,21 @@
     text-overflow: ellipsis; }
   .chft span.me { color: #1a1a1a; font-weight: 700; }
   .chft span.broke { color: #c0392b; }
-  /* Who is actually bidding on the player next door. Amber, and the same amber
-     on the pressure tiles and on the bid panel's chips: one hue meaning one
-     thing in three places is what lets the pair of panels be read in a glance
-     rather than cross-referenced.
+  /* Who is actually bidding on the player next door. Purple, and the same
+     purple on the pressure tiles and on the bid panel's chips: one hue meaning
+     one thing in three places is what lets the pair of panels be read in a
+     glance rather than cross-referenced. Purple rather than amber because
+     amber is a hair from TE's own tint (`#ffae58`) -- this sits in the one
+     stretch of the wheel none of QB/RB/WR/TE or the money green occupy.
 
      The tint sits behind the column and the bar keeps its own colour -- green
      is what a seat can spend and that must not change meaning because the seat
      is spending it. Declared after `.col.me` so a bidding seat of your own
      shows the bid: which of the two you need is never in question mid-auction.
      Stronger for whoever holds the offer right now. */
-  .col.bid-in { background: #fff4e0; border-radius: 2px 2px 0 0; }
-  .col.bid-high { background: #ffe3b8; border-radius: 2px 2px 0 0; }
-  .chft span.bid-in, .chft span.bid-high { color: #b26a00; font-weight: 700; }
+  .col.bid-in { background: #f3e8fb; border-radius: 2px 2px 0 0; }
+  .col.bid-high { background: #e6cdf7; border-radius: 2px 2px 0 0; }
+  .chft span.bid-in, .chft span.bid-high { color: #9333ea; font-weight: 700; }
 
   /* What is on the block. The one panel on the page that is not white, because
      it is the thing you look up at between bids.
@@ -370,20 +372,20 @@
      the number never may -- a chip reading "S1 $4" when the seat led at $41 is
      worse than no chip at all. Hence the cap on the name alone. */
   .chip { font-size: calc(8.5px * var(--fs)); font-weight: 700; padding: 0 4px;
-    border-radius: 3px; border: 1px solid #e0b878; color: #b26a00;
-    background: #fff4e0; white-space: nowrap; line-height: 1.5; flex: none;
+    border-radius: 3px; border: 1px solid #c9a0e8; color: #9333ea;
+    background: #f3e8fb; white-space: nowrap; line-height: 1.5; flex: none;
     display: inline-flex; align-items: baseline; gap: 4px; }
   .chip .cn { max-width: calc(46px * var(--fs)); overflow: hidden;
     text-overflow: ellipsis; }
   .chip .ca { font-variant-numeric: tabular-nums; }
   /* Whoever holds it now is filled rather than outlined: of the chips, one is a
      fact about this second and the rest are about the last thirty. */
-  .chip.bid-high { background: #b26a00; border-color: #b26a00; color: #fff; }
-  /* The seats that have been outbid keep the amber for the figure and give up
+  .chip.bid-high { background: #9333ea; border-color: #9333ea; color: #fff; }
+  /* The seats that have been outbid keep the purple for the figure and give up
      the tint: what they got to is still the point, but it is history, and a row
      of eight filled chips is a row with no high bidder in it. */
   .chip.bid-in { background: #fff; border-color: #e6e6e6; color: #777; }
-  .chip.bid-in .ca { color: #b26a00; }
+  .chip.bid-in .ca { color: #9333ea; }
 
   /* Four across, three down: twelve seats, one screen, fixed positions so a
      card stays where you last saw it between refreshes. Wider than it is tall,
@@ -878,7 +880,7 @@
   .tile.done { background: #e7e7e7; border-color: #dadada; }
   .tile.done .ttop b { color: #8c8c8c; font-weight: 400; }
   .tile.done .ttop i { color: #949494; font-weight: 400; }
-  /* In the bidding on whatever is on the block, in the same amber the money
+  /* In the bidding on whatever is on the block, in the same purple the money
      chart's columns take -- this grid is read *about that player*, so which of
      these twelve are actually in on him belongs on the tiles you are already
      looking at.
@@ -887,9 +889,9 @@
      is bidding: a seat with four receivers bidding on a fifth is the most
      interesting thing this grid can tell you, and the settled grey is exactly
      what would hide it. */
-  .tile.bid-in { background: #fff4e0; border-color: #e0b878; }
-  .tile.bid-high { background: #ffe3b8; border-color: #b26a00; }
-  .tile.bid-in .ttop b, .tile.bid-high .ttop b { color: #b26a00;
+  .tile.bid-in { background: #f3e8fb; border-color: #c9a0e8; }
+  .tile.bid-high { background: #e6cdf7; border-color: #9333ea; }
+  .tile.bid-in .ttop b, .tile.bid-high .ttop b { color: #9333ea;
     font-weight: 700; }
   /* The same mark `.card.me` puts on your roster card, so "which of these
      twelve is me" reads the same way on both sides of the board. A border
