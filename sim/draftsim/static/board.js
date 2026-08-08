@@ -792,6 +792,18 @@ document.getElementById("navprev").addEventListener("click", () => nav("prev"));
 document.getElementById("navnext").addEventListener("click", () => nav("next"));
 document.getElementById("navlive").addEventListener("click", () => nav("live"));
 
+// Left/Right step a pick, same as the ◀/▶ buttons -- except while a text
+// field has focus (the seat rename box, or the slider itself, which is an
+// `<input>` too and should keep its own native arrow-key stepping instead of
+// fighting this handler for the same keypress).
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+  const focused = document.activeElement;
+  if (focused && ["INPUT", "TEXTAREA", "SELECT"].includes(focused.tagName)) return;
+  e.preventDefault();
+  nav(e.key === "ArrowLeft" ? "prev" : "next");
+});
+
 // The slider is for covering a hundred picks in one gesture, not for a
 // request per pixel dragged: `input` only moves the label, optimistically,
 // the same "corrected by the next poll if wrong" trick the seat-rename box
