@@ -690,6 +690,10 @@
   /* Bye and points are the first things to go when space is short; they live
      in the hover tooltip until the overlay has room for them. */
   .mb, .mp { display: none; color: #666; }
+  /* A bye in the division/playoff stretch (wk 12-17) borrows the board's
+     "broke" red rather than inventing a new colour: both are "you don't want
+     this," one about money and one about the calendar. */
+  .mb.late { color: #c0392b; font-weight: 700; }
 
   /* The fold summary's pips. Targets are fractional and the indicator is a run
      of pips, not a fill bar: a ratio bar pins at 100% the moment you reach the
@@ -1167,6 +1171,9 @@
      numbers, so the bye is held a shade back: the points are what you read,
      the bye is what you check. The row's hover names all six. */
   .prow .pby, .lrow .lby { color: #949494; }
+  /* Same borrowed red as the roster card, for the same reason -- and the
+     same override, since a specific risk outweighs "held back" by default. */
+  .prow .pby.late, .lrow .lby.late { color: #c0392b; font-weight: 700; }
   .prow .ppr { color: #1a7f37; font-weight: 700; }
   .lrow .lno { text-align: left; color: #777; }
   .lrow .lst { text-align: left; color: #888; font-weight: 700; min-width: 0;

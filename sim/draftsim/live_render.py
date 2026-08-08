@@ -35,7 +35,7 @@ from .live_state import (
     SeatPick,
     position_summary,
 )
-from .roster import display_slots
+from .roster import display_slots, is_lineup_legal
 from .sleeper import Nomination
 from .theme import (
     BASE_CSS_LIGHT,
@@ -131,7 +131,35 @@ def _short_name(player: Player) -> str:
     return f"{parts[0][0]}. {' '.join(parts[1:])}"
 
 
-def _player_row(label: str, player: Player, price: int, bench: bool = False) -> str:
+# The last three regular-season games (12-14) decide division seeding and
+# 15-17 are the playoffs -- a bye in that stretch benches a starter for the
+# games that matter most, which a bare number doesn't say.
+LATE_BYE_FROM = 12
+
+
+def _is_late_bye(player: Player) -> bool:
+    return player.bye is not None and player.bye >= LATE_BYE_FROM
+
+
+def _late_bye_active(state: LeagueState, my_seat: Optional[int]) -> bool:
+    """Whether the late-bye flag is still worth raising.
+
+    Once my own starting lineup has no open slot left, a late bye no longer
+    changes a decision -- so the flag goes quiet everywhere (roster cards,
+    pool, log) rather than keep marking bench-only picks. Unresolved or
+    unknown seats fail open: the flag stays on rather than silently vanishing.
+    """
+    if my_seat is None:
+        return True
+    seat = state.seats.get(my_seat)
+    if seat is None:
+        return True
+    return not is_lineup_legal(seat.roster, state.config)
+
+
+def _player_row(
+    label: str, player: Player, price: int, bench: bool = False, late_bye: bool = False
+) -> str:
     """One player, one line: slot chip, name, then the numeric columns.
 
     Both name forms are emitted and CSS picks one -- short when compact, full
@@ -145,8 +173,11 @@ def _player_row(label: str, player: Player, price: int, bench: bool = False) -> 
     still reads differently from the lineup.
     """
     color = POS_COLOR_LIGHT.get(player.pos, POS_FALLBACK_LIGHT)
+    flag = late_bye and _is_late_bye(player)
     tip = f"{player.name} · {player.pos} · {player.team or 'FA'}"
-    if player.bye:
+    if flag:
+        tip += " · LATE BYE"
+    elif player.bye:
         tip += f" · BYE {player.bye}"
     tip += f" · {player.points:.0f} pts · ${price}"
     return (
@@ -155,7 +186,7 @@ def _player_row(label: str, player: Player, price: int, bench: bool = False) -> 
         f'<i class="ms">{_esc(label)}</i>'
         f'<b class="mn">{_esc(_short_name(player))}</b>'
         f'<b class="mnf">{_esc(player.name)}</b>'
-        f'<i class="mb">{player.bye or "—"}</i>'
+        f'<i class="mb{" late" if flag else ""}">{player.bye or "—"}</i>'
         f'<i class="mp">{player.points:.0f}</i>'
         f'<i class="mc">${price}</i></div>'
     )
@@ -353,7 +384,7 @@ def _card_footer(layout: Sequence[Tuple[str, Optional[Player]]]) -> str:
     )
 
 
-def _roster_card(state: LeagueState, seat: Seat, row: int) -> str:
+def _roster_card(state: LeagueState, seat: Seat, row: int, late_bye: bool = False) -> str:
     """One seat, as two panes over the same roster.
 
     LINEUP is every starting slot, one player per line, in the slot they would
@@ -373,14 +404,17 @@ def _roster_card(state: LeagueState, seat: Seat, row: int) -> str:
         _open_row(slot)
         if player is None
         else _player_row(
-            SLOT_LABEL.get(slot, slot), player, price_of.get(player.id, 0)
+            SLOT_LABEL.get(slot, slot), player, price_of.get(player.id, 0),
+            late_bye=late_bye,
         )
         for slot, player in layout
         if slot != BENCH
     )
     bench_players = [p for slot, p in layout if slot == BENCH and p]
     bench = "".join(
-        _player_row(p.pos or BENCH, p, price_of.get(p.id, 0), bench=True)
+        _player_row(
+            p.pos or BENCH, p, price_of.get(p.id, 0), bench=True, late_bye=late_bye
+        )
         for p in bench_players
     )
     if not bench:
@@ -574,7 +608,7 @@ def render_spend(state: LeagueState) -> str:
     )
 
 
-def render_rosters(state: LeagueState) -> str:
+def render_rosters(state: LeagueState, my_seat: Optional[int] = None) -> str:
     """Every seat's roster as a card, in seat order, under a header per row.
 
     Seat order, and never sorted by anything that moves: these are read to look
@@ -592,8 +626,9 @@ def render_rosters(state: LeagueState) -> str:
     from any row to any other, and a grid per row could not do that. Which rows
     are open is the filter's business, up in the menu bar.
     """
+    late_bye = _late_bye_active(state, my_seat)
     cards = [
-        _roster_card(state, state.seats[slot], index // _GRID_COLS)
+        _roster_card(state, state.seats[slot], index // _GRID_COLS, late_bye=late_bye)
         for index, slot in enumerate(sorted(state.seats))
     ]
     return f'<div class="grid">{"".join(cards)}</div>'
@@ -890,20 +925,23 @@ _POOL_SHOWN = 300
 _POOL_PER_POS = 40
 
 
-def _meta_tip(player: Player) -> str:
+def _meta_tip(player: Player, late_bye: bool = False) -> str:
     """The row's small columns, spelled out for the hover.
 
     Team, bye and points are two or three characters each in the list, which is
     all the room they get and rather less than they need to explain themselves.
     """
-    bye = f"BYE {player.bye}" if player.bye else "no bye listed"
+    if late_bye and _is_late_bye(player):
+        bye = "LATE BYE"
+    else:
+        bye = f"BYE {player.bye}" if player.bye else "no bye listed"
     return (
         f"{player.name} · {player.pos} · {player.team or 'FA'} · {bye}"
         f" · {player.points:.0f} pts"
     )
 
 
-def render_pool(state: LeagueState) -> str:
+def render_pool(state: LeagueState, my_seat: Optional[int] = None) -> str:
     """Who is left, dearest first.
 
     Ordered by `$PROJ` -- the same figure the nomination strip and the tier list
@@ -935,14 +973,16 @@ def render_pool(state: LeagueState) -> str:
             per_pos[player.pos] = seen + 1
             keep.add(player.id)
     shown = [p for p in ranked if p.id in keep]
+    late_bye = _late_bye_active(state, my_seat)
 
     rows = "".join(
         f'<div class="prow" data-pos="{_esc(player.pos)}"'
-        f' title="{_esc(_meta_tip(player))}">'
+        f' title="{_esc(_meta_tip(player, late_bye))}">'
         f"{badge(player.pos, light=True)}"
         f'<b>{_esc(player.name)}</b>'
         f'<i class="ptm">{_esc(player.team or "FA")}</i>'
-        f'<i class="pby">{player.bye or "—"}</i>'
+        f'<i class="pby{" late" if late_bye and _is_late_bye(player) else ""}">'
+        f'{player.bye or "—"}</i>'
         f'<i class="ppt">{player.points:.0f}</i>'
         f'<i class="ppr">{f"${market_value(player):.0f}" if market_value(player) else "—"}</i>'
         "</div>"
@@ -990,7 +1030,7 @@ def _pos_ranks(state: LeagueState) -> Dict[int, str]:
     return ranks
 
 
-def render_log(state: LeagueState) -> str:
+def render_log(state: LeagueState, my_seat: Optional[int] = None) -> str:
     """Every sale, newest first.
 
     Newest first because the rows read *during* a draft are the last few -- what
@@ -1007,6 +1047,7 @@ def render_log(state: LeagueState) -> str:
     a couple of hundred picks, so the whole thing is cheap to carry.
     """
     ranks = _pos_ranks(state)
+    late_bye = _late_bye_active(state, my_seat)
     # Who bought it, in the log's one narrow column: the slot leads here rather
     # than the name, because these rows are read in a column and a number is
     # scanned down one where a name has to be read. The name follows when there
@@ -1022,13 +1063,14 @@ def render_log(state: LeagueState) -> str:
 
     rows = "".join(
         f'<div class="lrow" data-pos="{_esc(pick.player.pos)}"'
-        f' title="{_esc(_meta_tip(pick.player))} · ${pick.price}">'
+        f' title="{_esc(_meta_tip(pick.player, late_bye))} · ${pick.price}">'
         f'<i class="lno">#{pick.pick_no}</i>'
         f"{buyer(pick)}"
         f"{badge(pick.player.pos, light=True, label=ranks.get(pick.pick_no))}"
         f'<b>{_esc(pick.player.name)}</b>'
         f'<i class="ltm">{_esc(pick.player.team or "FA")}</i>'
-        f'<i class="lby">{pick.player.bye or "—"}</i>'
+        f'<i class="lby{" late" if late_bye and _is_late_bye(pick.player) else ""}">'
+        f'{pick.player.bye or "—"}</i>'
         f'<i class="lpt">{pick.player.points:.0f}</i>'
         f"{_log_price(pick)}</div>"
         for pick in sorted(state.picks, key=lambda p: -p.pick_no)
