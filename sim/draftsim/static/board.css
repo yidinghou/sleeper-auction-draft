@@ -1132,12 +1132,32 @@
   .listwrap[data-filter="TE"] .prow:not([data-pos="TE"]),
   .listwrap[data-filter="TE"] .lrow:not([data-pos="TE"]) { display: none; }
 
-  .prow, .lrow { display: grid; align-items: center; gap: 5px; padding: 1px 2px;
+  .prow, .lrow { display: grid; align-items: center; gap: 5px; padding: 3px 2px;
     font-size: calc(10px * var(--fs)); line-height: 1.2; min-width: 0; }
-  /* pos · name · team · bye · pts · $PROJ */
+  /* pos · name · team · bye · pts · wk1 · wk2 · wk3 · $PROJ. The three weeks
+     are the division round -- see `_early_week_cell` -- and share the pts
+     column's width rather than getting their own, since they are read as a
+     trio against the number just to their left rather than individually. */
   .prow { grid-template-columns:
     calc(22px * var(--fs)) minmax(0, 1fr) calc(20px * var(--fs))
-    calc(14px * var(--fs)) calc(22px * var(--fs)) calc(24px * var(--fs)); }
+    calc(14px * var(--fs)) calc(22px * var(--fs))
+    calc(24px * var(--fs)) calc(24px * var(--fs)) calc(24px * var(--fs))
+    calc(24px * var(--fs)); }
+  /* The pool's own column header, `_POOL_HEADER` -- sticky at the top of the
+     scrolling list rather than fixed above it, so it survives the pane's own
+     scroll the way the band's title above it does not. A heavier rule than
+     the row divider below marks it as the fixed row rather than the first of
+     the list. */
+  .prow.phdr { position: sticky; top: 0; z-index: 1; background: #f7f7f7;
+    border-bottom: 2px solid #e8e8e8; padding: 4px 2px; }
+  .prow.phdr i { font-size: calc(8.5px * var(--fs)); font-weight: 700;
+    color: #555; text-transform: uppercase; letter-spacing: 0.04em; }
+  .prow.phdr .phdname { text-align: left; }
+  /* A real rule between rows, not the near-invisible one this replaced --
+     the old `#f7f7f7` divider was closer to no divider at all, and a list
+     this dense needs the eye to catch where one player ends and the next
+     begins without hovering to find out. */
+  .prow:not(.phdr):not(:last-child) { border-bottom: 1px solid #ddd; }
   /* #no · seat · pos+rank · name · team · bye · pts · price · delta.
      Nine columns, which the pane can afford: the sidebar is 3fr of a 3fr/2fr
      page, so each of these two is ~400px rather than the ~230px a roster card
@@ -1157,7 +1177,7 @@
     calc(22px * var(--fs)) calc(46px * var(--fs)) calc(28px * var(--fs))
     minmax(0, 1fr) calc(20px * var(--fs)) calc(14px * var(--fs))
     calc(22px * var(--fs)) calc(22px * var(--fs)) calc(26px * var(--fs)); }
-  .prow:not(:last-child), .lrow:not(:last-child) { border-bottom: 1px solid #f7f7f7; }
+  .lrow:not(:last-child) { border-bottom: 1px solid #f7f7f7; }
   .prow b, .lrow b { font-weight: 400; min-width: 0; overflow: hidden;
     white-space: nowrap; text-overflow: ellipsis; }
   /* The floor these rows set is now the whole file's -- see the note at the
@@ -1174,6 +1194,13 @@
   /* Same borrowed red as the roster card, for the same reason -- and the
      same override, since a specific risk outweighs "held back" by default. */
   .prow .pby.late, .lrow .lby.late { color: #c0392b; font-weight: 700; }
+  /* Division-round weeks, held back to plain grey until the gap from the
+     player's own season pace is real -- `_early_week_cell` sets the margin.
+     Reuses the pool's own money/bad hues rather than the log's over/under
+     pair: the two conventions answer different questions and would read as
+     one signal if they shared a class name too. */
+  .prow .pwk.g { color: #1a7f37; font-weight: 700; }
+  .prow .pwk.r { color: #c0392b; font-weight: 700; }
   .prow .ppr { color: #1a7f37; font-weight: 700; }
   .lrow .lno { text-align: left; color: #777; }
   .lrow .lst { text-align: left; color: #888; font-weight: 700; min-width: 0;
