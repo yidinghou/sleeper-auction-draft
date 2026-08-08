@@ -1140,11 +1140,36 @@ def _bidder_chips(
     return f'<div class="bidders">{"".join(chips)}</div>'
 
 
+def _bid_trail(state: LeagueState, events: Sequence[Tuple[int, Optional[int]]]) -> str:
+    """The raises in the order they happened, oldest first.
+
+    `_bidder_chips` answers "who's in, at what ceiling" -- one chip per seat,
+    collapsed to their best figure. This answers "in what order": the same
+    seat can appear twice if it took the lead, lost it, and took it back. A
+    second, quieter line under the chips rather than a replacement for them --
+    the chips are still the faster read for who is in it right now.
+
+    Empty whenever the poller never watched this lot open: an older pick made
+    before this process started, or a `--replay` rehearsal. No chip row, no
+    tooltip qualifying it -- just nothing, the same as `_bidder_chips` gets
+    when it falls back to a bare sequence of slots.
+    """
+    if not events:
+        return ""
+    steps = []
+    for slot, amount in events:
+        seat = state.seats.get(slot)
+        tag = _seat_tag(seat) if seat is not None else f"S{slot}"
+        steps.append(tag if amount is None else f"{tag} ${amount}")
+    return f'<div class="trail">{" → ".join(steps)}</div>'
+
+
 def render_nomination(
     state: LeagueState,
     nom: Nomination,
     player: Optional[Player],
     bidders: Union[Mapping[int, Optional[int]], Sequence[int]] = (),
+    bid_events: Sequence[Tuple[int, Optional[int]]] = (),
 ) -> str:
     """The left panel: what is on the block, at what, and who wants it.
 
@@ -1236,6 +1261,7 @@ def render_nomination(
         "</div>"
         "</div>"
         f"{_bidder_chips(state, seen, nom.offering_slot)}"
+        f"{_bid_trail(state, bid_events)}"
         "</div>"
     )
 
@@ -1243,6 +1269,7 @@ def render_nomination(
 def render_settled_lot(
     state: LeagueState,
     bidders: Optional[Mapping[int, Optional[int]]] = None,
+    bid_events: Optional[Sequence[Tuple[int, Optional[int]]]] = None,
 ) -> str:
     """The block panel for a checkpoint: not a lot in progress -- a checkpoint
     is always after a bid cleared -- but the pick that just settled, so the
@@ -1309,6 +1336,7 @@ def render_settled_lot(
         "</div>"
         "</div>"
         f"{chips}"
+        f"{_bid_trail(state, bid_events or ())}"
         "</div>"
     )
 

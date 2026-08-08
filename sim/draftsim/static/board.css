@@ -393,6 +393,12 @@
   .chip.bid-in { background: #fff; border-color: #e6e6e6; color: #777; }
   .chip.bid-in .ca { color: #9333ea; }
 
+  /* The raise-by-raise trail under the chip row: the chips already answer
+     "who's in, at what ceiling" at a glance, so this is a second, quieter
+     line for "in what order" -- muted rather than competing with them. */
+  .trail { font-size: calc(8px * var(--fs)); color: #999; margin-top: 2px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
   /* Four across, three down: twelve seats, one screen, fixed positions so a
      card stays where you last saw it between refreshes. Wider than it is tall,
      which is the shape the card wants now that the bench moved into its own

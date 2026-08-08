@@ -20,7 +20,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from .live_render import (
     render_ledger,
@@ -118,6 +118,13 @@ class DraftPoller:
         # nothing but what this poller itself watched happen, and still gone
         # the moment the process restarts.
         self._bid_history: Dict[str, Dict[int, Optional[int]]] = {}
+        # `_bidders` answers "who's in, at what ceiling" -- this answers "in
+        # what order did the raises happen". A list rather than a dict because
+        # the same seat can appear twice (raise, get outbid, raise again), and
+        # each entry is worth its own place in the trail. Same lot-boundary
+        # archiving as `_bid_history`, under the same key.
+        self._bid_events: List[Tuple[int, Optional[int]]] = []
+        self._bid_log: Dict[str, List[Tuple[int, Optional[int]]]] = {}
         self.pool = load_players(csv_path)
         # The wider sheet identifies picks the draftable pool excludes; see
         # live_state.reconstruct.
@@ -250,7 +257,11 @@ class DraftPoller:
         The outgoing lot's bidders are archived into `_bid_history` under its
         player_id before being cleared -- that is the one moment they are
         still known, and a checkpoint that later rewinds to the pick this lot
-        became needs them to still be there.
+        became needs them to still be there. `_bid_events` is archived into
+        `_bid_log` the same way, alongside it: `_bidders` says who's in at what
+        ceiling, `_bid_events` says in what order the raises happened -- the
+        same seat can appear in it twice if it took the lead, lost it, and
+        took it back.
         """
         if nom.player_id != self._lot:
             # A new player on the block, or the lot closing. Either way this
@@ -259,10 +270,15 @@ class DraftPoller:
             # room now.
             if self._lot is not None and self._bidders:
                 self._bid_history[self._lot] = dict(self._bidders)
+            if self._lot is not None and self._bid_events:
+                self._bid_log[self._lot] = list(self._bid_events)
             self._lot = nom.player_id
             self._bidders = {}
+            self._bid_events = []
         if nom.nominating_slot is not None:
             self._bidders.setdefault(nom.nominating_slot, None)
+            if not self._bid_events:
+                self._bid_events.append((nom.nominating_slot, None))
         slot = nom.offering_slot
         if slot is not None:
             if nom.high_bid is None:
@@ -270,6 +286,12 @@ class DraftPoller:
             else:
                 seen = self._bidders.get(slot)
                 self._bidders[slot] = max(seen or 0, nom.high_bid)
+                # Only a real change in who's leading (or at what) is a raise
+                # worth logging -- a poll landing twice on the same offer must
+                # not repeat it in the trail.
+                last = self._bid_events[-1] if self._bid_events else None
+                if last != (slot, nom.high_bid):
+                    self._bid_events.append((slot, nom.high_bid))
 
     def rename_seat(self, slot: int, name: str) -> str:
         """Name a seat by hand. Returns the label it now carries.
@@ -418,7 +440,9 @@ class DraftPoller:
             "ledger_html": render_ledger(
                 state, seat, self.seat_note, self.user or ""
             ),
-            "nomination_html": render_nomination(state, nom, nominee, self._bidders),
+            "nomination_html": render_nomination(
+                state, nom, nominee, self._bidders, self._bid_events
+            ),
             "rosters_html": render_rosters(state, seat),
             # Only the nominee's own card lights its bidders: the bidding is on
             # one player at one position, and repeating it across all four said
@@ -481,6 +505,9 @@ class DraftPoller:
             "nomination_html": render_settled_lot(
                 state,
                 self._bid_history.get(winner.player.sleeper_id)
+                if winner is not None
+                else None,
+                self._bid_log.get(winner.player.sleeper_id)
                 if winner is not None
                 else None,
             ),

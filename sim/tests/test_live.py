@@ -508,8 +508,13 @@ def test_each_seat_keeps_the_highest_figure_it_was_seen_holding(poller):
     assert poller._bidders == {12: 14, 4: 20}
     assert list(poller._bidders) == [12, 4]  # entry order, not bid order
     html = poller.snapshot()["nomination_html"]
-    assert "$14" in html and "$20" in html
-    assert "$9" not in html  # superseded by the same seat's later figure
+    chips = re.search(r'<div class="bidders">.*?</div>', html).group()
+    assert "$14" in chips and "$20" in chips
+    assert "$9" not in chips  # superseded by the same seat's later figure
+    # The trail is the one place $9 is expected to survive: it is a real raise
+    # that happened, even though the chip above it moved on.
+    trail = re.search(r'<div class="trail">.*?</div>', html).group()
+    assert "$9" in trail and "$14" in trail and "$20" in trail
 
 
 def test_a_new_player_on_the_block_empties_the_list(poller):
