@@ -87,6 +87,12 @@
   /* A wrapper, not a section: the pool and the log carry their own headers and
      their own frames, and a box around the pair would only double every line. */
   .band-panes { flex: 2 1 0; border: none; background: none; overflow: visible; }
+  /* Pool and log sit side by side, so collapsing one alone only frees width in
+     their shared row -- the row still claims its usual share of the column's
+     height. Only once both are shut does that row have nothing left to say,
+     and run pressure can have the height back. */
+  .side.panes-collapsed .band-runs { flex: 1 1 0; }
+  .side.panes-collapsed .band-panes { flex: 0 0 auto; }
   .band > .bandhd { display: flex; align-items: baseline; gap: 6px; flex: none;
     padding: 3px 7px; background: #f7f7f7; border-bottom: 1px solid #e8e8e8; }
   .bandhd h2 { font-size: calc(10px * var(--fs)); margin: 0; color: #555;

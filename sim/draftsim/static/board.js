@@ -359,6 +359,11 @@ function applyCollapsed() {
   document.querySelectorAll("[data-band]").forEach((el) => {
     el.classList.toggle("collapsed", collapsed.includes("band:" + el.dataset.band));
   });
+  // Pool and log fold side by side, so collapsing one alone only frees width
+  // in their shared row. Only once both are gone does the row have no height
+  // to answer for, and run pressure can take it.
+  const bothPanesShut = collapsed.includes("band:pool") && collapsed.includes("band:log");
+  document.querySelector(".side").classList.toggle("panes-collapsed", bothPanesShut);
   applyRows();
 }
 
