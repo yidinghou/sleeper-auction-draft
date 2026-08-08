@@ -195,7 +195,7 @@ document.addEventListener("keydown", (e) => {
 
 // Per-card pane. "lineup" first: it is what the board loads on, and it is the
 // one a card with no stored choice must show.
-const VIEWS = ["lineup", "bench", "need"];
+const VIEWS = ["lineup", "bench"];
 let views = {};
 try { views = JSON.parse(localStorage.getItem("draftsim.views")) || {}; } catch (e) {}
 
@@ -208,7 +208,6 @@ function applyViews() {
     const view = VIEWS.includes(views[card.dataset.seat])
       ? views[card.dataset.seat] : VIEWS[0];
     card.classList.toggle("view-bench", view === "bench");
-    card.classList.toggle("view-need", view === "need");
     card.querySelectorAll(".seg button").forEach((b) => {
       b.setAttribute("aria-pressed", String(b.dataset.pane === view));
     });

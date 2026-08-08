@@ -169,20 +169,17 @@ columns — fixed-width and tabular, so they read down.
 **The card header is money and nothing else**: dollars left in the biggest type
 on the card, the max bid beside it, and a bar of the two — green for what is
 spendable, grey for the dollar-per-open-slot that is in the account but already
-owed. A seat whose max bid can no longer win anyone turns red. Points and slot
-counts used to sit here; they were read occasionally and competed with the two
-numbers read constantly, so they moved into NEED.
+owed. A seat whose max bid can no longer win anyone turns red.
 
-Each card carries **three panes over the same roster**, picked by the segmented
-control in its header. All three ship in the markup and CSS shows one, so
-switching costs no fetch and two panes can never show different moments of the
-draft:
+Each card carries **two panes over the same roster**, picked by the segmented
+control in its header. Both ship in the markup and CSS shows one, so
+switching costs no fetch and the two panes can never show different moments of
+the draft:
 
 | Pane | Shows |
 | --- | --- |
 | `LINEUP` | Every starting slot, one player per line, in the slot they'd **actually start in** — via the same `roster.display_slots` matching the engine scores on, so a second RB shows up in FLEX. Unfilled slots stay visible; the hole is the point. |
 | `BN` | The bench, each row tinted by the player's **real position** rather than labelled a fungible `BN` — in a pane of its own nothing else says what these bodies are. Dimmed a step, so depth still reads as depth. |
-| `NEED` | Position targets, plus a pace line (`slots left`, `$/slot`) — the balance alone doesn't say whether a seat is ahead or behind. |
 
 Position is **the pale tint of the row itself**, not a coloured chip: a 26% mix
 of the position colour against white, with the slot label left plain grey. A
@@ -191,12 +188,14 @@ actually read; this way a row reads as "a receiver" at a glance and nothing
 competes with the name. An unfilled slot is flat grey instead — a hole should
 read as absence, not as a position.
 
-`NEED` targets are **fractional** (`live_state.DRAFT_TARGETS`: QB 3, RB 2.5,
-WR 3.5, TE 1), because a flex slot is genuinely shared and rounding 2.5 up to 3
-made a filled seat look short. These are a draft *plan*, deliberately not
+Folding a card's row (double-click the row bar) swaps it for a **position
+summary strip** instead of hiding it outright: which positions a seat has
+filled, and where it's carrying depth, read off `live_state.DRAFT_TARGETS`
+(fractional — QB 3, RB 2.5, WR 3.5, TE 1 — because a flex slot is genuinely
+shared and rounding 2.5 up to 3 made a filled seat look short) against
+`config.owned_starters()`. Those targets are a draft *plan*, deliberately not
 `config.starter_shares()` (QB 2.00, RB 2.77, WR 3.23) — that is the structural
-split and the right input to replacement level; this is what you mean to buy. So
-`position_summary` and `seat.needs` disagree on purpose: legality versus plan.
+split and the right input to replacement level; this is what you mean to buy.
 
 The indicator is a run of **pips**, not a fill bar: one pip per whole starter
 wanted, the half-slot drawn half as wide, so the row's own length *is* the

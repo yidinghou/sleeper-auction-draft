@@ -506,7 +506,7 @@
 
      `.body` is hidden rather than the panes inside it, which sidesteps the
      specificity trap the pressure cards hit (see the note further down): with
-     the parent gone, `.card.view-need .pane.need` has nothing left to win. */
+     the parent gone, no per-pane rule has anything left to win. */
   .card.collapsed { background: #fafafa; }
   .card.collapsed > .body { display: none; }
   .card.collapsed header { margin-bottom: 0; border-bottom: none;
@@ -646,10 +646,8 @@
     scrollbar-color: #ccc transparent; }
   .card .pane.lineup { display: flex; flex-direction: column;
     flex: 1; min-height: 0; }
-  .card.view-bench .pane.lineup, .card.view-need .pane.lineup { display: none; }
+  .card.view-bench .pane.lineup { display: none; }
   .card.view-bench .pane[data-pane="bench"] { display: block; }
-  .card.view-need .pane.need { display: flex; flex-direction: column; flex: 1;
-    min-height: 0; }
   .empty { color: #949494; font-size: calc(9px * var(--fs)); padding: 4px 2px; }
 
   /* One line per player, and the position is the *field the name sits on*: a
@@ -693,25 +691,13 @@
      in the hover tooltip until the overlay has room for them. */
   .mb, .mp { display: none; color: #666; }
 
-  /* The NEED pane. Targets are fractional and the indicator is a run of pips,
-     not a fill bar: a ratio bar pins at 100% the moment you reach the target,
-     so a seat one body short and a seat two deep drew the same picture. This is
-     the one place the position colour stays at full strength -- the pips are
-     the mark being read, not a field behind text. */
-  .nrow { display: grid; align-items: center; gap: 5px; padding: 1px 3px;
-    margin-bottom: 1px; border-radius: 3px;
-    grid-template-columns:
-      calc(24px * var(--fs)) calc(30px * var(--fs)) minmax(0, 1fr) calc(26px * var(--fs));
-    line-height: 1.7;
-    background: color-mix(in srgb, var(--pos, #7c90a0) 14%, #fff); }
-  /* have/target, with the target half sunk: what you own is the number being
-     read, the target is context. Short positions take the accent -- that is the
-     one thing this pane exists to surface. */
-  .nct { font-size: calc(9.5px * var(--fs)); font-weight: 700; text-align: right;
-    font-variant-numeric: tabular-nums; color: #666; }
-  .nct i { font-style: normal; font-weight: 400; color: #777; }
-  .nrow.short .nct { color: #c0392b; }
-  /* One pip per whole starter the target asks for, the half-slot drawn half as
+  /* The fold summary's pips. Targets are fractional and the indicator is a run
+     of pips, not a fill bar: a ratio bar pins at 100% the moment you reach the
+     target, so a seat one body short and a seat two deep drew the same
+     picture. This is the one place the position colour stays at full
+     strength -- the pips are the mark being read, not a field behind text.
+
+     One pip per whole starter the target asks for, the half-slot drawn half as
      wide, so the row's own length is the requirement -- 2.5 is visible rather
      than merely readable. Surplus sits outside the run, outlined.
 
@@ -728,16 +714,6 @@
   .pip.on { background: var(--pos, #7c90a0); box-shadow: none; }
   .pip.extra { background: none; width: calc(5px * var(--fs));
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pos, #7c90a0) 45%, #fff); }
-  .npt { font-style: normal; font-size: calc(8.5px * var(--fs)); text-align: right;
-    font-variant-numeric: tabular-nums; color: #666; }
-  /* Pace, pinned to the pane's floor. Budget alone does not say whether a seat
-     is spending ahead or behind; dollars per slot still to fill does, and it is
-     the number that says when to start dumping. */
-  .pace { margin-top: auto; padding-top: 3px; border-top: 1px solid #eee;
-    display: flex; justify-content: space-between; gap: 6px;
-    font-size: calc(8px * var(--fs)); color: #888;
-    font-variant-numeric: tabular-nums; }
-  .pace b { color: #1a1a1a; font-weight: 700; }
 
   /* -- Run pressure -------------------------------------------------------
      One card per position, in the left column under the block. The card is
@@ -1267,15 +1243,9 @@
   body.maxed .colhead { display: grid; background: none; }
   /* Column labels belong to the lineup rows; in another pane they would head an
      empty card. More specific than the rule above, so it wins in both. */
-  .card.view-bench .colhead, .card.view-need .colhead { display: none; }
+  .card.view-bench .colhead { display: none; }
   body.maxed .colhead i { color: #949494; font-size: calc(8px * var(--fs)); font-weight: 700;
     text-transform: uppercase; }
-  body.maxed .nrow { line-height: 2.1; gap: 8px; padding: 1px 5px;
-    grid-template-columns:
-      calc(30px * var(--fs)) calc(36px * var(--fs)) minmax(0, 1fr) calc(32px * var(--fs)); }
-  body.maxed .nct { font-size: calc(12px * var(--fs)); }
-  body.maxed .npt { font-size: calc(11px * var(--fs)); }
   body.maxed .pip { height: calc(8px * var(--fs)); width: calc(11px * var(--fs)); }
   body.maxed .pip.half { width: calc(5.5px * var(--fs)); }
   body.maxed .pip.extra { width: calc(7px * var(--fs)); }
-  body.maxed .pace { font-size: calc(10px * var(--fs)); padding-top: 4px; }

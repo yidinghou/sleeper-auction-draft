@@ -2,14 +2,12 @@
 
 A header strip naming whatever is on the block, then every seat's roster as a
 card -- one player per line, in the slot they would actually start in, with what
-they cost. Each card carries three panes over the same data (LINEUP, BN, NEED),
+they cost. Each card carries two panes over the same data (LINEUP, BN),
 picked by the segmented control in its header, and cards can be dragged into
 whatever order you want to read them in.
 
 The card header is money and nothing else: what a seat has left, the most it can
-still bid, and a bar of the two. That is the question the board exists to answer
--- *who can outbid me* -- and points and slot counts were competing with it, so
-they moved into the NEED pane where there is room to label them.
+still bid, and a bar of the two.
 
 The page is served by `live.py` and refreshes itself by refetching `/api/state`
 and swapping in the fragments below — so everything here renders from a
@@ -197,7 +195,7 @@ def _pips(have: int, want: float, color: str, cap: bool = False) -> str:
     not a run-pressure one: inside a pressure tile a fourth quarterback only made
     one of twelve tiles wider than its neighbours, and what the run pane wants
     from that seat is the single fact that it has stopped buying -- which the
-    dimming says. The roster's NEED rows and fold strips still draw it in full.
+    dimming says. The roster's fold strips still draw it in full.
     """
     whole = int(want)
     pips = "".join(
@@ -211,47 +209,11 @@ def _pips(have: int, want: float, color: str, cap: bool = False) -> str:
     return f'<span class="pips" style="--pos:{color}">{pips}</span>'
 
 
-def _need_row(line: PositionLine) -> str:
-    """One position: chip, have/target, the pips, and what it starts."""
-    color = POS_COLOR_LIGHT.get(line.pos, POS_FALLBACK_LIGHT)
-    pts = f"{line.starter_points:.0f}" if line.starter_points else "—"
-    return (
-        f'<div class="nrow{" short" if line.need else ""}" style="--pos:{color}">'
-        f'<i class="ms">{_esc(line.pos)}</i>'
-        f'<b class="nct">{line.have}<i>/{_num(line.want)}</i></b>'
-        f"{_pips(line.have, line.want, color)}"
-        f'<i class="npt">{pts}</i></div>'
-    )
-
-
-# Positions the NEED pane leaves out. Both are settled early and stay settled --
-# you buy one defense, one kicker, and neither is a decision you make at the
-# podium -- so they cost a row each without ever changing what you would bid.
-# The LINEUP pane still shows them.
+# Positions the fold summary and starter count leave out. Both are settled
+# early and stay settled -- you buy one defense, one kicker, and neither is a
+# decision you make at the podium -- so they cost a row each without ever
+# changing what you would bid. The LINEUP pane still shows them.
 _NEED_SKIP = ("DEF", "K")
-
-
-def _need_pane(state: LeagueState, seat: Seat) -> str:
-    """What this seat still wants, and how fast it has to spend to get it.
-
-    The pace line is the pane's footer because budget alone does not say whether
-    a seat is ahead or behind: $37 across three slots and $37 across twelve are
-    different seats. Dollars per remaining slot is the number that says when to
-    start dumping.
-    """
-    rows = "".join(
-        _need_row(line)
-        for line in position_summary(seat, state.config)
-        if line.pos not in _NEED_SKIP
-    )
-    per_slot = seat.budget_left / seat.open_slots if seat.open_slots else 0.0
-    return (
-        f'<div class="pane need" data-pane="need">{rows}'
-        '<div class="pace">'
-        f'<span><b>{seat.open_slots}</b> slots left</span>'
-        f'<span><b>${_num(round(per_slot, 1))}</b> / slot</span>'
-        "</div></div>"
-    )
 
 
 def _fold_cell(line: PositionLine, owned: int) -> str:
@@ -293,16 +255,15 @@ def _fold_summary(state: LeagueState, seat: Seat) -> str:
     """What a card still says once its row is folded: which positions it has
     filled, which it has not, and where it is carrying depth.
 
-    The NEED pane's own pips, at strip size, but counted against a different
-    number and deliberately so. The pane is a shopping list -- `DRAFT_TARGETS`,
-    fractional, saying what a seat should still buy. Folded, a card is not being
-    shopped for; it is being read off, and the question is what a seat *has*. So
-    the run here is `owned_starters()`: the whole slots the lineup seats a
-    position no matter what, 2 QB / 2 RB / 3 WR / 1 TE. Everything past it is
-    depth, and depth is exactly what the second line draws.
+    Position targets come from `DRAFT_TARGETS`, fractional -- what a seat
+    should still buy. Folded, a card is not being shopped for; it is being read
+    off, and the question is what a seat *has*. So the run here is
+    `owned_starters()`: the whole slots the lineup seats a position no matter
+    what, 2 QB / 2 RB / 3 WR / 1 TE. Everything past it is depth, and depth is
+    exactly what the second line draws.
 
     It ships in every card and CSS shows it only when folded, the same bargain
-    the three panes make.
+    the LINEUP/BN panes make.
     """
     owned = state.config.owned_starters()
     cells = "".join(
@@ -319,9 +280,7 @@ def _card_header(state: LeagueState, seat: Seat) -> str:
 
     The bar splits what is spendable from what is already owed -- a dollar per
     slot still to fill is in the account but not available, and a seat with $80
-    and eight holes is not the threat its balance says it is. Points and slot
-    counts used to sit here and moved to the NEED pane; they were read
-    occasionally and competed with the two numbers that are read constantly.
+    and eight holes is not the threat its balance says it is.
     """
     budget = state.config.budget
     held = max(0, seat.open_slots - 1)
@@ -351,8 +310,7 @@ def _card_header(state: LeagueState, seat: Seat) -> str:
         f' title="{_esc(_seat_tip(seat))} · right-click to rename">{who}'
         '<span class="seg">'
         '<button data-pane="lineup" type="button">LINEUP</button>'
-        '<button data-pane="bench" type="button">BN</button>'
-        '<button data-pane="need" type="button">NEED</button></span></div>'
+        '<button data-pane="bench" type="button">BN</button></span></div>'
         f'<div class="top"><span class="big">${seat.budget_left}</span>'
         f'<span class="max">max <b>${seat.max_bid}</b></span></div>'
         '<div class="budget">'
@@ -375,7 +333,7 @@ def _card_footer(layout: Sequence[Tuple[str, Optional[Player]]]) -> str:
     Both are read off the same optimal lineup the LINEUP pane is drawn from, so
     the footer cannot disagree with the rows above it.
 
-    The count leaves out the same positions the NEED pane does: a defense is
+    The count leaves out the same positions the fold summary does: a defense is
     bought once, late, by everyone, so counting it only moves every seat's
     denominator by one and makes 9/10 mean "nothing missing but a defense" on
     some cards and "missing a receiver" on others.
@@ -396,13 +354,13 @@ def _card_footer(layout: Sequence[Tuple[str, Optional[Player]]]) -> str:
 
 
 def _roster_card(state: LeagueState, seat: Seat, row: int) -> str:
-    """One seat, as three panes over the same roster.
+    """One seat, as two panes over the same roster.
 
     LINEUP is every starting slot, one player per line, in the slot they would
-    actually start in. BN is the bench. NEED is the position targets. All three
-    ship in the markup and CSS shows one, so switching panes costs no fetch and
-    cannot show a different moment of the draft than the pane it replaced -- the
-    same bargain the short/full name swap makes.
+    actually start in. BN is the bench. Both ship in the markup and CSS shows
+    one, so switching panes costs no fetch and cannot show a different moment
+    of the draft than the pane it replaced -- the same bargain the short/full
+    name swap makes.
 
     `data-row` is which row of the board the card starts in. It bands the card to
     the bar above it from the first paint; the client rewrites it after a drag,
@@ -437,7 +395,6 @@ def _roster_card(state: LeagueState, seat: Seat, row: int) -> str:
         '<div class="body">'
         f'<div class="pane lineup" data-pane="lineup">{lineup}</div>'
         f'<div class="pane" data-pane="bench">{bench}</div>'
-        f"{_need_pane(state, seat)}"
         "</div>"
         f"{_card_footer(layout)}"
         "</section>"
@@ -796,7 +753,7 @@ def _pressure_card(
     done = "" if pr.need_seats else " done"
     # Both panes ship and CSS shows one, so switching costs no fetch and the two
     # can never describe different moments of the draft -- the same bargain the
-    # roster cards make with LINEUP / BN / NEED.
+    # roster cards make with LINEUP / BN.
     return (
         f'<section class="pcard sev-{pr.severity}{done}"'
         f' style="--pos:{color}" data-pos="{pr.pos}">'
