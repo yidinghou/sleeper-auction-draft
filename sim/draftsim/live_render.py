@@ -696,6 +696,11 @@ def _health_bar(pr: PositionPressure, total: int) -> str:
     )
 
 
+# Enough supply to see whether the tier is a tier or a rump, without the card
+# turning into a player list -- the detail panel has the rest.
+_BOARD_SHOWN = 3
+
+
 def _pressure_card(
     state: LeagueState, pr: PositionPressure, nom_pos: str = ""
 ) -> str:
@@ -713,15 +718,32 @@ def _pressure_card(
         for slot in sorted(state.seats)
     )
 
+    # A taste of who is left, not the whole tier -- the full list is one click
+    # away in the TIER pane, and RUNS is sized to its content now rather than
+    # stretched to match it, so a handful of rows costs nothing to show and
+    # nothing to leave empty either. Compact `_tier_row`s so the two panes can
+    # never disagree about who is available -- one renderer, two densities.
+    board_rows = "".join(
+        _tier_row(p, i + 1, compact=True)
+        for i, p in enumerate(pr.avail[:_BOARD_SHOWN])
+    )
+    if not board_rows:
+        board_rows = '<div class="trow gone">tier is gone</div>'
+    more = (
+        f'<div class="bmore">+{len(pr.avail) - _BOARD_SHOWN} more</div>'
+        if len(pr.avail) > _BOARD_SHOWN
+        else ""
+    )
+    board = f'<div class="bd">{board_rows}{more}</div>'
+
     # The cliff is what makes the tier count mean something -- "3 left" is only
-    # frightening next to what the fourth-best is worth. Who is actually left
-    # lives in the TIER pane and only there now -- a second, shorter list here
-    # was never a different fact, just the same one a click away from itself.
+    # frightening next to what the fourth-best is worth.
     foot = f"−{pr.cliff_drop} cliff" if pr.cliff_drop else "no tier below"
     runs = (
         f'<div class="ppane runs">'
         f'<i class="plbl">{len(pr.need_seats)} teams still need {_esc(pr.pos)}</i>'
         f'<div class="tiles">{tiles}</div>'
+        f"{board}"
         f'<div class="pfoot">{foot}</div></div>'
     )
     # Nobody left short: the position is settled and cannot run any more, so the
@@ -765,25 +787,38 @@ def _pressure_card(
 _TIER_SHOWN = 10
 
 
-def _tier_row(player: Player, rank: int, below: bool = False) -> str:
+def _tier_row(
+    player: Player, rank: int, below: bool = False, compact: bool = False
+) -> str:
     """One available player: rank, name, team, points, $PROJ.
 
     `$PROJ` is `market_value`, the same figure the nomination strip quotes, so
     what you read here is what you see when they hit the block.
 
-    The hover carries the full name, the team and the points, because the name
-    in the row is the short form whatever the width -- the tooltip is where
-    the row is complete, at every size.
+    The hover carries the full name, the team and the points always, because
+    the name in the row is the short form whatever the width -- the tooltip
+    is where the row is complete, at every size.
+
+    `compact` drops team and points from the row itself -- rank, name and
+    $PROJ, the three that answer "which ones, and what do they cost" -- so
+    the same renderer serves the RUNS pane's short preview as well as the
+    TIER pane's full list, rather than the two keeping separate markup for
+    what is the same fact at two densities.
     """
     proj = market_value(player)
+    cls = "trow"
+    if below:
+        cls += " below"
+    if compact:
+        cls += " compact"
+    body = [f'<i class="tr">{rank}</i>', f'<b>{_esc(_short_name(player))}</b>']
+    if not compact:
+        body.append(f'<i class="ttm">{_esc(player.team or "FA")}</i>')
+        body.append(f'<i class="tpt">{player.points:.0f}</i>')
+    body.append(f'<i class="tpr">{f"${proj:.0f}" if proj else "—"}</i>')
     return (
-        f'<div class="trow{" below" if below else ""}"'
-        f' title="{_esc(_meta_tip(player))}">'
-        f'<i class="tr">{rank}</i>'
-        f'<b>{_esc(_short_name(player))}</b>'
-        f'<i class="ttm">{_esc(player.team or "FA")}</i>'
-        f'<i class="tpt">{player.points:.0f}</i>'
-        f'<i class="tpr">{f"${proj:.0f}" if proj else "—"}</i></div>'
+        f'<div class="{cls}" title="{_esc(_meta_tip(player))}">'
+        f'{"".join(body)}</div>'
     )
 
 

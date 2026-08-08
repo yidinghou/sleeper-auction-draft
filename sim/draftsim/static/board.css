@@ -897,6 +897,10 @@
     height: calc(4px * var(--fs)); font-size: calc(7px * var(--fs));
     line-height: 1; color: #8c8c8c; }
 
+  /* Rows inside are `.trow.compact`s, the tier row with team and points
+     dropped -- see the `.trow` rules and `.trow.compact` further down. */
+  .bd { display: flex; flex-direction: column; }
+  .bmore { font-size: calc(8px * var(--fs)); color: #1a7f37; font-weight: 700; }
   .pfoot { font-size: calc(8px * var(--fs)); color: #949494;
     font-variant-numeric: tabular-nums; }
 
@@ -1053,6 +1057,10 @@
   /* Below the cliff is a different class of player, not merely a later one. */
   .trow.below { opacity: 0.55; }
   .trow.gone { display: block; color: #c0392b; }
+  /* The RUNS pane's preview: same row, team and points dropped -- the detail
+     you read once you already know who is left, not the fact itself. */
+  .trow.compact { grid-template-columns:
+    calc(12px * var(--fs)) minmax(0, 1fr) calc(22px * var(--fs)); }
   .tcliff { margin: 5px 0; padding-top: 4px; border-top: 2px dotted #e0a89f;
     color: #c0392b; font-size: calc(9px * var(--fs)); font-weight: 700;
     text-align: center; }
