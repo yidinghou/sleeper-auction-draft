@@ -887,19 +887,16 @@
   .tile.bid-high { background: #ffe3b8; border-color: #b26a00; }
   .tile.bid-in .ttop b, .tile.bid-high .ttop b { color: #b26a00;
     font-weight: 700; }
+  /* The same mark `.card.me` puts on your roster card, so "which of these
+     twelve is me" reads the same way on both sides of the board. A border
+     colour alone would lose to `.done`/`.bid-*` repainting it, so the outline
+     is a box-shadow layered outside the border rather than a fight over which
+     rule sets `border-color` last. */
+  .tile.me { box-shadow: 0 0 0 1px #1a1a1a; }
   .tfull { display: flex; align-items: center; justify-content: center;
     height: calc(4px * var(--fs)); font-size: calc(7px * var(--fs));
     line-height: 1; color: #8c8c8c; }
 
-  .bd { display: flex; flex-direction: column; }
-  .brow { display: flex; justify-content: space-between; gap: 4px;
-    font-size: calc(9px * var(--fs)); line-height: 1.2; color: #444; }
-  .brow:not(:last-child) { border-bottom: 1px solid #f4f4f4; }
-  .brow b { font-weight: 400; white-space: nowrap; overflow: hidden;
-    text-overflow: ellipsis; }
-  .brow i { font-style: normal; color: #777; font-variant-numeric: tabular-nums; }
-  .brow.empty { color: #c0392b; }
-  .bmore { font-size: calc(8px * var(--fs)); color: #1a7f37; font-weight: 700; }
   .pfoot { font-size: calc(8px * var(--fs)); color: #949494;
     font-variant-numeric: tabular-nums; }
 
@@ -927,14 +924,65 @@
   .pdbody { overflow-y: auto; scrollbar-width: thin;
     scrollbar-color: #ccc transparent; min-height: 0; flex: 1; }
 
+  /* -- the tall card -------------------------------------------------------
+     Pool and log both shut hand run pressure their height (`.side.panes-
+     collapsed`, above), and a card sitting on that height with one pane open
+     and the other a click away is the same waste the wide card was fixing
+     for width. So the two panes stack instead of switching -- RUNS on top,
+     TIER below it scrolling in its own box -- and the toggle that chose
+     between them goes, the same trade the wide card makes for width below.
+
+     Six classes deep so it outweighs both toggle rules outright, the same
+     problem the wide card's own comment works through: `.pcard.view-tier
+     .ppane.pdet { flex: 1 }` is four classes, and a selector that only tied
+     it would be won or lost by source order -- fragile the day a rule gets
+     appended below either one. This beats them regardless of order, and
+     regardless of which pane `pviews` last left the card on.
+
+     `.pgrid`'s `align-items: flex-start` is what keeps cards short-and-
+     content-sized the rest of the time (see its own comment) -- exactly what
+     a stacked card must not do, or the second pane has no height to divide.
+     Stretching only here, only while both panes are shut, leaves every other
+     state -- normal height, wide card -- reading a content-sized card.
+
+     RUNS gets only what its tiles and cliff line need, not an equal half:
+     the TIER list is the longer of the two whatever the card's total height,
+     and giving it the rest means less of it has to scroll. */
+  .side.panes-collapsed .pgrid { align-items: stretch; }
+  .side.panes-collapsed .pcard:not(.collapsed) .pbody { flex-direction: column; }
+  .side.panes-collapsed .pcard:not(.collapsed) .pbody > .ppane.runs,
+  .side.panes-collapsed .pcard:not(.collapsed) .pbody > .ppane.pdet {
+    display: flex; min-height: 0; }
+  .side.panes-collapsed .pcard:not(.collapsed) .pbody > .ppane.runs { flex: 0 0 auto; }
+  .side.panes-collapsed .pcard:not(.collapsed) .pbody > .ppane.pdet {
+    flex: 1 1 auto; border-top: 1px solid #f0f0f0; padding-top: 6px; }
+  /* Nothing left to switch between. */
+  .side.panes-collapsed .pcard .pseg { display: none; }
+  /* Position by tint, the way a roster row's `.ln` does -- a card this tall
+     is otherwise a long stretch of white with the colour confined to a 3px
+     health bar and a badge. Lighter than `.ln`'s 26%: this is a whole card's
+     background, not one line, and it has the severity pill and tiles to
+     leave legible over it. */
+  .side.panes-collapsed .pcard:not(.collapsed) {
+    background: color-mix(in srgb, var(--pos, #7c90a0) 8%, #fff); }
+
   /* -- the wide card ------------------------------------------------------
      One card, two shapes. Everything above is drawn for the ~230px a card gets
      when all four are open; fold three and the survivor was handed 760px and
      did nothing with it but stretch -- twelve tiles at 185px apiece holding an
      8px label and a five-pixel hairline, and a tier list still hidden behind a
      toggle that only ever existed because 230px could hold one pane at a time.
-     With room, the card splits into what it always was underneath: demand on
-     the left, supply on the right.
+     With room, the card stacks into what the tall card already is: tiles on
+     top, sized to what they need, and the tier list filling everything below
+     them -- the same layout `.side.panes-collapsed` uses when the extra room
+     comes from height instead of width, because it's the same problem either
+     way and the tier list already knows how to scroll inside what it's given.
+
+     A row split -- tiles beside the list rather than above it -- was tried
+     first and undone: it stretched the tiles pane to match the list's height
+     with nothing to fill it, since the list is the longer of the two at
+     essentially any card size, and the empty space under a 4x3 tile grid was
+     the wide card's own version of the toggle it was replacing.
 
      The query is on the card's own width, not the viewport's. What makes a card
      wide here is how many of its siblings you folded, and no media query can
@@ -952,16 +1000,14 @@
   .pbody { display: flex; flex-direction: column; gap: 3px;
     min-height: 0; min-width: 0; flex: 1 1 auto; }
 
-  /* Two open cards on a laptop are ~350px apiece, and the split has to reach
+  /* Two open cards on a laptop are ~350px apiece, and the stack has to reach
      them: two positions open is the ordinary way this band is read, and hiding
-     half of each behind a toggle at exactly that size was the shape being asked
-     to change. So the split starts here, and what it cannot afford at this width
-     is given up further down rather than paid for by not splitting at all.
+     the tier list behind a toggle at exactly that size was the shape being
+     asked to change.
 
-     Under 340px it stops: three open cards on a laptop are ~235px each, which is
-     one pane's worth, and two panes in it would be two unreadable ones. */
+     Under 340px it stops: three open cards on a laptop are ~235px each, which
+     is one pane's worth, and the toggle still earns its keep there. */
   @container pcard (min-width: 330px) {
-    .pbody { flex-direction: row; align-items: stretch; gap: 8px; }
     /* Both panes at once, which is what retires the toggle -- and both of them
        sized by this block rather than by the toggle's rules.
 
@@ -971,82 +1017,18 @@
        `.pcard.view-tier .ppane.pdet { flex: 1 }` -- are four classes, and
        `.pcard .pbody > .ppane.pdet` is four classes too. A tie is settled by
        source order, which would work today and quietly stop working the day
-       somebody appends a rule below. Five classes wins outright and says so.
-
-       Getting the second of those wrong is not a small bug: `flex: 1` is
-       `flex-grow: 1`, so a card left on TIER split 5:1 instead of 5:6 and wrapped
-       every name in the tier list onto two lines. */
+       somebody appends a rule below. Five classes wins outright and says so. */
+    .pcard:not(.collapsed) .pbody { flex-direction: column; }
     .pcard:not(.collapsed) .pbody > .ppane.runs,
-    .pcard:not(.collapsed) .pbody > .ppane.pdet { display: flex; }
-    .pcard:not(.collapsed) .pbody > .ppane.runs { flex: 5 1 0; }
-    /* The larger share to the tier: its names ellipsize and the seat grid's do
-       not, so width is worth more on the right than on the left. */
-    .pcard:not(.collapsed) .pbody > .ppane.pdet { flex: 6 1 0; min-height: 0;
-      border-left: 1px solid #f0f0f0; padding-left: 8px; }
+    .pcard:not(.collapsed) .pbody > .ppane.pdet { display: flex; min-height: 0; }
+    .pcard:not(.collapsed) .pbody > .ppane.runs { flex: 0 0 auto; }
+    /* Full width was already enough for all five tier columns in the ~230px
+       narrow default (see the `.trow` comment below), so the stack never has
+       to drop a column the way the old side-by-side split did at this width. */
+    .pcard:not(.collapsed) .pbody > .ppane.pdet { flex: 1 1 auto;
+      border-top: 1px solid #f0f0f0; padding-top: 6px; }
     /* Nothing left to switch between. */
     .pcard .pseg { display: none; }
-    /* ON THE BOARD is the tier list's first three rows with two columns
-       missing, and `.pfoot` is `.tcliff` without the arrow. Stacked they were a
-       summary of a pane you could not see; side by side they are the same fact
-       printed twice, six inches apart. */
-    .ppane.runs .tiles ~ .plbl,
-    .ppane.runs .bd,
-    .ppane.runs .pfoot { display: none; }
-
-  }
-
-  /* -- the tight split ----------------------------------------------------
-     Between 340 and 460 the card splits but the tier row cannot keep all five
-     of its columns: rank, team, points and $PROJ want ~110px of a ~175px pane
-     and leave "D. Montgomery" 65px to clip inside.
-
-     So the two columns that are not what the pane is for step out. The tier list
-     answers "which ones, and what do they cost" -- rank, name and $PROJ are that
-     question; team and points are the detail you read once you have picked a
-     name out of it, and both are still on the row's hover. Dropping them hands
-     the name ~120px, which is a full short name rather than most of one.
-
-     Shrinking the type instead would have kept all five and made the whole list
-     harder to read, to preserve two columns nobody scans this pane for. */
-  @container pcard (min-width: 330px) and (max-width: 459.98px) {
-    .ppane.pdet .trow { grid-template-columns:
-      calc(12px * var(--fs)) minmax(0, 1fr) calc(22px * var(--fs)); }
-    .ppane.pdet .ttm, .ppane.pdet .tpt { display: none; }
-    /* The seat tile makes the same trade, and has to: the runs pane is ~145px
-       here, so a tile is ~35px, and "S1 $28" wants 36 of them -- the budget was
-       not being read at this width, it was overflowing the box. What the pane is
-       for is which seats are still short and how short, which is the seat and
-       its pips; the budget is the detail, and the tile's hover still carries it
-       along with the count and the max bid. */
-    .ppane.runs .tile .ttop i { display: none; }
-  }
-
-  /* -- the wide split -----------------------------------------------------
-     Past here the runs pane has a column's height to spend as well as its width,
-     so the tiles stop being a strip and become the grid they are on the board
-     across the aisle. */
-  @container pcard (min-width: 460px) {
-    /* And the fill finally gets to be a bar. Narrow, a pip is four pixels
-       because four pixels is what a stacked card can spare; the split hands the
-       runs pane a whole column's height for three rows of tiles, so the row is
-       given a real height and the pips stretch into whatever is left after the
-       seat and its money. Same twelve tiles, same 4x3, just no longer drawn as
-       a hairline across a tile three times wider than it needs to be.
-
-       Held back to this width rather than shipped with the split: at 350px the
-       runs pane is ~145px, so a tile is ~34px, and a tile that wide cannot hold
-       "S1" and "$28" on one line at this size however tall it is. */
-    .ppane.runs .tiles { gap: 3px; grid-auto-rows: calc(24px * var(--fs)); }
-    .ppane.runs .tile { padding: 2px 4px; gap: 2px; }
-    .ppane.runs .pips { flex: 1 1 auto; align-items: stretch; }
-    .ppane.runs .tile .pip { height: auto; }
-    /* Still exactly the pips' height, because it is sized by the same box --
-       so the grid cannot reshuffle as seats fill up, at either width. */
-    .ppane.runs .tfull { height: auto; flex: 1 1 auto; }
-    .ttop b, .ttop i { font-size: calc(9px * var(--fs)); }
-    /* Three pixels was a rail's ration. With the card at full width it can be
-       read as a bar rather than inferred from a smear. */
-    .phealth { height: 5px; }
   }
 
   /* Rank, name, team, points, $PROJ -- the same five things in the same order

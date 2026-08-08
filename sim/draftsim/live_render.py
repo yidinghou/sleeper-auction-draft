@@ -618,11 +618,6 @@ def render_rosters(state: LeagueState) -> str:
     return f'<div class="grid">{"".join(parts)}</div>'
 
 
-# Enough supply to see whether the tier is a tier or a rump, without the card
-# turning into a player list. The detail panel has the rest.
-_BOARD_SHOWN = 3
-
-
 def _seat_tile(
     seat: Seat, line: PositionLine, color: str, lit: bool = True
 ) -> str:
@@ -718,32 +713,15 @@ def _pressure_card(
         for slot in sorted(state.seats)
     )
 
-    # Every position gets the board list, TE included. It was cut from TE to buy
-    # the other three some width, back when a narrow card was the only way to
-    # find any -- and "who is left at tight end" is a question a one-starter
-    # position asks more sharply, not less.
-    rows = "".join(
-        f'<div class="brow"><b>{_esc(_short_name(p))}</b>'
-        f'<i>{p.points:.0f}</i></div>'
-        for p in pr.avail[:_BOARD_SHOWN]
-    )
-    if not rows:
-        rows = '<div class="brow empty">tier is gone</div>'
-    more = (
-        f'<div class="bmore">+{len(pr.avail) - _BOARD_SHOWN} more</div>'
-        if len(pr.avail) > _BOARD_SHOWN
-        else ""
-    )
-    board = f'<i class="plbl">on the board</i><div class="bd">{rows}{more}</div>'
-
     # The cliff is what makes the tier count mean something -- "3 left" is only
-    # frightening next to what the fourth-best is worth.
+    # frightening next to what the fourth-best is worth. Who is actually left
+    # lives in the TIER pane and only there now -- a second, shorter list here
+    # was never a different fact, just the same one a click away from itself.
     foot = f"−{pr.cliff_drop} cliff" if pr.cliff_drop else "no tier below"
     runs = (
         f'<div class="ppane runs">'
         f'<i class="plbl">{len(pr.need_seats)} teams still need {_esc(pr.pos)}</i>'
         f'<div class="tiles">{tiles}</div>'
-        f"{board}"
         f'<div class="pfoot">{foot}</div></div>'
     )
     # Nobody left short: the position is settled and cannot run any more, so the
@@ -793,11 +771,9 @@ def _tier_row(player: Player, rank: int, below: bool = False) -> str:
     `$PROJ` is `market_value`, the same figure the nomination strip quotes, so
     what you read here is what you see when they hit the block.
 
-    The hover carries the full name, the team and the points, because a card
-    narrow enough to split but not to hold all five columns drops the last two
-    (see `board.css`, the tight split) -- and because the name in the row is the
-    short form whatever the width. So the tooltip is where the row is complete,
-    at every size rather than only the ones that need it.
+    The hover carries the full name, the team and the points, because the name
+    in the row is the short form whatever the width -- the tooltip is where
+    the row is complete, at every size.
     """
     proj = market_value(player)
     return (

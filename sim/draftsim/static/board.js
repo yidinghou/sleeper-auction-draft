@@ -635,6 +635,12 @@ function highlight() {
   document.querySelectorAll("section.card").forEach((card) => {
     card.classList.toggle("me", mine !== "" && card.dataset.seat === mine);
   });
+  // The same mark on the pressure grid's own seat tiles -- "who is short here"
+  // is a question you ask about yourself first, and the tiles are otherwise
+  // twelve identical shapes with nothing to tell S3 from the rest.
+  document.querySelectorAll(".pcard .tile").forEach((tile) => {
+    tile.classList.toggle("me", mine !== "" && tile.dataset.seat === mine);
+  });
 }
 
 // Swap a scroller's rows without losing where you were reading.
