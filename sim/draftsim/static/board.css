@@ -123,16 +123,23 @@
 
   /* A column, so the menu bar takes its own height off the top and the grid
      gets exactly what's left -- the grid sizes to that, and a bar measured in
-     `height: 100%` terms would have pushed the bottom row off screen. */
-  .board { min-width: 0; overflow: hidden; padding: 6px 8px;
-    display: flex; flex-direction: column; gap: 4px; }
+     `height: 100%` terms would have pushed the bottom row off screen.
+
+     Framed the same way every band on the left is: a bordered, rounded box
+     with a tinted header strip, so "Rosters" reads as one more band rather
+     than a panel with different rules. */
+  .board { min-width: 0; overflow: hidden; display: flex; flex-direction: column;
+    border: 1px solid #e0e0e0; border-radius: 8px; background: #fff; }
 
   /* The board's own controls, over the thing they control rather than across
-     the aisle in the state column. */
+     the aisle in the state column. Same strip as `.bandhd`: tinted background,
+     bottom rule, flush with the box the border-radius above clips it into. */
   .menubar { display: flex; align-items: center; gap: 6px; flex: none;
-    min-width: 0; }
-  .menubar .hint { color: #949494; font-size: calc(9px * var(--fs));
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    min-width: 0; padding: 3px 7px; background: #f7f7f7;
+    border-bottom: 1px solid #e8e8e8; }
+  .menubar h2 { font-size: calc(10px * var(--fs)); margin: 0; color: #555;
+    text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;
+    white-space: nowrap; }
 
   button { background: #f6f6f6; color: #1a1a1a; border: 1px solid #ddd;
     border-radius: 6px; padding: 2px 8px; font: inherit; cursor: pointer; }
@@ -394,7 +401,7 @@
      less than the pane, the default `stretch` would blow a board of folded
      strips back up to fill it. Rows are always written as an explicit
      `grid-template-rows` by the client; `grid-auto-rows` is the no-JS paint. */
-  #rosters { flex: 1; min-height: 0; }
+  #rosters { flex: 1; min-height: 0; padding: 6px 8px; }
   .grid { display: grid; gap: 5px; height: 100%;
     --rowbar: 16px; align-content: start;
     grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1206,7 +1213,9 @@
   /* A deeper lineup than this fits scrolls inside its own pane (see `.pane`)
      rather than off the bottom of the overlay: silently hiding a player is the
      one failure this must not have. */
-  body.maxed #rosters { overflow: hidden; }
+  /* `.board` supplies its own, roomier padding maximized -- `#rosters`
+     dropping its own means the grid isn't inset twice. */
+  body.maxed #rosters { overflow: hidden; padding: 0; }
   /* Nothing folds here -- the overlay is the whole viewport and twelve open
      cards fit it, so folding would put away something there was room for. The
      bar keeps its title and its seat list, which are worth reading; it drops the
@@ -1216,8 +1225,7 @@
   body.maxed .rowhd::after { display: none; }
   body.maxed .rowhd:hover { background: var(--band, #f4f4f4); }
   body.maxed .rowhd:hover h2 { color: #666; }
-  body.maxed .foldhint { display: none; }
-  /* Keep the close button's corner clear of the hint text. */
+  /* Keep the close button's corner clear of the menu bar's own controls. */
   body.maxed .menubar { padding-right: 30px; }
   body.maxed .card { padding: 6px 8px; }
   body.maxed .team { font-size: calc(12px * var(--fs)); }
