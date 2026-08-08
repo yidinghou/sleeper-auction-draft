@@ -45,6 +45,18 @@ python -m draftsim.live --draft-id <id> --user someone-else       # another acco
 
 Then open <http://127.0.0.1:8765>.
 
+It runs in the foreground — `Ctrl-C` stops it. If a prior instance was
+backgrounded (`&`) or its shell got closed, `--port 8765` is still taken and
+the new one exits with `Address already in use`. Find and stop the old one
+first:
+
+```bash
+lsof -i :8765             # PID listening on the board's port
+kill <pid>                 # ask it to stop
+```
+
+Then re-run `python -m draftsim.live --draft-id <id>`.
+
 `--user` takes a Sleeper username and finds that account's slot in the draft's
 own `draft_order`, so the card is marked and the money band's dashed line is
 your own ceiling. **It defaults to `yidinghou`** (`live.DEFAULT_USER`) — one
