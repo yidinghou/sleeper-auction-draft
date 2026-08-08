@@ -26,6 +26,17 @@
           <span id="pulse">polling</span> ·
           <b id="draft">__DRAFT_ID__</b> ·
           <span id="sub">connecting…</span></span>
+        <span class="seg navseg">
+          <button id="navprev" type="button"
+                  title="Previous pick">&#9664;</button>
+          <input id="navslider" type="range" min="0" max="0" value="0" step="1"
+                 title="Scrub to a pick">
+          <span id="navpos" class="navpos">0 / 0</span>
+          <button id="navnext" type="button"
+                  title="Next pick">&#9654;</button>
+          <button id="navlive" type="button"
+                  title="Jump to live" aria-pressed="true">LIVE</button>
+        </span>
         <span id="spend" class="spend"></span>
         <span id="warn" class="warn"></span></div>
       <!-- Two panels across, not two rows down. Both of these are wider than

@@ -188,6 +188,24 @@ def test_the_draft_id_is_escaped_into_the_shell():
     assert '<b id="draft">&lt;b&gt;</b>' in render_page("<b>")
 
 
+def test_the_live_band_header_carries_checkpoint_nav_controls():
+    # Chrome, like the rest of the header -- it has to survive the fragment
+    # swap, so it lives in the shell and not in a snapshot. And it belongs
+    # with the rest of "what moment is this" (the pulse/subtitle line), not
+    # in the roster grid's own toolbar.
+    page = render_page("123")
+    live_head = page.split("<h2>Live draft board</h2>")[1].split(
+        '<div class="bandbody live2">'
+    )[0]
+    for control in ("navprev", "navslider", "navnext", "navlive", "navpos"):
+        assert f'id="{control}"' in live_head
+    menubar = page.split('<div class="menubar">')[1].split('<div id="rosters">')[0]
+    for control in ("navprev", "navslider", "navnext", "navlive", "navpos"):
+        assert f'id="{control}"' not in menubar
+    assert "function applyNav(" in page   # from board.js
+    assert ".navseg" in page              # from board.css
+
+
 # -- the bands ----------------------------------------------------------------
 
 

@@ -619,6 +619,21 @@
   .seg button:hover { color: #555; border-color: #cbd8ea; }
   .seg button[aria-pressed="true"] { color: #fff; background: #1a1a1a;
     border-color: #1a1a1a; }
+  .seg button:disabled { color: #ccc; border-color: #eee; cursor: default; }
+  .seg button:disabled:hover { color: #ccc; border-color: #eee; }
+
+  /* The pick position, between the step buttons -- not a button itself, so it
+     shares the segment's box without taking part in its aria-pressed states. */
+  .navseg { align-items: center; }
+  .navpos { font-size: calc(7.5px * var(--fs)); font-weight: 700; color: #888;
+    letter-spacing: 0.02em; padding: 0 2px; white-space: nowrap; }
+  /* Covers a hundred picks in one drag, where ◀/▶ cover one. `accent-color`
+     rather than a custom track/thumb: it reuses the same dark the pressed
+     segment state above already uses, so the fill reads as the same "this is
+     the selected one" rather than a colour invented just for this control. */
+  .navseg input[type="range"] { width: 90px; margin: 0 2px;
+    vertical-align: middle; accent-color: #1a1a1a; }
+  .navseg input[type="range"]:disabled { opacity: 0.4; }
 
   /* All three panes ship in every card and CSS shows one, so switching costs no
      fetch and two panes can never show different moments of the draft. No class
@@ -1113,7 +1128,13 @@
      is already spoken everywhere it matters here: the badge on every card, the
      rail, the health bar. The filter does not need to say it a fourth time. */
   .fseg button, .rseg button { padding: 0 3px; font-size: calc(7.5px * var(--fs)); }
-  /* A folded band is a title and nothing else; its filter goes with the rest. */
+  /* Not one of the three filters above -- the nav steps through picks, it
+     does not narrow anything -- but it rides in a band header the same way,
+     so it takes the same smaller header-row sizing rather than its own. */
+  .navseg button { padding: 0 3px; font-size: calc(7.5px * var(--fs)); }
+  /* A folded band is a title and nothing else; its filter goes with the rest.
+     The checkpoint nav is not a filter on this band's own list -- it is what
+     moment the whole board is showing -- so it stays visible even folded. */
   .collapsed > .bandhd .fseg,
   .collapsed > .bandhd .rseg { display: none; }
   /* Said when a filter matches nothing, in place of an empty box that reads as

@@ -387,11 +387,12 @@ function toggleCollapsed(id) {
 // Delegated from the document because every one of these headers is rebuilt
 // every two seconds, and one listener beats nine.
 document.addEventListener("dblclick", (e) => {
-  // All three filters sit inside a band header, so two quick taps on ALL would
-  // otherwise fold the very band you were filtering -- and on the run pressure
-  // filter, where toggling positions off one at a time is the ordinary gesture,
-  // two taps in a row is not even an accident.
-  if (e.target.closest(".fseg") || e.target.closest(".rseg")) return;
+  // All three filters and the checkpoint nav sit inside a band header, so two
+  // quick taps on ALL -- or on ◀/▶ stepping through picks -- would otherwise
+  // fold the very band holding them. On the run pressure filter, where
+  // toggling positions off one at a time is the ordinary gesture, two taps in
+  // a row is not even an accident.
+  if (e.target.closest(".fseg") || e.target.closest(".rseg") || e.target.closest(".navseg")) return;
   const head = e.target.closest(".bandhd");
   if (head) {
     const band = head.closest("[data-band]");
@@ -647,56 +648,123 @@ function swapKeepingScroll(id, html) {
   el.scrollTop = wasAtTop ? 0 : top + (el.scrollHeight - before);
 }
 
+// Set while a pointer is down on the slider, cleared on release. A poll
+// landing mid-drag must not yank the thumb out from under the pointer still
+// holding it -- the same reasoning as the `dragging`/`menuSeat` freeze guards
+// above, for the same reason: a gesture in progress owns the element until it
+// lets go.
+let navSliding = false;
+
+function applyNav(nav) {
+  if (!nav) return;
+  const slider = document.getElementById("navslider");
+  slider.disabled = nav.total === 0;
+  slider.min = 0;
+  slider.max = nav.total;
+  if (!navSliding) {
+    slider.value = nav.index;
+    document.getElementById("navpos").textContent =
+      nav.total ? `${nav.index} / ${nav.total}` : "0 / 0";
+  }
+  document.getElementById("navprev").disabled = nav.total === 0 || nav.index === 0;
+  document.getElementById("navnext").disabled = nav.index >= nav.total;
+  document.getElementById("navlive")
+    .setAttribute("aria-pressed", nav.live ? "true" : "false");
+}
+
+// The one place a snapshot -- live or a rewound checkpoint -- is drawn.
+// `force` skips the drag/menu/hold freeze: a nav click is a deliberate
+// request for a different moment of the draft, not a poll that might land
+// mid-gesture, so it must never be swallowed the way a stray tick would be.
+function applyState(s, force) {
+  mySeat = s.my_seat === undefined ? null : s.my_seat;
+  // Only for prefilling the rename box: every fragment already arrives with
+  // its own names drawn in. Skipped while the box is open, or a poll landing
+  // mid-edit would argue with what is being typed.
+  if (menuSeat === null) seatNames = s.seat_names || {};
+  document.getElementById("sub").textContent = s.subtitle;
+  document.getElementById("draft").textContent = s.draft_label || "";
+  document.getElementById("spend").innerHTML = s.spend_html || "";
+  document.getElementById("ledger").innerHTML = s.ledger_html;
+  document.getElementById("block").innerHTML = s.nomination_html;
+  // Everything else refreshes; the cards hold still until the drag lands, so
+  // the element in hand isn't deleted out from under it. The pressure tiles
+  // freeze with them rather than on their own: they are the same seats in the
+  // same order, and half of that pair moving mid-drag is worse than neither.
+  if (dragging === null && menuSeat === null && Date.now() - heldAt > 500 || force) {
+    rosters.innerHTML = s.rosters_html;
+    document.getElementById("pressure").innerHTML = s.pressure_html;
+    // Replacing the rows empties the scroller for an instant, which drops it
+    // back to the top. Unnoticeable over forty rows; over three hundred it
+    // means you cannot read past the first screen without the board yanking
+    // you back twice a second.
+    swapKeepingScroll("pool", s.pool_html);
+    swapKeepingScroll("log", s.log_html);
+    highlight();
+    applyViews();
+    applyPViews();
+    // Unlike the pool's filter, this one cannot ride out the swap on an
+    // attribute: the swap rebuilt all four cards into `.pgrid`, so the folded
+    // ones have to be walked back to the rail.
+    applyRuns();
+    // Not to re-apply the filter -- the wrapper kept its attribute through
+    // the swap -- but to re-ask whether it still matches anything. A tight
+    // end going off the board is exactly what turns that answer over.
+    applyFilters();
+    applyOrder();
+    applyCollapsed();
+  }
+  document.getElementById("pulse").textContent = s.polled_at;
+  document.getElementById("warn").textContent = s.warning || "";
+  applyNav(s.nav);
+}
+
 async function tick() {
   const dot = document.getElementById("dot");
   try {
     const res = await fetch("/api/state", { cache: "no-store" });
-    const s = await res.json();
-    mySeat = s.my_seat === undefined ? null : s.my_seat;
-    // Only for prefilling the rename box: every fragment already arrives with
-    // its own names drawn in. Skipped while the box is open, or a poll landing
-    // mid-edit would argue with what is being typed.
-    if (menuSeat === null) seatNames = s.seat_names || {};
-    document.getElementById("sub").textContent = s.subtitle;
-    document.getElementById("draft").textContent = s.draft_label || "";
-    document.getElementById("spend").innerHTML = s.spend_html || "";
-    document.getElementById("ledger").innerHTML = s.ledger_html;
-    document.getElementById("block").innerHTML = s.nomination_html;
-    // Everything else refreshes; the cards hold still until the drag lands, so
-    // the element in hand isn't deleted out from under it. The pressure tiles
-    // freeze with them rather than on their own: they are the same seats in the
-    // same order, and half of that pair moving mid-drag is worse than neither.
-    if (dragging === null && menuSeat === null && Date.now() - heldAt > 500) {
-      rosters.innerHTML = s.rosters_html;
-      document.getElementById("pressure").innerHTML = s.pressure_html;
-      // Replacing the rows empties the scroller for an instant, which drops it
-      // back to the top. Unnoticeable over forty rows; over three hundred it
-      // means you cannot read past the first screen without the board yanking
-      // you back twice a second.
-      swapKeepingScroll("pool", s.pool_html);
-      swapKeepingScroll("log", s.log_html);
-      highlight();
-      applyViews();
-      applyPViews();
-      // Unlike the pool's filter, this one cannot ride out the swap on an
-      // attribute: the swap rebuilt all four cards into `.pgrid`, so the folded
-      // ones have to be walked back to the rail.
-      applyRuns();
-      // Not to re-apply the filter -- the wrapper kept its attribute through
-      // the swap -- but to re-ask whether it still matches anything. A tight
-      // end going off the board is exactly what turns that answer over.
-      applyFilters();
-      applyOrder();
-      applyCollapsed();
-    }
-    document.getElementById("pulse").textContent = s.polled_at;
-    document.getElementById("warn").textContent = s.warning || "";
+    applyState(await res.json());
     dot.classList.remove("stale");
   } catch (err) {
     dot.classList.add("stale");
     document.getElementById("pulse").textContent = "server unreachable";
   }
 }
+
+// The step/live/slider controls post straight to `/api/nav` and draw its
+// answer on the spot -- waiting for the next 2s tick would make every click
+// feel like it did nothing for up to two seconds.
+async function nav(action, index) {
+  try {
+    const body = index === undefined ? { action } : { action, index };
+    const res = await post("/api/nav", body);
+    applyState(await res.json(), true);
+  } catch (err) {
+    // The next regular tick will report the outage; a nav click failing
+    // silently is preferable to it fighting the poller for the dot.
+  }
+}
+document.getElementById("navprev").addEventListener("click", () => nav("prev"));
+document.getElementById("navnext").addEventListener("click", () => nav("next"));
+document.getElementById("navlive").addEventListener("click", () => nav("live"));
+
+// The slider is for covering a hundred picks in one gesture, not for a
+// request per pixel dragged: `input` only moves the label, optimistically,
+// the same "corrected by the next poll if wrong" trick the seat-rename box
+// uses; the single `nav("goto", …)` fires on release.
+const navSlider = document.getElementById("navslider");
+navSlider.addEventListener("pointerdown", () => { navSliding = true; });
+navSlider.addEventListener("input", () => {
+  document.getElementById("navpos").textContent =
+    navSlider.max > 0 ? `${navSlider.value} / ${navSlider.max}` : "0 / 0";
+});
+navSlider.addEventListener("change", () => {
+  navSliding = false;
+  nav("goto", +navSlider.value);
+});
+// Belt and suspenders: a pointer released off the track still fires `change`
+// on a range input, but not every input method is a pointer.
+navSlider.addEventListener("pointerup", () => { navSliding = false; });
 // Before the first fetch, so a folded band never flashes open on load -- and so
 // the fold survives a server that is down when the page opens.
 applyCollapsed();
