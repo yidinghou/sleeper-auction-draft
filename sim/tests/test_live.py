@@ -155,6 +155,129 @@ def test_replay_rewinds_a_finished_draft_to_mid_auction(poller):
     assert "60</b> of 192" in snap["spend_html"]
 
 
+# -- checkpoint nav -----------------------------------------------------------
+
+
+def test_nav_defaults_to_live(poller):
+    poller.refresh()
+    assert poller.snapshot()["nav"] == {"index": 192, "total": 192, "live": True}
+
+
+def test_goto_rewinds_the_board_to_a_pick_boundary(poller):
+    poller.refresh()
+    poller.view_goto(30)
+    snap = poller.snapshot()
+    assert snap["nav"] == {"index": 30, "total": 192, "live": False}
+    assert "30</b> of 192" in snap["spend_html"]
+    assert snap["subtitle"] == "Pick 30 of 192 — rewound"
+    # A checkpoint is always after a bid cleared -- there is never a lot *in
+    # progress* to show, but the pick that just landed (#30: Bo Nix to S6 for
+    # $28) takes its place rather than the panel going blank.
+    assert "Bo Nix" in snap["nomination_html"]
+    assert "won by S6" in snap["nomination_html"]
+    assert 'class="chip bid-high"' in snap["nomination_html"]
+    assert "$28" in snap["nomination_html"]
+    # The winning seat lights up the same amber a live leader would, in every
+    # place that colour already lives: the chart bar and the tag under it.
+    assert 'class="col bid-high"' in snap["ledger_html"]
+    assert 'class="bid-high"' in snap["ledger_html"]
+    assert re.search(r'class="tile[^"]*\bbid-high"', snap["pressure_html"])
+
+
+def test_a_checkpoint_at_pick_zero_has_nothing_to_show(poller):
+    poller.refresh()
+    poller.view_goto(0)
+    snap = poller.snapshot()
+    assert snap["nav"] == {"index": 0, "total": 192, "live": False}
+    assert "Nothing nominated — 0 picks in." in snap["nomination_html"]
+    assert "bid-high" not in snap["ledger_html"]
+
+
+def test_live_returns_to_the_pulse_driven_snapshot(poller):
+    poller.refresh()
+    live_snap = poller.snapshot()
+    poller.view_goto(30)
+    assert poller.snapshot()["nav"]["live"] is False
+    poller.view_live()
+    assert poller.snapshot() == live_snap
+
+
+def test_prev_steps_back_one_pick_at_a_time_and_clamps_at_zero(poller):
+    poller.refresh()
+    poller.view_prev()
+    assert poller.snapshot()["nav"] == {"index": 191, "total": 192, "live": False}
+    poller.view_goto(0)
+    poller.view_prev()
+    assert poller.snapshot()["nav"]["index"] == 0
+
+
+def test_next_stops_at_the_newest_checkpoint_and_never_auto_goes_live(poller):
+    poller.refresh()
+    poller.view_goto(190)
+    poller.view_next()
+    poller.view_next()
+    poller.view_next()
+    snap = poller.snapshot()
+    # Even tapping past the end does not flip back to live -- only
+    # `view_live` does.
+    assert snap["nav"] == {"index": 192, "total": 192, "live": False}
+    assert "rewound" in snap["subtitle"]
+
+
+def test_a_rewound_view_does_not_chase_the_live_draft_forward(poller):
+    poller.replay = 150
+    poller.refresh()
+    poller.view_goto(150)
+    poller.view_next()
+    assert poller.snapshot()["nav"] == {"index": 150, "total": 150, "live": False}
+    # The draft "continues" -- the replay cap lifts and more picks land.
+    poller.replay = 160
+    poller.feed["draft"] = json.loads(json.dumps(poller.feed["draft"]))
+    poller.feed["draft"]["metadata"]["highest_offer"] = "5"
+    poller.refresh()
+    snap = poller.snapshot()
+    assert snap["nav"]["total"] == 160
+    # Still parked where it was left; the view does not follow live forward.
+    assert snap["nav"]["index"] == 150
+    poller.view_next()
+    assert poller.snapshot()["nav"]["index"] == 151
+
+
+def test_nav_endpoint_dispatches_and_validates(poller):
+    import threading
+    from http.server import ThreadingHTTPServer
+    from urllib import request as urlreq
+
+    poller.refresh()
+    server = ThreadingHTTPServer(("127.0.0.1", 0), live_mod._handler(poller))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    def post(path, body):
+        req = urlreq.Request(
+            f"http://127.0.0.1:{server.server_address[1]}{path}",
+            data=json.dumps(body).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urlreq.urlopen(req) as resp:
+            return resp.status, json.loads(resp.read())
+
+    try:
+        status, body = post("/api/nav", {"action": "goto", "index": 30})
+        assert status == 200
+        assert body["nav"] == {"index": 30, "total": 192, "live": False}
+
+        status, body = post("/api/nav", {"action": "live"})
+        assert body["nav"]["live"] is True
+
+        with pytest.raises(Exception):
+            post("/api/nav", {"action": "bogus"})
+    finally:
+        server.shutdown()
+        thread.join()
+
+
 # -- the money band ----------------------------------------------------------
 
 

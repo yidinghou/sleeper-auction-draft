@@ -30,6 +30,7 @@ from .live_render import (
     render_pool,
     render_pressure,
     render_rosters,
+    render_settled_lot,
     render_spend,
 )
 from .live_state import LeagueState, reconstruct
@@ -120,6 +121,16 @@ class DraftPoller:
         self._snapshot: Optional[Dict[str, Any]] = None
         self._error: Optional[str] = None
         self._stop = threading.Event()
+        # Checkpoint rewind. `_all_picks` is the sorted (and `--replay`-capped)
+        # pick list a live snapshot was last built from -- the same list a
+        # checkpoint is just a prefix of, since `reconstruct` is a pure fold
+        # over picks. `_view` is None while live; otherwise it is how many of
+        # those picks the board is currently showing. `_config`/`_draft` are
+        # kept alongside so a checkpoint can be rebuilt without a network call.
+        self._all_picks: List[Dict[str, Any]] = []
+        self._config: Optional[Any] = None
+        self._draft: Optional[Dict[str, Any]] = None
+        self._view: Optional[int] = None
 
     # -- polling ------------------------------------------------------------
 
@@ -266,6 +277,35 @@ class DraftPoller:
         with self._lock:
             self._pulse = None
 
+    def _clamp_view(self, index: int) -> int:
+        """Call only while holding `_lock` -- reads `_all_picks`."""
+        return max(0, min(index, len(self._all_picks)))
+
+    def view_prev(self) -> None:
+        """Step one pick back. From live, this steps to the newest checkpoint
+        -- one pick behind whatever is currently on screen."""
+        with self._lock:
+            current = self._view if self._view is not None else len(self._all_picks)
+            self._view = self._clamp_view(current - 1)
+
+    def view_next(self) -> None:
+        """Step one pick forward. Stops at the newest checkpoint even if the
+        live draft has moved on since -- only `view_live` resumes live
+        tracking. That is a deliberate choice: an accidental extra tap of
+        "next" must not silently drop you back into live and lose your
+        place."""
+        with self._lock:
+            current = self._view if self._view is not None else len(self._all_picks)
+            self._view = self._clamp_view(current + 1)
+
+    def view_goto(self, index: int) -> None:
+        with self._lock:
+            self._view = self._clamp_view(index)
+
+    def view_live(self) -> None:
+        with self._lock:
+            self._view = None
+
     def refresh(self) -> None:
         """Fetch once and replace the snapshot. Errors are recorded, not raised:
         a blip must not kill the poll thread and leave the board frozen with no
@@ -287,12 +327,16 @@ class DraftPoller:
 
             config = config_from_draft(draft)
             picks = fetch_picks(self.draft_id)
+            # Sorted once, here, rather than left to `reconstruct` alone: this
+            # is also the list `_build_checkpoint` slices a prefix of, so it
+            # has to be in pick order before it is stored on `self`.
+            picks = sorted(picks, key=lambda p: int(p.get("pick_no") or 0))
             if self.replay is not None:
                 # Rewind a finished draft to mid-auction. A completed mock
                 # shows every seat broke and every need met, which is exactly
                 # the state the board is useless in -- this is how you rehearse
-                # against one.
-                picks = sorted(picks, key=lambda p: int(p.get("pick_no") or 0))
+                # against one. It also caps how far checkpoint nav can go --
+                # a rehearsal has nothing beyond pick `replay` to rewind past.
                 picks = picks[: self.replay]
             state = reconstruct(picks, config, self.pool, catalog=self.catalog)
             nom = parse_nomination(draft)
@@ -311,6 +355,9 @@ class DraftPoller:
             with self._lock:
                 self._pulse = pulse
                 self._snapshot = snapshot
+                self._all_picks = picks
+                self._config = config
+                self._draft = draft
                 self._error = None
         except (SleeperError, ValueError) as exc:
             with self._lock:
@@ -368,6 +415,64 @@ class DraftPoller:
             "log_html": render_log(state),
             "polled_at": time.strftime("%H:%M:%S"),
             "warning": stale,
+            # A live snapshot is always "caught up to itself" -- index and
+            # total are the same number. `snapshot()` only ever substitutes a
+            # checkpoint in place of this dict; it never edits this one.
+            "nav": {"index": len(state.picks), "total": len(state.picks), "live": True},
+        }
+
+    def _build_checkpoint(
+        self,
+        index: int,
+        picks: List[Dict[str, Any]],
+        config,
+        draft: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """The board as it stood after exactly `index` picks. Always after a
+        bid cleared and before the next one opened -- a checkpoint is a pick
+        boundary by construction -- so there is never a lot *in progress* to
+        show on the block. There is, however, always the pick that just
+        landed: the seat that won it is decorated the same `"high"` bidding
+        state a live leader gets, so it lights up the same amber everywhere
+        that state already drives -- the ledger chart, the pressure tile --
+        rather than the checkpoint inventing a visual language of its own."""
+        draft = draft or {}
+        state = reconstruct(picks[:index], config, self.pool, catalog=self.catalog)
+        winner = max(state.picks, key=lambda p: p.pick_no) if state.picks else None
+        for slot, seat in state.seats.items():
+            seat.name = self.names.label(slot)
+            seat.bidding = "high" if winner is not None and slot == winner.slot else ""
+        seat = self.my_seat(draft)
+        name = (draft.get("metadata") or {}).get("name") or "draft"
+        stale = (
+            f"{len(state.unknown_player_ids)} picks not in the projections CSV — "
+            "re-run npm run export:projections"
+            if state.unknown_player_ids
+            else self.names_note
+        )
+        total = len(picks)
+        return {
+            "teams": config.teams,
+            "subtitle": f"Pick {index} of {total} — rewound",
+            "draft_label": f"{name} · …{str(self.draft_id)[-6:]}",
+            "my_seat": seat,
+            "seat_names": {
+                str(slot): seat_.name for slot, seat_ in state.seats.items()
+            },
+            "spend_html": render_spend(state),
+            "ledger_html": render_ledger(
+                state, seat, self.seat_note, self.user or ""
+            ),
+            "nomination_html": render_settled_lot(state),
+            "rosters_html": render_rosters(state),
+            "pressure_html": render_pressure(
+                state, winner.player.pos if winner is not None else ""
+            ),
+            "pool_html": render_pool(state),
+            "log_html": render_log(state),
+            "polled_at": time.strftime("%H:%M:%S"),
+            "warning": stale,
+            "nav": {"index": index, "total": total, "live": False},
         }
 
     def wait_for(self) -> float:
@@ -404,10 +509,24 @@ class DraftPoller:
 
         A stale board plus a visible warning beats a blank one: mid-draft you
         would rather see 20-second-old budgets than nothing.
+
+        When `_view` is set, a checkpoint is substituted in place of the live
+        snapshot -- the background poller keeps polling and keeps its own
+        `_snapshot` current underneath, it just isn't what gets served until
+        `view_live()` is called.
         """
         with self._lock:
+            view = self._view
+            picks = list(self._all_picks)
+            config = self._config
+            draft = self._draft
             snap = dict(self._snapshot) if self._snapshot else None
             error = self._error
+        if view is not None and config is not None:
+            checkpoint = self._build_checkpoint(view, picks, config, draft)
+            if error:
+                checkpoint["warning"] = f"{error} (showing last good data)"
+            return checkpoint
         if snap is None:
             return {
                 "teams": 0,
@@ -424,6 +543,7 @@ class DraftPoller:
                 "log_html": "",
                 "polled_at": "—",
                 "warning": error or "",
+                "nav": {"index": 0, "total": 0, "live": True},
             }
         if error:
             snap["warning"] = f"{error} (showing last good data)"
@@ -487,6 +607,33 @@ def _handler(poller: DraftPoller):
             if path == "/api/rescan-names":
                 poller.rescan_names()
                 self._send(b'{"ok":true}', "application/json")
+                return
+            if path == "/api/nav":
+                body = self._read_json()
+                if body is None:
+                    return
+                action = body.get("action")
+                if action == "prev":
+                    poller.view_prev()
+                elif action == "next":
+                    poller.view_next()
+                elif action == "live":
+                    poller.view_live()
+                elif action == "goto":
+                    try:
+                        index = int(body.get("index"))
+                    except (TypeError, ValueError):
+                        self.send_error(400, "index must be a number")
+                        return
+                    poller.view_goto(index)
+                else:
+                    self.send_error(400, "action must be prev/next/live/goto")
+                    return
+                # The moved-to state, not just an ack -- so the click can
+                # redraw the board immediately instead of waiting for the
+                # next 2s poll.
+                payload = json.dumps(poller.snapshot()).encode("utf-8")
+                self._send(payload, "application/json")
                 return
             if path != "/api/seat-name":
                 self.send_error(404)

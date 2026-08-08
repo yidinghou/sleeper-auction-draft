@@ -1249,6 +1249,66 @@ def render_nomination(
     )
 
 
+def render_settled_lot(state: LeagueState) -> str:
+    """The block panel for a checkpoint: not a lot in progress -- a checkpoint
+    is always after a bid cleared -- but the pick that just settled, so the
+    panel is never simply blank.
+
+    Same markup and classes as `render_nomination`'s live panel, on purpose:
+    a checkpoint is a different moment of the same draft, not a different kind
+    of screen. Only the two things a checkpoint actually still knows differ
+    from a live lot -- there is one winner instead of a field of bidders, and
+    the number is what it sold for rather than what it is at -- everything
+    else, including who bid and dropped out along the way, is memory the live
+    poller alone ever had (`DraftPoller._bidders`) and does not survive a
+    rewind.
+    """
+    if not state.picks:
+        return (
+            '<div class="block idle">Nothing nominated — '
+            f"{len(state.picks)} picks in.</div>"
+        )
+    pick = max(state.picks, key=lambda p: p.pick_no)
+    player = pick.player
+    name = _esc(player.name)
+    pill = badge(player.pos, light=True)
+    proj = market_value(player)
+    proj_txt = f"${proj:.0f}" if proj else "—"
+    facts = []
+    if player.team:
+        facts.append(f'<span class="onfact">{_esc(player.team)}</span>')
+    facts.append(f'<span class="onfact">{player.points:.0f} pts</span>')
+    seat = state.seats.get(pick.slot)
+    label = _seat_label(seat) if seat is not None else f"S{pick.slot}"
+    facts.append(f'<span class="onfact nm">won by {label}</span>')
+    sub = '<span class="onsep"></span>'.join(facts)
+    tag = _seat_tag(seat) if seat is not None else f"S{pick.slot}"
+    tip = _seat_tip(seat) if seat is not None else f"S{pick.slot}"
+    chips = (
+        '<div class="bidders">'
+        f'<span class="chip bid-high" title="{_esc(tip)} · won at ${pick.price}">'
+        f'<span class="cn">{tag}</span><span class="ca">${pick.price}</span>'
+        "</span></div>"
+    )
+    return (
+        '<div class="block">'
+        '<div class="onmain">'
+        '<div class="onid">'
+        f'<div class="onhead">{pill}<span class="who">{name}</span></div>'
+        f'<div class="onsub">{sub}</div>'
+        "</div>"
+        '<div class="onmoney">'
+        '<div class="onrow"><span class="figl">$PROJ</span>'
+        f'<span class="figv onproj">{proj_txt}</span></div>'
+        '<div class="onrow"><span class="figl">Sold</span>'
+        f'<span class="figv bidamt">${pick.price}</span></div>'
+        "</div>"
+        "</div>"
+        f"{chips}"
+        "</div>"
+    )
+
+
 def render_page(draft_id: str) -> str:
     """The page shell. Contents arrive from /api/state and refresh in place.
 

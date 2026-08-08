@@ -14,6 +14,7 @@ from draftsim.live_render import (
     render_nomination,
     render_page,
     render_rosters,
+    render_settled_lot,
 )
 from draftsim.live_state import (
     DRAFT_TARGETS,
@@ -379,6 +380,26 @@ def test_nomination_strip_survives_a_player_off_the_sheet(midway):
     html = render_nomination(midway, nom, None)
     assert "not in projections" in html
     assert "$3" in html
+
+
+def test_settled_lot_shows_the_pick_that_just_landed(midway):
+    # `midway` is rewound to pick 60 -- TreVeyon Henderson, to S12, for $16.
+    html = render_settled_lot(midway)
+    assert "TreVeyon Henderson" in html
+    assert "won by S12" in html
+    assert "$16" in html
+    assert html.count('class="chip bid-high"') == 1
+    # Unlike a live lot, there is exactly one chip: who else was in the
+    # bidding on a closed lot is memory only the live poller ever had.
+    assert html.count('class="chip') == 1
+    assert "no bids yet" not in html
+
+
+def test_settled_lot_is_idle_before_the_first_pick(mock_config, pool, catalog):
+    empty = reconstruct([], mock_config, pool, catalog=catalog)
+    html = render_settled_lot(empty)
+    assert "Nothing nominated" in html
+    assert "bid-high" not in html
 
 
 def test_page_shell_is_a_full_html_document():
