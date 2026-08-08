@@ -35,6 +35,12 @@ class Player:
     sleeper_id: Optional[str] = None
     """Sleeper's own player_id, the join key for live draft picks. None when
     reading a CSV exported before the column existed -- see `by_sleeper_id`."""
+    week1: Optional[float] = None
+    week2: Optional[float] = None
+    week3: Optional[float] = None
+    """Division-round projections. None rather than 0.0 when the CSV predates
+    these columns -- a body with no early-week read is not the same as one
+    projected for zero points in it."""
 
 
 def _make_id(name: str, pos: str, team: str) -> str:
@@ -63,6 +69,11 @@ def _int_or_none(raw: str) -> Optional[int]:
 def _float_or_zero(raw: str) -> float:
     raw = (raw or "").strip()
     return float(raw) if raw else 0.0
+
+
+def _float_or_none(raw: str) -> Optional[float]:
+    raw = (raw or "").strip()
+    return float(raw) if raw else None
 
 
 def load_players(
@@ -105,6 +116,9 @@ def load_players(
                     bye=_int_or_none(row.get("bye_week", "")),
                     rank=_int_or_none(row.get("sleeper_rank", "")),
                     sleeper_id=(row.get("player_id") or "").strip() or None,
+                    week1=_float_or_none(row.get("week1_pts_half_ppr", "")),
+                    week2=_float_or_none(row.get("week2_pts_half_ppr", "")),
+                    week3=_float_or_none(row.get("week3_pts_half_ppr", "")),
                 )
             )
     return players

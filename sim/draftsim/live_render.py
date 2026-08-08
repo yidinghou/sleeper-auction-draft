@@ -941,6 +941,43 @@ def _meta_tip(player: Player, late_bye: bool = False) -> str:
     )
 
 
+# A week has to clear this margin off the player's season pace -- points ÷ 17
+# -- before the pool calls it out. Division-round byes and matchup noise put
+# most weeks a few percent either side of pace; coloring those would make the
+# green/red read as decoration rather than a signal worth nominating around.
+_EARLY_WEEK_MARGIN = 0.15
+
+
+def _early_week_cell(week: Optional[float], pace: float) -> str:
+    """One of the three division-round columns, held back unless the gap from
+    the player's own season pace is real. `pace` is `points / 17`, so a bye or
+    a light early slate for an otherwise even producer reads as red without the
+    season total itself being in question."""
+    if week is None:
+        return '<i class="pwk">—</i>'
+    tag = ""
+    if pace > 0:
+        gap = (week - pace) / pace
+        if gap >= _EARLY_WEEK_MARGIN:
+            tag = " g"
+        elif gap <= -_EARLY_WEEK_MARGIN:
+            tag = " r"
+    return f'<i class="pwk{tag}">{week:.1f}</i>'
+
+
+# The pool's own column header -- unlike the roster card's `_column_header`,
+# this one is not gated behind maximized: the pane has the width for it at any
+# size, and it is the only place these nine columns are named at all. Written
+# once per render rather than once per row, since it never varies with the data.
+_POOL_HEADER = (
+    '<div class="prow phdr">'
+    '<i></i><i class="phdname">PLAYER</i><i class="ptm">TM</i>'
+    '<i class="pby">BYE</i><i class="ppt">PTS</i>'
+    '<i class="pwk">WK1</i><i class="pwk">WK2</i><i class="pwk">WK3</i>'
+    '<i class="ppr">$</i></div>'
+)
+
+
 def render_pool(state: LeagueState, my_seat: Optional[int] = None) -> str:
     """Who is left, dearest first.
 
@@ -984,13 +1021,16 @@ def render_pool(state: LeagueState, my_seat: Optional[int] = None) -> str:
         f'<i class="pby{" late" if late_bye and _is_late_bye(player) else ""}">'
         f'{player.bye or "—"}</i>'
         f'<i class="ppt">{player.points:.0f}</i>'
+        f'{_early_week_cell(player.week1, player.points / 17)}'
+        f'{_early_week_cell(player.week2, player.points / 17)}'
+        f'{_early_week_cell(player.week3, player.points / 17)}'
         f'<i class="ppr">{f"${market_value(player):.0f}" if market_value(player) else "—"}</i>'
         "</div>"
         for player in shown
     )
     if not rows:
-        rows = '<div class="pnone">the board is empty</div>'
-    return f'<div class="poollist">{rows}</div>'
+        return f'<div class="poollist">{_POOL_HEADER}<div class="pnone">the board is empty</div></div>'
+    return f'<div class="poollist">{_POOL_HEADER}{rows}</div>'
 
 
 def _log_price(pick: SeatPick) -> str:
