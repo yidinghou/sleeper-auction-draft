@@ -5,6 +5,9 @@
 // not see. Null when the draft has no order to look you up in, which is every
 // mock: the board then simply marks no card.
 let mySeat = null;
+// Whichever seat is on the clock right now, mirroring `mySeat` above. Null on
+// a rewound checkpoint, which never has a lot in progress.
+let onClockSeat = null;
 
 const maxBtn = document.getElementById("max");
 // Maximized, nothing folds: the overlay is the whole viewport and all twelve
@@ -632,14 +635,17 @@ window.addEventListener("scroll", closeMenu, true);
 
 function highlight() {
   const mine = mySeat === null ? "" : String(mySeat);
+  const onclock = onClockSeat === null ? "" : String(onClockSeat);
   document.querySelectorAll("section.card").forEach((card) => {
     card.classList.toggle("me", mine !== "" && card.dataset.seat === mine);
+    card.classList.toggle("onclock", onclock !== "" && card.dataset.seat === onclock);
   });
   // The same mark on the pressure grid's own seat tiles -- "who is short here"
   // is a question you ask about yourself first, and the tiles are otherwise
   // twelve identical shapes with nothing to tell S3 from the rest.
   document.querySelectorAll(".pcard .tile").forEach((tile) => {
     tile.classList.toggle("me", mine !== "" && tile.dataset.seat === mine);
+    tile.classList.toggle("onclock", onclock !== "" && tile.dataset.seat === onclock);
   });
 }
 
@@ -688,6 +694,8 @@ function applyNav(nav) {
 // mid-gesture, so it must never be swallowed the way a stray tick would be.
 function applyState(s, force) {
   mySeat = s.my_seat === undefined ? null : s.my_seat;
+  onClockSeat = s.nominating_seat === undefined || s.nominating_seat === null
+    ? null : s.nominating_seat;
   // Only for prefilling the rename box: every fragment already arrives with
   // its own names drawn in. Skipped while the box is open, or a poll landing
   // mid-edit would argue with what is being typed.

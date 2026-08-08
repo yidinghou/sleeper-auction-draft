@@ -404,6 +404,7 @@ class DraftPoller:
             "subtitle": status,
             "draft_label": f"{name} · …{str(self.draft_id)[-6:]}",
             "my_seat": seat,
+            "nominating_seat": nom.nominating_slot,
             # Not for drawing -- every fragment already carries its own names.
             # This is what the rename box is prefilled from, so editing a name
             # starts from the one on screen rather than from an empty field.

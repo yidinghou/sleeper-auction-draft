@@ -432,6 +432,10 @@
   .card.me { border-color: #1a1a1a; box-shadow: 0 0 0 1px #1a1a1a; }
   .card.me .team::after { content: " (you)"; color: #666; font-weight: 400;
     font-size: calc(9px * var(--fs)); }
+  /* Whichever seat is on the clock -- a gold star rather than another ring,
+     so it reads as its own kind of mark instead of competing with the black
+     `.me` outline or the purple bidding colours. */
+  .card.onclock .team::before { content: "★ "; color: #d4a017; }
   .card header .top { display: flex; align-items: baseline; gap: 5px; }
   .team { font-weight: 700; font-size: calc(11px * var(--fs)); color: #444; }
   /* A named seat leads with the manager and keeps the slot beside it, small and
@@ -893,6 +897,10 @@
      is a box-shadow layered outside the border rather than a fight over which
      rule sets `border-color` last. */
   .tile.me { box-shadow: 0 0 0 1px #1a1a1a; }
+  /* Same gold star as the roster card, ahead of the seat tag -- small enough
+     for the tile's own type scale rather than another outline crowding the
+     `.me`/`.done`/`.bid-*` ring and background this tile may already carry. */
+  .tile.onclock .ttop b::before { content: "★ "; color: #d4a017; }
   .tfull { display: flex; align-items: center; justify-content: center;
     height: calc(4px * var(--fs)); font-size: calc(7px * var(--fs));
     line-height: 1; color: #8c8c8c; }
