@@ -243,18 +243,31 @@ try { collapsed = JSON.parse(localStorage.getItem("draftsim.collapsed")) || []; 
 // Four across, from the grid's own `grid-template-columns`.
 const GRID_COLS = 4;
 
-// Fold by row, not by card. Four cards side by side share a row's height, so
-// folding one alone frees nothing -- its neighbours still need the room. A whole
-// row is the smallest thing whose height can actually go somewhere.
+// Which rows of the board are open. Fold by row, not by card: four cards side by
+// side share a row's height, so folding one alone frees nothing -- its
+// neighbours still need the room. A whole row is the smallest thing whose height
+// can actually go somewhere.
 //
 // Rows are positional, and deliberately so: the board can be dragged into any
 // order, and what you folded is the row you were looking at, not whichever seats
 // happened to be in it.
+//
+// A filter in the menu bar rather than a fold gesture on a bar over each row --
+// the same move run pressure's `runsel` made, and this list is its counterpart.
+// Which rows you are reading is one decision and belongs in one place, and three
+// bars whose double-click was the only way to fold were three rows of chrome
+// advertising nothing. `MAX_ROWS` is what the shell ships buttons for; a league
+// with fewer rows hides the spares.
+const MAX_ROWS = 4;
+let rowsel = null;
+try { rowsel = JSON.parse(localStorage.getItem("draftsim.rowsel")); } catch (e) {}
+// Everything open until told otherwise -- an unfiltered board is the board.
+if (!Array.isArray(rowsel)) rowsel = [...Array(MAX_ROWS).keys()];
+
 // The seats in a row, as short as they can be said. Untouched, an unmoved board
-// spells out "S1 · S2 · S3 · S4" over every row -- four tokens saying one thing,
-// next to a heading that already said which row this is. Consecutive seats
-// collapse to "S1–S4"; once cards have been dragged the run breaks and the list
-// comes back, which is exactly when it is worth reading.
+// spells out "S1 · S2 · S3 · S4" for every row -- four tokens saying one thing.
+// Consecutive seats collapse to "S1–S4"; once cards have been dragged the run
+// breaks and the list comes back, which is exactly when it is worth reading.
 function seatRange(names) {
   const nums = names.map((n) => +n.slice(1));
   const run = nums.every((n, i) => i === 0 || n === nums[i - 1] + 1);
@@ -269,59 +282,52 @@ function applyRows() {
   // `order` each card sits at, and that is what decides which row it renders in.
   const cards = [...grid.querySelectorAll("section.card")]
     .sort((a, b) => (+a.style.order || 0) - (+b.style.order || 0));
-  const heads = [...grid.querySelectorAll(".rowhd")];
   const rows = Math.ceil(cards.length / GRID_COLS);
-  // A header row and a card row per row of the board, in that order -- the same
-  // interleaving `slotOrder` lays the items out in.
+  // One track per row of the board.
   const tmpl = [];
   let shutRows = 0;
-  // Maximized, every row is open whatever the stored folds say: see `setMaxed`.
+  // Maximized, every row is open whatever the filter says: see `setMaxed`.
   const foldable = !document.body.classList.contains("maxed");
+  // Which seats are in which row is the client's answer to give: a dragged card
+  // changes it, and the server never hears about the drag. The buttons carry it
+  // as their tooltip, which is where it went when the row bars left.
+  const seats = [];
   for (let r = 0; r < rows; r++) {
-    const shut = foldable && collapsed.includes("row:" + r);
+    const shut = foldable && !rowsel.includes(r);
     if (shut) shutRows++;
     const mine = cards.slice(r * GRID_COLS, (r + 1) * GRID_COLS);
     mine.forEach((c) => {
       c.classList.toggle("collapsed", shut);
       // Which row a card is in after a drag is the client's answer to give, and
-      // the tint that bands it to its bar is cut from that number.
+      // the tint that groups it with its row is cut from that number.
       c.dataset.row = r;
     });
-    const head = heads[r];
-    if (head) {
-      head.style.order = r * (GRID_COLS + 1);
-      head.classList.toggle("shut", shut);
-      head.dataset.row = r;
-      // Which seats are in this row is the client's answer to give: a dragged
-      // card changes it, and the server never hears about the drag.
-      head.querySelector(".note").textContent =
-        seatRange(mine.map((c) => "S" + c.dataset.seat));
-    }
-    tmpl.push("var(--rowbar)", shut ? "auto" : "minmax(0, var(--rowfull))");
+    seats.push(seatRange(mine.map((c) => "S" + c.dataset.seat)));
+    tmpl.push(shut ? "auto" : "minmax(0, var(--rowfull))");
   }
+  applyRowSeg(rows, seats, foldable);
   // Seeded before the template that reads it. This grid is thrown away and
   // rebuilt every two seconds, and the one that arrives has no `--rowfull` of
   // its own -- so a template referencing it would be a declaration with an
   // undefined variable in it, which CSS drops whole. `grid-auto-rows` would then
-  // size all 2N tracks evenly, and the strip height read back off them below
-  // would be a sixth of the board rather than a folded row.
+  // size every track evenly, and the strip height read back off them below would
+  // be a whole open row rather than a folded one.
   grid.style.setProperty("--rowfull", evenRows(rows));
   // Explicit rows, because `grid-auto-rows: minmax(0, 1fr)` would hand a folded
-  // row its full third back however little is left in it -- and would give each
-  // header bar a third of the board besides.
+  // row its full third back however little is left in it.
   grid.style.gridTemplateRows = tmpl.join(" ");
   // Now that the folded rows are `auto` tracks, they can say how tall a strip is.
   grid.style.setProperty("--rowfull", rowHeight(grid, rows, shutRows));
 }
 
-// The board with nothing folded: the pane, less a bar per row and a gap between
-// every one of the 2N tracks, split N ways.
+// The board with nothing folded: the pane, less a gap between the rows, split N
+// ways.
 function evenRows(rows) {
   return `calc((100% - ${rowChrome(rows)}) / ${rows})`;
 }
 
 function rowChrome(rows) {
-  return `(${rows} * var(--rowbar) + ${2 * rows - 1} * 5px)`;
+  return `(${rows - 1} * 5px)`;
 }
 
 // How tall a folded row came out. Read back off the tracks just written, where a
@@ -334,8 +340,8 @@ function stripHeight(grid, rows) {
   const used = getComputedStyle(grid).gridTemplateRows.split(" ");
   let tallest = 0;
   for (let r = 0; r < rows; r++) {
-    if (!collapsed.includes("row:" + r)) continue;
-    tallest = Math.max(tallest, parseFloat(used[r * 2 + 1]) || 0);
+    if (rowsel.includes(r)) continue;
+    tallest = Math.max(tallest, parseFloat(used[r]) || 0);
   }
   return tallest;
 }
@@ -355,9 +361,57 @@ function rowHeight(grid, rows, shutRows) {
     ` calc((100% - ${chrome} - ${s}px) / 2))`;
 }
 
-// Bands and rows. The pressure cards used to fold from here too, under `pos:`
-// keys; they answer to `runsel` now, and any of those keys still sitting in a
-// browser's storage from before simply match nothing.
+// The filter, told what `applyRows` has just worked out. Only that pass knows how
+// many rows this league has, which seats ended up in each of them after a drag,
+// and whether the board is maximized -- so the buttons are written from there
+// rather than from a pass of their own that would have to ask all three again.
+function applyRowSeg(rows, seats, foldable) {
+  document.querySelectorAll(".rowseg button").forEach((b) => {
+    const r = b.dataset.row === "" ? null : +b.dataset.row;
+    // A button for a row this league does not have is not disabled, it is not a
+    // control: a 12-seat board has three rows and a fourth greyed button would
+    // be an offer the board cannot make.
+    b.hidden = r !== null && r >= rows;
+    // Maximized, every row is open and nothing folds -- so the filter says so
+    // rather than recording a fold you would only see on minimizing.
+    b.disabled = !foldable;
+    // ALL is pressed only when every row is -- it reports the set rather than
+    // being a member of it, the same as run pressure's. Maximized, every row is
+    // open however the filter is set, so the buttons say so: what they report is
+    // the board in front of you, not a selection it is ignoring.
+    b.setAttribute("aria-pressed", String(!foldable ||
+      (r === null ? openRows(rows).length === rows : rowsel.includes(r))
+    ));
+    if (r !== null && seats[r]) b.title = "Row " + (r + 1) + ": " + seats[r];
+  });
+}
+
+// The open rows this league actually has. `rowsel` may still carry a fourth row
+// from a 16-seat board seen earlier in the same browser, and that must not make
+// ALL look unpressed on a 12-seat one.
+function openRows(rows) {
+  return rowsel.filter((r) => r < rows);
+}
+
+function setRows(next) {
+  rowsel = next;
+  localStorage.setItem("draftsim.rowsel", JSON.stringify(rowsel));
+  applyRows();
+}
+
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".rowseg button");
+  if (!btn) return;
+  const r = btn.dataset.row;
+  if (r === "") setRows([...Array(MAX_ROWS).keys()]);
+  else setRows(rowsel.includes(+r)
+    ? rowsel.filter((x) => x !== +r) : rowsel.concat(+r));
+});
+
+// Bands. The pressure cards used to fold from here too, under `pos:` keys, and
+// the roster rows under `row:` keys; they answer to `runsel` and `rowsel` now,
+// and any of those keys still sitting in a browser's storage from before simply
+// match nothing.
 function applyCollapsed() {
   document.querySelectorAll("[data-band]").forEach((el) => {
     el.classList.toggle("collapsed", collapsed.includes("band:" + el.dataset.band));
@@ -370,13 +424,6 @@ function applyCollapsed() {
   applyRows();
 }
 
-// Where the nth card of the board sits in the grid's `order`, with a row header
-// taking the place ahead of every run of four. So a row of the board costs five
-// order slots: the bar, then its four cards.
-function slotOrder(pos) {
-  return pos + Math.floor(pos / GRID_COLS) + 1;
-}
-
 function toggleCollapsed(id) {
   const at = collapsed.indexOf(id);
   if (at === -1) collapsed.push(id); else collapsed.splice(at, 1);
@@ -384,12 +431,8 @@ function toggleCollapsed(id) {
   applyCollapsed();
 }
 
-// Double-click a header to fold what is under it: a band's on the left, a row's
-// on the right. One gesture, one kind of control, both sides of the board.
-//
-// The fold lives on the row bar rather than on the cards under it, which is what
-// keeps it clear of the drag: a card header is a grab handle, and a click that
-// ends a one-pixel drag must not put four cards away.
+// Double-click a band header to fold what is under it. The roster board folds
+// from its filter instead -- the rows have no headers of their own any more.
 //
 // Delegated from the document because every one of these headers is rebuilt
 // every two seconds, and one listener beats nine.
@@ -401,34 +444,20 @@ document.addEventListener("dblclick", (e) => {
   // a row is not even an accident.
   if (e.target.closest(".fseg") || e.target.closest(".rseg") || e.target.closest(".navseg")) return;
   const head = e.target.closest(".bandhd");
-  if (head) {
-    const band = head.closest("[data-band]");
-    if (band) toggleCollapsed("band:" + band.dataset.band);
-    return;
-  }
-  const rowHead = e.target.closest(".rowhd");
-  // Maximized the rows do not fold, so the gesture does nothing rather than
-  // quietly recording a fold you would only see on minimizing.
-  if (rowHead && !document.body.classList.contains("maxed")) {
-    toggleCollapsed("row:" + rowHead.dataset.row);
-  }
+  if (!head) return;
+  const band = head.closest("[data-band]");
+  if (band) toggleCollapsed("band:" + band.dataset.band);
 });
 
-// A double-click is two clicks on the *same element*, and the fragments holding
-// these headers are replaced every two seconds -- so a swap landing between the
-// two clicks eats the gesture, and the fold silently does nothing about one time
-// in ten. The board holds the swap for a moment after a press on a foldable
-// header, the same way it holds it while a card is being dragged.
-//
-// `.phd` is here for a nearer version of the same problem. A pressure card folds
-// on a single click, and a click is a mousedown and a mouseup on one element --
-// so a swap landing between them destroys the header that was pressed and the
-// click never fires at all. Holding covers the gap.
+// A pressure card folds on a single click, and a click is a mousedown and a
+// mouseup on one element -- so a swap landing between them destroys the header
+// that was pressed and the click never fires at all. The board holds the swap
+// for a moment after a press on one, the same way it holds it while a card is
+// being dragged. The roster filter needs none of this: it lives in the shell,
+// which no swap touches.
 let heldAt = 0;
 document.addEventListener("mousedown", (e) => {
-  if (e.target.closest(".rowhd") || e.target.closest(".phd")) {
-    heldAt = Date.now();
-  }
+  if (e.target.closest(".phd")) heldAt = Date.now();
 });
 
 // Seat order, dragged by hand and remembered. Presentational: the server always
@@ -463,10 +492,7 @@ function normalizeOrder() {
 function applyOrder() {
   normalizeOrder();
   document.querySelectorAll("[data-seat]").forEach((el) => {
-    // Gapped, to leave a place for each row bar. The pressure tiles read the
-    // same numbers and have no bars to leave room for, but they only ever care
-    // which of them comes first -- and the gaps do not change that.
-    el.style.order = slotOrder(order.indexOf(el.dataset.seat));
+    el.style.order = order.indexOf(el.dataset.seat);
   });
 }
 

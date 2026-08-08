@@ -123,6 +123,29 @@
             aria-label="Minimize">&times;</button>
     <div class="menubar">
       <h2>Rosters</h2>
+      <!-- Which rows of the board are open, as a filter rather than as three
+           fold gestures on three bars over the grid -- the same trade run
+           pressure's filter made, and for the same reasons: one decision read
+           in one place, and a control that says it is there. What you leave out
+           collapses to the strips the cards fold into.
+
+           Out here in the shell with the rest of the chrome, because #rosters
+           is replaced wholesale twice a second and a button rebuilt that often
+           can hold neither focus nor pressed state. Four buttons ship and the
+           client hides the ones a league has no row for -- twelve seats is
+           three rows, sixteen is four, and only the client knows which.
+
+           Shipped in the state the board is usually in, because the client
+           cannot correct it until the first fetch has told it how many rows
+           there are: everything open and pressed, and the fourth row hidden.
+           A 16-seat league grows an R4 a moment after loading; every other
+           league would otherwise have flashed one it does not have. -->
+      <span class="seg rowseg">
+        <button data-row="" type="button" aria-pressed="true">ALL</button>
+        <button data-row="0" type="button" aria-pressed="true">R1</button>
+        <button data-row="1" type="button" aria-pressed="true">R2</button>
+        <button data-row="2" type="button" aria-pressed="true">R3</button>
+        <button data-row="3" type="button" aria-pressed="true" hidden>R4</button></span>
       <button id="max" type="button">Maximize</button>
       <button id="reorder" type="button"
               title="Put the cards back in seat order">Seat order</button>

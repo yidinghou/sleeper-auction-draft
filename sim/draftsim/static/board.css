@@ -146,6 +146,14 @@
   .menubar h2 { font-size: calc(10px * var(--fs)); margin: 0; color: #555;
     text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;
     white-space: nowrap; }
+  /* The row filter sits with the title it filters, so `.seg`'s own
+     `margin-left: auto` is undone here -- it is written for a band header, where
+     the segment is the only thing after the title. This bar has two actions at
+     its other end, and a filter flung against them would read as a third one.
+     So: what the board is showing on the left, what you can do to it on the
+     right. */
+  .menubar .seg { margin-left: 0; }
+  .menubar #max { margin-left: auto; }
 
   button { background: #f6f6f6; color: #1a1a1a; border: 1px solid #ddd;
     border-radius: 6px; padding: 2px 8px; font: inherit; cursor: pointer; }
@@ -403,15 +411,13 @@
      which resized every card on the board to put four of them away.
 
      `--rowfull` is written by the client, which is the only side that knows how
-     many rows there are and how tall a strip came out; the arithmetic needs the
-     bar's height to be a number, which is what `--rowbar` is for.
+     many rows there are and how tall a strip came out.
      `align-content: start` is the other half: with the tracks now free to sum to
      less than the pane, the default `stretch` would blow a board of folded
      strips back up to fill it. Rows are always written as an explicit
      `grid-template-rows` by the client; `grid-auto-rows` is the no-JS paint. */
   #rosters { flex: 1; min-height: 0; padding: 6px 8px; }
-  .grid { display: grid; gap: 5px; height: 100%;
-    --rowbar: 16px; align-content: start;
+  .grid { display: grid; gap: 5px; height: 100%; align-content: start;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     grid-auto-rows: minmax(0, 1fr); }
   .card { background: #fff; border: 1px solid #ddd; border-radius: 6px;
@@ -573,59 +579,24 @@
   .foldsum .pip.extra { width: calc(10px * var(--fs)); height: calc(5px * var(--fs));
     box-shadow: none;
     background: color-mix(in srgb, var(--pos, #7c90a0) 50%, #fff); }
-  /* The bar over each row: what divides twelve cards into three rows you can
-     name, and the control that folds one away. Deliberately the same furniture
-     as the bands down the left column -- tinted strip, small caps, a caret that
-     turns -- because it is the same gesture, and a board that folds two
-     different ways by two different rules is a board you have to remember.
+  /* What divides twelve cards into three rows you can name, now that the bars
+     that used to do it are gone: the four cards of a row share a tint, and
+     neighbouring rows take different ones, so a row reads as a group of four
+     rather than as twelve cards in a field. It is worn as a cap along each
+     card's top edge and as its border -- the bar it used to continue from is a
+     button in the menu bar now, and the group has to hold together without it.
 
-     Thin: three of these are three rows' worth of chrome the cards used to have,
-     so they carry one line at the smallest size on the board and no padding to
-     speak of. And `--rowbar` tall rather than as tall as its line, because the
-     height of an open row is the pane less the bars and the gaps, and that
-     subtraction has to be arithmetic CSS can do. */
-     A bar and its four cards share a tint, and neighbouring rows take different
-     ones, so a row reads as a group of four rather than as four cards that
-     happen to sit under a divider. Greys only -- the position colours on the
-     lines are the board's palette, and a row band tinted anything else would
-     compete with them. The bar squares its bottom corners and the cards under it
-     wear a cap of the same tint, which is what makes the bar read as the top
-     edge of the group rather than as a rule between two of them. */
      A colour per row, not two alternating: three rows are few enough to each be
      their own, and a row you can name by its colour is a row you can find again
-     after looking away. Pale and low-chroma on purpose -- these tint a strip and
-     a card's top edge, and the four position hues on the lines are the palette
-     that is meant to be read. The hues sit in the gaps that palette leaves
-     (violet, slate blue, green against pink / teal / blue / orange), so a band is
-     never mistaken for a position. Past three, rows fall back to grey. */
-  .rowhd[data-row], .card[data-row] { --band: #e4e8ec; --bandline: #c9d0d7; }
-  .rowhd[data-row="0"], .card[data-row="0"] { --band: #e7e3f2; --bandline: #cdc5e4; }
-  .rowhd[data-row="1"], .card[data-row="1"] { --band: #dde6f0; --bandline: #bdcbdb; }
-  .rowhd[data-row="2"], .card[data-row="2"] { --band: #dfeee1; --bandline: #bfd9c3; }
-  .rowhd { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px;
-    height: var(--rowbar); padding: 0 6px; background: var(--band, #f4f4f4);
-    border-radius: 3px 3px 0 0; cursor: pointer; user-select: none; }
-  .rowhd:hover { background: color-mix(in srgb, var(--band, #f4f4f4) 88%, #000); }
-  /* Padding as well as margin, because the base stylesheet gives every h2 a
-     6px top padding for the page's own headings -- inside a 16px bar that is a
-     20px box, so the title overflowed the strip and sat low against its note.
-     Both texts are set to their own line height so centring them centres the
-     type rather than two boxes of different heights. */
-  .rowhd h2 { font-size: calc(8.5px * var(--fs)); margin: 0; padding: 0;
-    line-height: 1; color: #666;
-    text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
-  .rowhd:hover h2 { color: #1a1a1a; }
-  .rowhd .note { font-size: calc(8px * var(--fs)); color: #888; line-height: 1;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    font-variant-numeric: tabular-nums; }
-  .rowhd::after { content: "\25BE"; margin-left: auto; flex: none;
-    font-size: calc(7px * var(--fs)); color: #888; line-height: 1; }
-  .rowhd:hover::after { color: #888; }
-  .rowhd.shut::after { transform: rotate(-90deg); }
-  /* Shut, the bar is the whole row, so it stops being a top edge and closes
-     itself back up. */
-  .rowhd.shut { background: color-mix(in srgb, var(--band, #f4f4f4) 92%, #000);
-    border-radius: 3px; }
+     after looking away. Pale and low-chroma on purpose -- the four position hues
+     on the lines are the palette that is meant to be read. These sit in the gaps
+     that palette leaves (violet, slate blue, green against pink / teal / blue /
+     orange), so a band is never mistaken for a position. Past three, rows fall
+     back to grey. */
+  .card[data-row] { --band: #e4e8ec; --bandline: #c9d0d7; }
+  .card[data-row="0"] { --band: #e7e3f2; --bandline: #cdc5e4; }
+  .card[data-row="1"] { --band: #dde6f0; --bandline: #bdcbdb; }
+  .card[data-row="2"] { --band: #dfeee1; --bandline: #bfd9c3; }
 
   /* Three panes over one roster, as tabs across the card. On the dark board
      these hid until hover because twelve cards' worth of lit chrome drowned the
@@ -640,6 +611,12 @@
     border-color: #1a1a1a; }
   .seg button:disabled { color: #ccc; border-color: #eee; cursor: default; }
   .seg button:disabled:hover { color: #ccc; border-color: #eee; }
+  /* On, but not yours to change -- the row filter maximized, where every row is
+     open and nothing folds. Without this the pressed black survives the disabled
+     state and half the segment reads as live while the other half is greyed
+     out, which says the two halves do different things. */
+  .seg button:disabled[aria-pressed="true"] { background: #ececec;
+    border-color: #e2e2e2; color: #999; }
 
   /* The pick position, between the step buttons -- not a button itself, so it
      shares the segment's box without taking part in its aria-pressed states. */
@@ -1224,13 +1201,9 @@
   body.maxed #rosters { overflow: hidden; padding: 0; }
   /* Nothing folds here -- the overlay is the whole viewport and twelve open
      cards fit it, so folding would put away something there was room for. The
-     bar keeps its title and its seat list, which are worth reading; it drops the
-     caret and the pointer, which advertise a gesture that no longer does
-     anything. `applyRows` is the half that makes it true. */
-  body.maxed .rowhd { cursor: default; }
-  body.maxed .rowhd::after { display: none; }
-  body.maxed .rowhd:hover { background: var(--band, #f4f4f4); }
-  body.maxed .rowhd:hover h2 { color: #666; }
+     row filter stays visible and goes disabled rather than disappearing: a
+     control that vanishes when you maximize is one you go looking for.
+     `applyRows` is the half that makes it true. */
   /* Keep the close button's corner clear of the menu bar's own controls. */
   body.maxed .menubar { padding-right: 30px; }
   body.maxed .card { padding: 6px 8px; }

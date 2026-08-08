@@ -1010,9 +1010,11 @@ def test_the_strip_stacks_its_two_lines_rather_than_running_them_together():
 
 def test_folding_is_by_row_because_a_lone_card_frees_nothing():
     # Four cards side by side share a row's height: fold one and its neighbours
-    # still need the room. A row is the smallest thing whose height can move.
+    # still need the room. A row is the smallest thing whose height can move --
+    # so the filter's unit is a row, and it is what the fold is keyed by.
     page = render_page("123")
-    assert '"row:" + rowHead.dataset.row' in page
+    assert 'localStorage.setItem("draftsim.rowsel", JSON.stringify(rowsel));' in page
+    assert "const shut = foldable && !rowsel.includes(r);" in page
     assert "function applyRows()" in page
     assert "applyRows();" in page.split("function applyCollapsed()")[1]
     # Explicit rows, or `grid-auto-rows: minmax(0, 1fr)` hands a folded row its
@@ -1028,16 +1030,14 @@ def test_nothing_folds_in_the_overlay_and_the_folds_survive_it():
     # `applyRows` ignores the stored folds rather than clearing them, so
     # minimizing comes back to the board you left.
     assert 'const foldable = !document.body.classList.contains("maxed");' in page
-    assert 'const shut = foldable && collapsed.includes("row:" + r);' in page
+    assert "const shut = foldable && !rowsel.includes(r);" in page
     # And it reruns on the toggle, or the overlay would open onto folded rows.
     assert "applyRows();" in page.split("function setMaxed(")[1].split("}")[0]
-    # The gesture stops too: a fold recorded here is one you would only see on
-    # minimizing, which is a board changing while you were not looking at it.
-    assert 'if (rowHead && !document.body.classList.contains("maxed")) {' in page
-    # No caret, no pointer, and the hint stops advertising it.
-    assert "body.maxed .rowhd::after { display: none; }" in page
-    assert "body.maxed .foldhint { display: none; }" in page
-    assert 'class="foldhint"' in page
+    # The filter says so rather than recording a fold you would only see on
+    # minimizing -- and it stays put while it says it, since a control that
+    # vanishes when you maximize is one you go looking for afterwards.
+    assert "b.disabled = !foldable;" in page
+    assert ".seg button:disabled { color: #ccc;" in page
 
 
 def test_an_open_row_takes_what_the_folded_ones_gave_up():
@@ -1045,16 +1045,17 @@ def test_an_open_row_takes_what_the_folded_ones_gave_up():
     # open row shares out what the folded ones freed, rather than the `1fr`
     # scramble that also resized the type on every card to put four away.
     page = render_page("123")
-    assert 'tmpl.push("var(--rowbar)", shut ? "auto" : "minmax(0, var(--rowfull))");' in page
+    assert 'tmpl.push(shut ? "auto" : "minmax(0, var(--rowfull))");' in page
     assert '"1fr"' not in page.split("function applyRows()")[1].split("\n}")[0]
     assert "function rowHeight(grid, rows, shutRows)" in page
     assert "${shutRows} * ${s}px) / ${open}" in page
     # With the tracks now free to sum to less than the pane, the default
     # `stretch` would blow three folded strips back up to fill the whole of it.
     assert "align-content: start;" in page
-    # The subtraction needs the bar's height as a number, not as `auto`.
-    assert "--rowbar: 16px;" in page
-    assert "height: var(--rowbar);" in page
+    # One track per row and a gap between them -- the bars the arithmetic used
+    # to subtract are gone, and so is the `--rowbar` that measured them.
+    assert "return `(${rows - 1} * 5px)`;" in page
+    assert "--rowbar" not in page
 
 
 def test_the_row_height_is_seeded_before_the_template_that_reads_it():
@@ -1108,9 +1109,10 @@ def test_a_folded_card_shows_nothing_but_its_strip_whichever_pane_it_was_on():
 
 def test_the_fold_is_remembered_alongside_every_other_fold():
     page = render_page("123")
-    # One list, one key: the bands, the panes and the roster rows are the same
-    # gesture. (The pressure cards were too, until the run pressure filter took
-    # folding over from them -- they answer to `draftsim.runsel` now.)
+    # One list, one key: the bands and the panes are the same gesture. (The
+    # pressure cards were too, until the run pressure filter took folding over
+    # from them, and the roster rows until theirs did -- those answer to
+    # `draftsim.runsel` and `draftsim.rowsel` now.)
     assert page.count('localStorage.setItem("draftsim.collapsed"') == 1
     # Re-applied after every swap, and once before the first fetch so a folded
     # row never flashes open. Not pinned to an exact run of lines: that only
@@ -1119,57 +1121,76 @@ def test_the_fold_is_remembered_alongside_every_other_fold():
     assert "\napplyCollapsed();\n" in page.rsplit("\ntick();", 1)[0]
 
 
-def test_the_board_is_divided_into_rows_by_a_bar_over_each(midway):
+def test_the_board_is_nothing_but_cards_in_one_flat_grid(midway):
+    # The three bars that used to divide it are gone: they were three rows of
+    # chrome advertising a double-click, and which rows are open is the filter's
+    # business now.
     html = render_rosters(midway)
-    rows = -(-len(midway.seats) // 4)
-    assert html.count('class="rowhd"') == rows
-    # Interleaved in the markup, so the board is divided on the first paint --
-    # before any client code has said a word about order.
-    assert html.index('data-row="0"') < html.index('data-seat="1"')
-    assert html.index('data-seat="4"') < html.index('data-row="1"')
-    assert html.index('data-row="1"') < html.index('data-seat="5"')
+    assert "rowhd" not in html
+    assert html.count("<section") == len(midway.seats)
     # One flat grid, not a grid per row: a card has to be draggable from any row
-    # to any other, and the bar spans the columns rather than boxing them in.
-    assert "grid-column: 1 / -1" in render_page("123")
+    # to any other.
+    assert html.count('<div class="grid">') == 1
+    assert "grid-column: 1 / -1" not in render_page("123")
 
 
-def test_the_bar_is_the_fold_control_and_the_card_header_still_drags():
-    # The fold sits on the bar, not on the cards under it: a card header is a
-    # grab handle, and a click that ends a one-pixel drag must not put four
-    # cards away.
+def test_the_rows_are_filtered_from_the_menu_bar(midway):
+    # The same control the pool, the log and run pressure carry, in the header
+    # over the thing it filters -- and it says it is there, which three bars
+    # whose only gesture was a double-click did not.
     page = render_page("123")
+    seg = page.split('class="seg rowseg"')[1].split("</span>")[0]
+    for label in ("ALL", "R1", "R2", "R3", "R4"):
+        assert f">{label}<" in seg
+    # In the shell above the grid, not in the fragment: #rosters is replaced
+    # twice a second and a button rebuilt that often holds no pressed state.
+    assert page.index('class="menubar"') < page.index('class="seg rowseg"')
+    assert page.index('class="seg rowseg"') < page.index('id="rosters"')
+    assert "rowseg" not in render_rosters(midway)
+    # Filter with the title it filters, actions at the other end.
+    assert page.index('class="seg rowseg"') < page.index('id="max"')
+    assert ".menubar .seg { margin-left: 0; }" in page
+    assert ".menubar #max { margin-left: auto; }" in page
+
+
+def test_a_league_is_not_offered_a_row_it_does_not_have():
+    # Four buttons ship because sixteen seats is four rows; twelve seats is
+    # three, and a greyed fourth would be an offer the board cannot make.
+    page = render_page("123")
+    assert "b.hidden = r !== null && r >= rows;" in page
+    # Shipped hidden, since the client cannot correct it until the first fetch
+    # lands and three rows is the ordinary board.
+    assert 'data-row="3" type="button" aria-pressed="true" hidden' in page
+
+
+def test_all_is_pressed_only_when_every_row_is():
+    # It reports the set rather than being a member of it -- the same as run
+    # pressure's ALL.
+    page = render_page("123")
+    assert "r === null ? openRows(rows).length === rows : rowsel.includes(r)" in page
+    # And it counts only the rows this league has: a fourth row left in storage
+    # by a 16-seat board must not make ALL look unpressed on a 12-seat one.
+    assert "return rowsel.filter((r) => r < rows);" in page
+
+
+def test_the_filter_folds_the_row_and_the_card_header_still_drags():
+    # The fold is a button in the menu bar, clear of the grid entirely: a card
+    # header is a grab handle, and a click that ends a one-pixel drag must not
+    # put four cards away.
+    page = render_page("123")
+    assert 'closest(".rowseg button")' in page
     dbl = page.split('addEventListener("dblclick"')[-1]
-    assert 'closest(".rowhd")' in dbl
     assert 'closest("section.card > header")' not in dbl
+    assert 'closest(".rowhd")' not in page
     assert ".card header { cursor: grab" in page
 
 
-def test_the_bar_carries_the_same_furniture_the_bands_do():
-    # Same gesture, same control: a tinted strip, a caret that turns, and a
-    # hover state -- a board that folds two ways by two rules is one you have to
-    # remember.
+def test_the_cards_take_the_order_they_are_dragged_into():
+    # No bars in the grid any more, so a card's place in the order is its place
+    # in the list -- there is nothing to leave a gap for.
     page = render_page("123")
-    assert ".rowhd:hover" in page
-    assert '.rowhd::after { content: "\\25BE"' in page
-    assert ".rowhd.shut::after { transform: rotate(-90deg); }" in page
-    assert "fold" in page.split('class="hint"')[1].split("</span>")[0]
-
-
-def test_the_bar_names_the_seats_under_it_from_the_client():
-    # Which seats are in a row is the client's answer to give -- a dragged card
-    # changes it, and the server never hears about the drag.
-    page = render_page("123")
-    assert 'head.querySelector(".note").textContent' in page
-    assert 'mine.map((c) => "S" + c.dataset.seat)' in page
-
-
-def test_the_bars_take_their_own_place_in_the_order():
-    # Every row costs five order slots -- the bar, then its four cards -- so a
-    # dragged card cannot land between a bar and the row it belongs to.
-    page = render_page("123")
-    assert "function slotOrder(pos)" in page
-    assert "el.style.order = slotOrder(order.indexOf(el.dataset.seat));" in page
-    assert "head.style.order = r * (GRID_COLS + 1);" in page
+    assert "el.style.order = order.indexOf(el.dataset.seat);" in page
+    assert "slotOrder" not in page
 
 
 def test_folding_a_row_does_not_resize_the_type_in_the_others():
@@ -1187,49 +1208,37 @@ def test_folding_a_row_does_not_resize_the_type_in_the_others():
     assert ".card.collapsed { background: #fafafa; }" in page
 
 
-def test_a_row_and_its_four_cards_share_a_band(midway):
-    # A bar over four cards that look like every other card on the board reads as
-    # a divider, not as a group. The band is on the cards from the first paint --
-    # before any client code has said a word about order.
+def test_the_four_cards_of_a_row_share_a_band(midway):
+    # With no bar over them, the tint is the only thing left saying these four
+    # are a row -- so it is on the cards from the first paint, before any client
+    # code has said a word about order.
     html = render_rosters(midway)
     cards = [c.split('"')[0] for c in html.split('data-row="')[1:]]
-    # Bar, then its four cards, per row.
-    assert cards[:6] == ["0", "0", "0", "0", "0", "1"]
+    assert cards[:5] == ["0", "0", "0", "0", "1"]
     page = render_page("123")
     # A colour per row, not two alternating -- three rows are few enough to each
     # be their own, and the hues stay clear of the four position colours.
     for row in ("0", "1", "2"):
-        assert f'.rowhd[data-row="{row}"], .card[data-row="{row}"] {{ --band:' in page
+        assert f'.card[data-row="{row}"] {{ --band:' in page
     assert "box-shadow: inset 0 3px 0 var(--bandline);" in page
-    assert "background: var(--band, #f4f4f4);" in page
-
-
-def test_the_bar_title_fits_inside_the_bar():
-    # The base stylesheet gives every h2 a top padding for the page's own
-    # headings; unreset, that made a 20px box inside a 16px strip and the title
-    # sat low against its note.
-    page = render_page("123")
-    bar = page.split(".rowhd h2 {")[1].split("}")[0]
-    assert "padding: 0" in bar
-    assert "line-height: 1" in bar
 
 
 def test_a_dragged_card_rebands_to_the_row_it_landed_in():
     # The server never hears about the drag, so which row a card is in -- and the
-    # tint that bands it to its bar -- is the client's answer to give.
+    # tint that groups it with the others -- is the client's answer to give.
     page = render_page("123")
     assert "c.dataset.row = r;" in page
-    assert "head.dataset.row = r;" in page
 
 
-def test_the_bar_names_a_run_of_seats_as_a_range():
-    # Unmoved, every bar spelled out four tokens saying one thing, next to a
-    # heading that already said which row this is. The list comes back once a
-    # drag has broken the run -- which is when it is worth reading.
+def test_the_filter_names_the_seats_in_each_row_from_the_client():
+    # Which seats are in a row is the client's answer to give -- a dragged card
+    # changes it, and the server never hears about the drag. It went to the
+    # buttons' tooltips when the bars that used to print it left.
     page = render_page("123")
     assert "function seatRange(names)" in page
     assert 'names[0] + "–" + names[names.length - 1]' in page
-    assert 'seatRange(mine.map((c) => "S" + c.dataset.seat))' in page
+    assert 'seats.push(seatRange(mine.map((c) => "S" + c.dataset.seat)));' in page
+    assert 'b.title = "Row " + (r + 1) + ": " + seats[r];' in page
 
 
 # -- compact names -----------------------------------------------------------

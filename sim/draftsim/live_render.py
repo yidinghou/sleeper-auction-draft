@@ -362,10 +362,9 @@ def _roster_card(state: LeagueState, seat: Seat, row: int) -> str:
     of the draft than the pane it replaced -- the same bargain the short/full
     name swap makes.
 
-    `data-row` is which row of the board the card starts in. It bands the card to
-    the bar above it from the first paint; the client rewrites it after a drag,
-    because after a drag the row a card is in is a question only the client can
-    answer.
+    `data-row` is which row of the board the card starts in. It tints the card to
+    its row from the first paint; the client rewrites it after a drag, because
+    after a drag the row a card is in is a question only the client can answer.
     """
     price_of = {pick.player.id: pick.price for pick in seat.picks}
     layout = display_slots(seat.roster, state.config)
@@ -403,24 +402,9 @@ def _roster_card(state: LeagueState, seat: Seat, row: int) -> str:
 
 # How many cards a row of the board holds. The grid's own
 # `grid-template-columns` says the same thing, and the client says it a third
-# time as `GRID_COLS` -- all three have to agree, because the row headers are cut
+# time as `GRID_COLS` -- all three have to agree, because the row tints are cut
 # from this number and the client folds by row.
 _GRID_COLS = 4
-
-
-def _row_header(row: int) -> str:
-    """The bar over one row of cards: a divider, and the fold control.
-
-    The same furniture the bands down the left column carry -- a tinted strip
-    with a caret that turns -- because it does the same job. Its note is filled
-    in by the client rather than here: it lists the seats in the row, and which
-    seats those are is a question only the client can answer once a card has been
-    dragged somewhere else.
-    """
-    return (
-        f'<div class="rowhd" data-row="{row}">'
-        f"<h2>Row {row + 1}</h2><span class=\"note\"></span></div>"
-    )
 
 
 # The chart's box, split between the plot and the room kept above it for the
@@ -602,20 +586,17 @@ def render_rosters(state: LeagueState) -> str:
     seat order. Which is the point: the one thing allowed to move a card is the
     hand that dragged it, and a rearranged board still knows what seat order was.
 
-    The row headers ship interleaved, one before each run of four, so the board
-    is already divided into rows on the first paint -- before any client code has
-    said a word about order. They are grid items like the cards, spanning the
-    full width, which is what keeps one flat grid: cards have to be draggable
-    from any row to any other, and a grid per row could not do that.
+    Each card ships stamped with the row it starts in, so the board is already
+    tinted into rows on the first paint -- before any client code has said a word
+    about order. One flat grid and nothing else in it: cards have to be draggable
+    from any row to any other, and a grid per row could not do that. Which rows
+    are open is the filter's business, up in the menu bar.
     """
-    slots = sorted(state.seats)
-    parts = []
-    for index, slot in enumerate(slots):
-        row = index // _GRID_COLS
-        if index % _GRID_COLS == 0:
-            parts.append(_row_header(row))
-        parts.append(_roster_card(state, state.seats[slot], row))
-    return f'<div class="grid">{"".join(parts)}</div>'
+    cards = [
+        _roster_card(state, state.seats[slot], index // _GRID_COLS)
+        for index, slot in enumerate(sorted(state.seats))
+    ]
+    return f'<div class="grid">{"".join(cards)}</div>'
 
 
 def _seat_tile(
