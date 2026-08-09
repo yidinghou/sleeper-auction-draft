@@ -8,7 +8,7 @@ identically.
 ## Setup
 
 ```bash
-cd draftsim && python3 -m venv .venv && . .venv/bin/activate && pip install -e ".[dev]"
+cd python/draftsim && python3 -m venv .venv && . .venv/bin/activate && pip install -e ".[dev]"
 cd ../liveboard && pip install -e ".[dev]"   # into the same venv
 ```
 

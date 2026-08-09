@@ -4,7 +4,7 @@
     python scripts/tiers.py --gap-factor 4   # fewer, coarser tiers
     python scripts/tiers.py --top QB=32,WR=60
 
-Reads whatever is currently in `../data/projections-2026.csv`, so the page is
+Reads whatever is currently in `../../data/projections-2026.csv`, so the page is
 only ever as fresh as the last `npm run export:projections`. The tiering rule
 and the page itself live in `draftsim.tiers`.
 """

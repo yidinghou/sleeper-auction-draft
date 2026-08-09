@@ -59,8 +59,8 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .ruff_cache/
-draftsim/.venv/
-draftsim/*.egg-info/
-draftsim/out/
-liveboard/.venv/
-liveboard/*.egg-info/
+python/draftsim/.venv/
+python/draftsim/*.egg-info/
+python/draftsim/out/
+python/liveboard/.venv/
+python/liveboard/*.egg-info/

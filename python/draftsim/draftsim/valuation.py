@@ -18,7 +18,7 @@ from typing import Dict, List, Optional
 
 from .config import DraftConfig
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_CSV = REPO_ROOT / "data" / "projections-2026.csv"
 
 

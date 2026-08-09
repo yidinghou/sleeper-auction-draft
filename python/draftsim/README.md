@@ -2,7 +2,7 @@
 
 Deterministic, headless auction-draft simulator for comparing strategy
 archetypes. Programmed agents only (no LLM). Reuses the exported projections in
-`../data/projections-2026.csv` and mirrors the auction rules from the TS
+`../../data/projections-2026.csv` and mirrors the auction rules from the TS
 `domain/` layer.
 
 Built in stages (each with its own tests + a review gate):
@@ -16,7 +16,7 @@ Built in stages (each with its own tests + a review gate):
 ## Setup
 
 ```bash
-cd draftsim
+cd python/draftsim
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -e ".[dev]"
@@ -47,10 +47,10 @@ would otherwise drag the bar past every real break in the list.
 ```bash
 python scripts/tiers.py --gap-factor 4      # fewer, coarser tiers
 python scripts/tiers.py --top QB=32,WR=60   # different depth per position
-python scripts/tiers.py --csv ../data/projections-2025.csv
+python scripts/tiers.py --csv ../../data/projections-2025.csv
 ```
 
-Rows come from `../data/projections-2026.csv`, so the board is only as fresh as
+Rows come from `../../data/projections-2026.csv`, so the board is only as fresh as
 the last `npm run export:projections`; the page header records which CSV and
 which settings produced it. The rule itself is `draftsim.tiers.tier_breaks`.
 
