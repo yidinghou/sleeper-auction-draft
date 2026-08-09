@@ -271,6 +271,17 @@ class DraftPoller:
         else:
             self.bids_note = ""
 
+    def flush_lot(self) -> None:
+        """Archive the lot still on the block, without closing it.
+
+        Archiving otherwise happens only when the *next* lot change is
+        observed, which means the last lot of a session -- the one you Ctrl-C
+        on, or the only one `--once` ever sees -- was dropped on the floor
+        having been watched all the way through. This is the exit path for it.
+        """
+        with self._lock:
+            self._archive_lot()
+
     def watch_bidding(self, nom) -> None:
         """Remember who has been in the bidding on the current lot, and at what.
 
@@ -596,7 +607,15 @@ class DraftPoller:
         return thread
 
     def stop(self) -> None:
+        """Stop polling, keeping the lot that was on the block when you did.
+
+        Ctrl-C during the last nomination of the night is the single most
+        likely moment to press it, and that lot's bidding had been watched all
+        the way through -- it was only ever waiting on the next lot change to
+        be written down.
+        """
         self._stop.set()
+        self.flush_lot()
 
     # -- reading ------------------------------------------------------------
 
@@ -818,6 +837,10 @@ def main() -> None:
     if args.once:
         poller.refresh()
         print(json.dumps(poller.snapshot(), indent=2))
+        # The only lot this run will ever see, and it never gets a lot change
+        # to be archived by. A `--once` fired during a nomination is a witness
+        # worth keeping.
+        poller.flush_lot()
         return
 
     poller.start()

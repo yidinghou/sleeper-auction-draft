@@ -612,6 +612,64 @@ def test_a_lot_nobody_ever_watched_still_shows_only_its_price(poller):
     html = poller.snapshot()["nomination_html"]
     assert html.count('<span class="rung') == 1
     assert 'class="rung sold"' in html
+
+
+def test_the_last_lot_of_a_session_is_not_dropped_on_exit(poller):
+    """Archiving otherwise waits for the *next* lot change, so the lot you
+    Ctrl-C on -- the likeliest one there is -- was watched all the way through
+    and then thrown away."""
+    _watch_bo_nix_close(poller)
+    assert "11563" not in poller._bid_history      # not archived yet
+    poller.stop()
+
+    later = DraftPoller("mock-id", None, interval=0.01)
+    assert later._bid_history["11563"] == {6: 28, 9: 25}
+    assert later._bid_log["11563"][-1] == (6, 28)
+
+
+def test_flushing_twice_is_harmless(poller):
+    _watch_bo_nix_close(poller)
+    poller.flush_lot()
+    poller.flush_lot()
+    assert DraftPoller("mock-id", None, interval=0.01)._bid_history["11563"] == {
+        6: 28,
+        9: 25,
+    }
+
+
+def test_a_poorer_witness_does_not_overwrite_a_fuller_one(poller):
+    """A run that joined the lot late saw a suffix of it. That is less than the
+    file already holds, and the file must keep the better record -- otherwise
+    restarting the board mid-lot truncates its own history."""
+    _watch_bo_nix_close(poller)
+    poller.stop()
+
+    later = DraftPoller("mock-id", None, interval=0.01)
+    later.refresh()                     # joins with only S6's $28 in front
+    assert later._bidders == {6: 28}
+    later.stop()
+    assert DraftPoller("mock-id", None, interval=0.01)._bid_history["11563"] == {
+        6: 28,
+        9: 25,
+    }
+def test_a_disk_that_will_not_take_the_write_costs_a_line_not_the_board(
+    poller, monkeypatch
+):
+    monkeypatch.setattr(
+        poller.bids,
+        "put",
+        lambda *a, **k: (_ for _ in ()).throw(OSError("read-only")),
+    )
+    _watch_bo_nix_close(poller)
+    poller.flush_lot()
+    # The session is untouched -- the archives are right, the trail still draws.
+    assert poller._bid_history["11563"] == {6: 28, 9: 25}
+    assert "bid history not saved" in poller.bids_note
+    _bid(poller, player="", nominating=None, offering=None)
+    poller.refresh()
+    assert "bid history not saved" in poller.snapshot()["warning"]
+
+
 def _cards(pressure_html):
     """The pressure band split into {pos: card html}.
 
