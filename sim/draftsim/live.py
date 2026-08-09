@@ -22,6 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from .bid_log import BidLog
 from .live_render import (
     render_ledger,
     render_log,
@@ -114,9 +115,7 @@ class DraftPoller:
         self._bidders: Dict[int, Optional[int]] = {}
         # Every lot's `_bidders`, kept past the lot's own close under its
         # player_id -- so a checkpoint on the pick it became can still show who
-        # was in on it, not just who won. Same memory, longer leash: still
-        # nothing but what this poller itself watched happen, and still gone
-        # the moment the process restarts.
+        # was in on it, not just who won. Same memory, longer leash.
         self._bid_history: Dict[str, Dict[int, Optional[int]]] = {}
         # `_bidders` answers "who's in, at what ceiling" -- this answers "in
         # what order did the raises happen". A list rather than a dict because
@@ -125,6 +124,23 @@ class DraftPoller:
         # archiving as `_bid_history`, under the same key.
         self._bid_events: List[Tuple[int, Optional[int]]] = []
         self._bid_log: Dict[str, List[Tuple[int, Optional[int]]]] = {}
+        # And the same two archives on disk, so the leash outlives the process.
+        # What the room bid is the one thing on this board that cannot be
+        # refetched -- Sleeper publishes the offer on the clock and no history,
+        # and the pick feed remembers only the price it closed at. Rewinding a
+        # finished draft in a fresh run used to show every lot as a single sold
+        # rung for exactly that reason. Seeded here and appended to as lots
+        # close; see `bid_log.BidLog`.
+        self.bids = BidLog(draft_id)
+        for player_id, (bidders, events) in self.bids.lots.items():
+            if bidders:
+                self._bid_history[player_id] = bidders
+            if events:
+                self._bid_log[player_id] = events
+        # A disk that stops taking writes mid-auction is worth a line on the
+        # board, not the poll thread. Set by `_archive_lot`, drawn with the
+        # other warnings.
+        self.bids_note = ""
         self.pool = load_players(csv_path)
         # The wider sheet identifies picks the draftable pool excludes; see
         # live_state.reconstruct.
@@ -229,6 +245,32 @@ class DraftPoller:
             with self._lock:
                 self._pulse = None
 
+    def _archive_lot(self) -> None:
+        """Put the lot on the block into the archives and onto disk.
+
+        Idempotent, and a no-op for a lot nothing was seen on: `BidLog.put`
+        ignores an empty witness rather than writing one over a fuller one an
+        earlier run left. So calling this twice, or on a board that has been
+        watching an empty room, costs nothing.
+
+        A failing disk is worth a line on the board and not the poll thread.
+        The archives are still correct in memory, the session still works, and
+        the only thing lost is the next restart's inheritance -- which is not
+        worth interrupting an auction over.
+        """
+        if self._lot is None:
+            return
+        if self._bidders:
+            self._bid_history[self._lot] = dict(self._bidders)
+        if self._bid_events:
+            self._bid_log[self._lot] = list(self._bid_events)
+        try:
+            self.bids.put(self._lot, self._bidders, self._bid_events)
+        except OSError as exc:
+            self.bids_note = f"bid history not saved: {exc}"
+        else:
+            self.bids_note = ""
+
     def watch_bidding(self, nom) -> None:
         """Remember who has been in the bidding on the current lot, and at what.
 
@@ -261,17 +303,14 @@ class DraftPoller:
         `_bid_log` the same way, alongside it: `_bidders` says who's in at what
         ceiling, `_bid_events` says in what order the raises happened -- the
         same seat can appear in it twice if it took the lead, lost it, and
-        took it back.
+        took it back. Both go to disk in the same breath; see `_archive_lot`.
         """
         if nom.player_id != self._lot:
             # A new player on the block, or the lot closing. Either way this
             # lot's bidders stop moving -- archive them under the player who
             # was on the block, then clear for whatever is in front of the
             # room now.
-            if self._lot is not None and self._bidders:
-                self._bid_history[self._lot] = dict(self._bidders)
-            if self._lot is not None and self._bid_events:
-                self._bid_log[self._lot] = list(self._bid_events)
+            self._archive_lot()
             self._lot = nom.player_id
             self._bidders = {}
             self._bid_events = []
@@ -399,6 +438,21 @@ class DraftPoller:
             with self._lock:
                 self._error = str(exc)
 
+    def _warning(self, state: LeagueState) -> str:
+        """The one line the board has room for, most actionable first.
+
+        A pick the CSV cannot name beats a seat with the wrong label, which
+        beats a bid history that will not be there next time -- and all three
+        are worth more than nothing, which is what the last of them used to
+        get.
+        """
+        if state.unknown_player_ids:
+            return (
+                f"{len(state.unknown_player_ids)} picks not in the projections "
+                "CSV — re-run npm run export:projections"
+            )
+        return self.names_note or self.bids_note
+
     def _build(self, draft, state: LeagueState, nom, nominee: Optional[Player]):
         config = state.config
         status = draft.get("status") or "unknown"
@@ -406,12 +460,7 @@ class DraftPoller:
             # The feed's own status still reads "complete"; say what is
             # actually on screen so a rehearsal is never mistaken for live.
             status = f"REPLAY at pick {len(state.picks)}"
-        stale = (
-            f"{len(state.unknown_player_ids)} picks not in the projections CSV — "
-            "re-run npm run export:projections"
-            if state.unknown_player_ids
-            else self.names_note
-        )
+        stale = self._warning(state)
         seat = self.my_seat(draft)
         # Which draft this actually is. A finished mock and tonight's league
         # draft render identically, so pointing the board at last week's id is

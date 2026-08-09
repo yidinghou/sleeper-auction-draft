@@ -91,7 +91,7 @@ the scan cannot answer:
   you type the names;
 * **a real draft** the scan got wrong, or that moved somebody after it ran.
 
-Hand-typed names are the only thing the board writes to disk, at
+Hand-typed names are one of two things the board writes to disk, at
 `data/seat-names-<draft_id>.json`. Per draft rather than per league: slots
 belong to the draft, and last year's sat the same twelve people in different
 chairs. Scanned names are never written there — a team renamed on Sleeper must
@@ -140,6 +140,14 @@ polls was never visible to it at all. That is why the poll drops to **1s while a
 player is on the block** (`live.LIVE_INTERVAL`) and goes back to `--interval`
 between lots: the picks are still there in an hour, a bid that was outbid is not.
 `--interval` faster than 1s is left alone.
+
+Which is why it is the second thing written to disk. Each lot's trail goes into
+`data/bid-log-<draft_id>.json` as the lot closes, and is read back on start —
+otherwise rewinding a finished draft in a fresh run showed every lot as the one
+rung the pick feed can vouch for, its price, and the whole record of how the
+room got there died with the process that watched it. A lot no run of the board
+was up for still shows only that single rung: the file holds what was witnessed
+and never guesses. Where two runs both saw a lot, the longer trail wins.
 
 **The live board is light; the post-mortem report is dark.** That is deliberate:
 the board sits open beside Sleeper's own dark app for three hours, and looking
@@ -232,7 +240,9 @@ Notes:
   the point of the chart is the nine you don't have to read.
 - **`--replay N` rewinds a finished mock** to N picks. A completed draft shows
   every seat broke and every need met, which is the one state the board is
-  useless in.
+  useless in. It replays *picks*, not bidding: the pick feed carries the price
+  and nothing else, so a lot's trail comes back only if some run of the board
+  watched it and left it in `data/bid-log-<draft_id>.json`.
 - Picks resolve against the *full* sheet while the pool stays filtered, so a $1
   dart at an unsigned free agent keeps its name and projection. Requires the
   `player_id` column — re-run `npm run export:projections` if the board warns

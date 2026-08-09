@@ -153,6 +153,12 @@ def test_replay_rewinds_a_finished_draft_to_mid_auction(poller):
     # A rehearsal must never read as the live draft.
     assert snap["subtitle"] == "REPLAY at pick 60"
     assert "60</b> of 192" in snap["spend_html"]
+    # A rehearsal rewinds past picks this run never watched, so their lots have
+    # nothing but the price the feed vouches for. Asserted rather than assumed:
+    # this test used to say nothing at all about the bidding, which is how the
+    # trail going missing on a replay stayed invisible.
+    poller.view_goto(60)
+    assert poller.snapshot()["nomination_html"].count('<span class="rung') == 1
 
 
 # -- checkpoint nav -----------------------------------------------------------
@@ -552,6 +558,60 @@ def test_a_lot_closing_empties_the_list(poller):
     assert poller._bid_history == {"KC": {12: 1}}
 
 
+# -- and what outlives the process --------------------------------------------
+
+
+def _watch_bo_nix_close(poller):
+    """Watch pick #30 (Bo Nix, 11563, S6, $28) get bid up and close.
+
+    Three raises and a close, which is the shape every test down here needs:
+    `_bid_history` ends up `{6: 28, 9: 25}` and the trail ends up four rungs
+    deep. `replay` walks 29 -> 30 so the pick lands as the lot closes, the way
+    it would live.
+    """
+    poller.replay = 29
+    poller.refresh()
+    _bid(poller, player="11563", nominating=6, offering=6, amount="20")
+    poller.refresh()                                    # S6 opens at $20
+    _bid(poller, player="11563", nominating=6, offering=9, amount="25")
+    poller.refresh()                                    # S9 raises to $25
+    _bid(poller, player="11563", nominating=6, offering=6, amount="28")
+    poller.refresh()                                    # S6 retakes at $28
+    # The pick lands. `last_picked` moves so the board rebuilds, but the
+    # nomination has not cleared on the payload yet -- which is the window a
+    # checkpoint tapped the instant a pick lands falls into.
+    poller.replay = 30
+    poller.feed["draft"] = dict(poller.feed["draft"], last_picked=1)
+    poller.refresh()
+
+
+def test_a_watched_lot_still_has_its_trail_in_the_next_process(poller):
+    """The reported bug. Rewinding after the draft showed one sold rung for
+    every lot, because the bidding lived only in the process that watched it and
+    Sleeper will not tell a second one. Now it is on disk."""
+    _watch_bo_nix_close(poller)
+    _bid(poller, player="", nominating=None, offering=None)
+    poller.refresh()                                    # the lot closes
+
+    later = DraftPoller("mock-id", None, interval=0.01)
+    assert later._bid_history["11563"] == {6: 28, 9: 25}
+    later.refresh()
+    later.view_goto(30)
+    html = later.snapshot()["nomination_html"]
+    assert "Bo Nix" in html
+    # The same four rungs the watching process drew, not the lone sold one.
+    assert html.count('<span class="rung') == 4
+    assert "$25" in html
+
+
+def test_a_lot_nobody_ever_watched_still_shows_only_its_price(poller):
+    """The other half of the same guarantee: the board must not invent a trail
+    for a lot no run of it saw. An honest single rung is the answer there."""
+    poller.refresh()
+    poller.view_goto(30)
+    html = poller.snapshot()["nomination_html"]
+    assert html.count('<span class="rung') == 1
+    assert 'class="rung sold"' in html
 def _cards(pressure_html):
     """The pressure band split into {pos: card html}.
 
