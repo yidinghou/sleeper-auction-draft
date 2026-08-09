@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live draft board</title>
+<style>/*__CSS__*/</style></head>
+<body>
+  <aside class="side">
+    <!-- Three bands. The chrome -- the headers you double-click to fold --
+         lives here in the shell rather than in the fragments, because the
+         fragments are replaced every two seconds and a control destroyed that
+         often can hold neither focus nor state. Only the insides are swapped. -->
+    <section class="band band-live" data-band="live">
+      <!-- Which seat is yours is passed once on the command line (`--user`),
+           not picked from a dropdown every session: it is a fact about you,
+           and a control that answers the same question every time is a control
+           that should not exist. The band spends the height on money instead. -->
+      <!-- The header names the draft it is reading. A finished mock and
+           tonight's league draft are the same picture, so an id typed from the
+           wrong tab is otherwise invisible. -->
+      <!-- What the room has spent rides in the header. It is one line about the
+           whole draft, which is what a header is for -- and in the body it was
+           taking thirty pixels off a chart that now has a fixed share of the
+           column to fit in. -->
+      <div class="bandhd"><h2>Live draft board</h2>
+        <span class="note" id="pulsewrap"><span class="dot" id="dot"></span>
+          <span id="pulse">polling</span> ·
+          <b id="draft">__DRAFT_ID__</b> ·
+          <span id="sub">connecting…</span></span>
+        <span class="seg navseg">
+          <button id="navprev" type="button"
+                  title="Previous pick">&#9664;</button>
+          <input id="navslider" type="range" min="0" max="0" value="0" step="1"
+                 title="Scrub to a pick">
+          <span id="navpos" class="navpos">0 / 0</span>
+          <button id="navnext" type="button"
+                  title="Next pick">&#9654;</button>
+          <button id="navlive" type="button"
+                  title="Jump to live" aria-pressed="true">LIVE</button>
+        </span>
+        <span id="spend" class="spend"></span>
+        <span id="warn" class="warn"></span></div>
+      <!-- Two panels across, not two rows down. Both of these are wider than
+           they need to be and the band was taller than it needed to be: the
+           chart is twelve columns and the block is a name and a price, and
+           each was given the whole ~930px. Side by side the band costs the
+           height of the taller one instead of the sum, and the run pressure
+           and pool/log bands below grow into what it gives back.
+
+           The panel titles live out here with the rest of the chrome -- the
+           two divs inside them are replaced every two seconds. -->
+      <div class="bandbody live2">
+        <section class="lpane bidpane">
+          <h3>On the block</h3>
+          <div id="block"></div>
+        </section>
+        <!-- No title of its own: the chart's legend line is already in that
+             position and in that type, and in a band pinned to a fifth of the
+             column a second line saying "Buying power" costs the plot under it
+             a fifth of its height. So the legend carries the name, as it did
+             before this band had two halves. -->
+        <section class="lpane moneypane">
+          <div id="ledger"></div>
+        </section>
+      </div>
+    </section>
+
+    <section class="band band-runs" data-band="runs">
+      <!-- The filter is the only thing that opens and closes these cards, which
+           is why it is a filter and not four fold gestures: which positions you
+           are working on is one decision, and it should be readable in one
+           place. Multi-select, because it usually is two or three of them --
+           the run you are in and the one you are about to be in. What you leave
+           out folds into the rail down the right of the band. -->
+      <div class="bandhd"><h2>Run pressure</h2>
+        <span class="note">RUNS / TIER per card</span>
+        <span class="seg rseg">
+          <button data-pos="" type="button">ALL</button>
+          <button data-pos="QB" type="button">QB</button>
+          <button data-pos="RB" type="button">RB</button>
+          <button data-pos="WR" type="button">WR</button>
+          <button data-pos="TE" type="button">TE</button></span></div>
+      <div class="bandbody"><div id="pressure"></div></div>
+    </section>
+
+    <section class="band band-panes" data-band="panes">
+      <div class="bandbody panes">
+        <!-- The filters live out here with the headers, and for the same
+             reason: they are chrome, and the insides are replaced every two
+             seconds. A button rebuilt that often can hold neither focus nor
+             pressed state, and the filter each pane is under is written on the
+             list wrapper -- which survives the swap, since only its innerHTML
+             is replaced. So nothing has to be re-applied per tick. -->
+        <div class="pane2 band" data-band="pool">
+          <div class="bandhd"><h2>Player pool</h2>
+            <span class="note">by $PROJ · team bye pts · wk1-3 vs pace</span>
+            <span class="seg fseg" data-for="pool">
+              <button data-pos="" type="button">ALL</button>
+              <button data-pos="QB" type="button">QB</button>
+              <button data-pos="RB" type="button">RB</button>
+              <button data-pos="WR" type="button">WR</button>
+              <button data-pos="TE" type="button">TE</button></span></div>
+          <div class="fnone" data-for="pool" hidden></div>
+          <div class="bandbody listwrap" id="pool"></div>
+        </div>
+        <div class="pane2 band" data-band="log">
+          <div class="bandhd"><h2>Draft log</h2>
+            <span class="note">newest first · team bye pts</span>
+            <span class="seg fseg" data-for="log">
+              <button data-pos="" type="button">ALL</button>
+              <button data-pos="QB" type="button">QB</button>
+              <button data-pos="RB" type="button">RB</button>
+              <button data-pos="WR" type="button">WR</button>
+              <button data-pos="TE" type="button">TE</button></span></div>
+          <div class="fnone" data-for="log" hidden></div>
+          <div class="bandbody listwrap" id="log"></div>
+        </div>
+      </div>
+    </section>
+  </aside>
+
+  <main class="board">
+    <button id="close" class="closebtn" type="button"
+            aria-label="Minimize">&times;</button>
+    <div class="menubar">
+      <h2>Rosters</h2>
+      <!-- Which rows of the board are open, as a filter rather than as three
+           fold gestures on three bars over the grid -- the same trade run
+           pressure's filter made, and for the same reasons: one decision read
+           in one place, and a control that says it is there. What you leave out
+           collapses to the strips the cards fold into.
+
+           Out here in the shell with the rest of the chrome, because #rosters
+           is replaced wholesale twice a second and a button rebuilt that often
+           can hold neither focus nor pressed state. Four buttons ship and the
+           client hides the ones a league has no row for -- twelve seats is
+           three rows, sixteen is four, and only the client knows which.
+
+           Shipped in the state the board is usually in, because the client
+           cannot correct it until the first fetch has told it how many rows
+           there are: everything open and pressed, and the fourth row hidden.
+           A 16-seat league grows an R4 a moment after loading; every other
+           league would otherwise have flashed one it does not have. -->
+      <span class="seg rowseg">
+        <button data-row="" type="button" aria-pressed="true">ALL</button>
+        <button data-row="0" type="button" aria-pressed="true">R1</button>
+        <button data-row="1" type="button" aria-pressed="true">R2</button>
+        <button data-row="2" type="button" aria-pressed="true">R3</button>
+        <button data-row="3" type="button" aria-pressed="true" hidden>R4</button></span>
+      <button id="max" type="button">Maximize</button>
+      <button id="reorder" type="button"
+              title="Put the cards back in seat order">Seat order</button>
+    </div>
+    <div id="rosters"></div>
+  </main>
+
+  <!-- Naming a seat. Out here in the shell rather than in #rosters, which is
+       replaced wholesale twice a second: a text box rebuilt that often could
+       hold neither focus nor a half-typed name.
+
+       The names themselves come from the league and are refreshed on the
+       server's own timer. This is for the two cases the scan cannot answer: a
+       mock, which publishes no league at all, and a real draft the scan got
+       wrong or that changed a seat mid-session. -->
+  <div id="seatmenu" hidden>
+    <div class="smhd">Seat <b id="smslot"></b></div>
+    <input id="smname" type="text" maxlength="24" autocomplete="off"
+           placeholder="name this seat" aria-label="Seat name">
+    <div class="smhint">Enter to save · empty clears it</div>
+    <button id="smscan" type="button">Rescan names from Sleeper</button>
+  </div>
+
+<script>/*__JS__*/</script>
+</body></html>

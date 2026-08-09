@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Run-pressure POC — position × team fill</title>
+<style>
+  /* Palette from draftsim/theme.py (the light live-board set), named the same
+     way, so porting this card into live_render.py is a substitution and not a
+     re-colour. POS_COLOR_LIGHT already matched the hexes this POC hardcoded. */
+  :root {
+    --text: #1a1a1a; --dim: #666; --faint: #aaa; --label: #555;
+    --rule: #eee; --border: #ddd; --sunk: #f4f4f4;
+    --money: #1a7f37; --bad: #c0392b;
+  }
+  body { font: 13px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+         margin: 1rem; color: var(--text); background: #fff; }
+  h1 { font-size: 1.05rem; margin: 0 0 0.3rem; }
+  .sub { color: var(--dim); font-size: 0.8rem; margin: 0 0 0.85rem; }
+
+  .poc { border: 1px solid var(--border); border-radius: 8px; background: #fff; }
+  .poc > .pochd { display: flex; align-items: baseline; gap: 8px; padding: 7px 11px;
+                  border-bottom: 1px solid var(--rule); }
+  .poc > .pochd h2 { font-size: 0.9rem; margin: 0; }
+  .poc > .pochd .note { font-size: 0.72rem; color: var(--faint); }
+  /* no scroller: four cards is the whole story, and a story you scroll to see
+     the end of is one you stop reading mid-auction. */
+  .halfview { padding: 10px; }
+  .grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; align-items: start; }
+
+  .chip { display: inline-flex; align-items: center; justify-content: center; min-width: 22px;
+          padding: 1px 6px; border-radius: 3px; color: #fff; font-size: 0.66rem; font-weight: 700; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* severity color ramp */
+  .sev-run   { --sev: #c0392b; --sevbg: #fdecec; --sevbd: #e8b4ab; }
+  .sev-tight { --sev: #b7791f; --sevbg: #fdf6e6; --sevbd: #f0d9a8; }
+  .sev-safe  { --sev: #1a7f37; --sevbg: #eefaf0; --sevbd: #bfe3c9; }
+
+  .pcard { border: 1px solid var(--sevbd, var(--border)); border-radius: 6px; padding: 8px; cursor: pointer;
+           display: flex; flex-direction: column; gap: 6px; }
+  .pcard:hover { box-shadow: 0 1px 5px rgba(0,0,0,0.08); }
+  .p-hd { display: flex; align-items: center; gap: 6px; font-size: 0.7rem; color: var(--dim); }
+  .p-hd b { color: var(--text); }
+  .p-verd { margin-left: auto; font-size: 0.62rem; font-weight: 700; padding: 1px 6px;
+            border-radius: 3px; background: var(--sevbg); color: var(--sev); }
+  .p-lbl { font-size: 0.54rem; text-transform: uppercase; letter-spacing: 0.03em; color: var(--faint); }
+
+  /* on-the-board supply list */
+  .board { display: flex; flex-direction: column; }
+  .b-pl { display: flex; justify-content: space-between; gap: 6px; font-size: 0.66rem;
+          color: var(--label); padding: 1px 2px; }
+  .b-pl:not(:last-child) { border-bottom: 1px solid var(--rule); }
+  .b-pl i { font-style: normal; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .b-more { font-size: 0.6rem; color: var(--money); font-weight: 700; padding: 2px; }
+
+  /* Team fill icons, one per seat, richest first.
+     The old version was a single bar fading in with a gradient stop, which made
+     "1 of 2" a length you had to judge against a 25px box. These are discrete
+     pips -- one per seat the team is trying to fill -- so the count is countable
+     rather than estimated, and 2-of-3 at WR can never be mistaken for 1-of-2.
+     Money is the sort key because a team that still needs the position but is
+     out of money is not the one about to take it off the board. */
+  .teams { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
+  .tm { border: 1px solid var(--rule); border-radius: 3px; padding: 3px 4px;
+        display: flex; flex-direction: column; gap: 3px; line-height: 1; }
+  .tm-top { display: flex; align-items: baseline; gap: 3px; }
+  .tm b { font-size: 0.62rem; font-weight: 700; color: var(--text); }
+  .tm i { font-style: normal; font-size: 0.6rem; color: var(--money); margin-left: auto;
+          font-variant-numeric: tabular-nums; font-weight: 700; }
+  .pips { display: flex; gap: 2px; }
+  .pip { flex: 1; height: 7px; border-radius: 1px; background: var(--sunk); }
+  /* a seat that has met the target is done buying: recede it so what's left
+     standing in the grid is exactly the live demand. */
+  .tm.done { opacity: 0.32; }
+  .tm.done i { color: var(--faint); }
+  .p-foot { font-size: 0.58rem; color: var(--faint); font-variant-numeric: tabular-nums; }
+
+  /* overlay */
+  .ov-back { position: fixed; inset: 0; background: rgba(20,22,26,0.45); display: none;
+             align-items: center; justify-content: center; z-index: 50; }
+  .ov-back.on { display: flex; }
+  .ov { background: #fff; border-radius: 10px; width: min(420px, 92vw); max-height: 82vh;
+        display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,0.25); }
+  .ov-hd { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid #eee; }
+  .ov-hd h3 { margin: 0; font-size: 0.95rem; }
+  .ov-hd .sub2 { font-size: 0.7rem; color: #999; }
+  .ov-x { margin-left: auto; border: 0; background: #f2f2f2; border-radius: 5px; width: 26px;
+          height: 26px; cursor: pointer; font-size: 0.9rem; color: #666; }
+  .ov-body { overflow: auto; padding: 8px 0; }
+  .ov-sec { padding: 6px 14px 2px; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.04em; color: #999; }
+  .ov-pl { display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 8px;
+           padding: 3px 14px; font-size: 0.78rem; }
+  .ov-pl .pt { color: #888; font-variant-numeric: tabular-nums; }
+  .ov-cliff { margin: 4px 14px; border-top: 2px dotted #e0a89f; color: #c0392b; font-size: 0.62rem;
+              font-weight: 700; text-align: center; padding-top: 3px; }
+</style></head>
+<body>
+<h1>Run-pressure — position × team fill</h1>
+<p class="sub">toy data · one card per position (QB → TE) · each team is a row of pips, one per seat it wants there, filling in the position color as they roster it · dimmed = done buying · sorted richest first · click for detail</p>
+
+<div class="poc">
+  <div class="pochd"><h2>Run pressure by position</h2>
+    <span class="note">supply on the board vs. the league's fill state — the teams still standing out are the live demand, richest first</span></div>
+  <div class="halfview" id="grid"></div>
+</div>
+
+<div class="ov-back" id="ovBack">
+  <div class="ov">
+    <div class="ov-hd"><span class="chip" id="ovChip"></span><h3 id="ovTitle"></h3>
+      <span class="sub2" id="ovSub"></span>
+      <button class="ov-x" onclick="closeOverlay()">×</button></div>
+    <div class="ov-body" id="ovBody"></div>
+  </div>
+</div>
+
+<script>
+  const COLORS = { QB: "#ff2a6d", RB: "#00ceb8", WR: "#58a7ff", TE: "#ffae58" };
+  const ORDER = ["QB", "RB", "WR", "TE"];          // QB leftmost (premium in superflex)
+  const TARGET = { QB: 2, RB: 2, WR: 3, TE: 1 };   // seats each team is trying to fill
+  const POS_TOTAL = { QB: 24, RB: 36, WR: 36, TE: 12 };  // bodies drafted league-wide when full
+
+  // ---- supply side: what's still on the board per position -------------
+  // seats = startable bodies before the next cliff; avail = those players.
+  const SUPPLY = {
+    QB: { seats: 3, cliffDrop: 18,
+      avail: [["Michael Penix", 198], ["Tua Tagovailoa", 195], ["Bryce Young", 190]],
+      next: [["Spencer Rattler", 172], ["Joe Flacco", 168], ["Mac Jones", 165], ["Anthony Richardson", 161]] },
+    RB: { seats: 7, cliffDrop: 5,
+      avail: [["Tyjae Spears", 140], ["Zach Charbonnet", 138], ["Isaac Guerendo", 135],
+              ["Tyler Allgeier", 133], ["Ty Chandler", 128], ["Roschon Johnson", 126], ["Braelon Allen", 124]],
+      next: [["Jaylen Wright", 119], ["Tank Bigsby", 116], ["Antonio Gibson", 112], ["Justice Hill", 108]] },
+    WR: { seats: 2, cliffDrop: 22,
+      avail: [["Rome Odunze", 168], ["Jayden Reed", 165]],
+      next: [["Josh Downs", 143], ["Khalil Shakir", 141], ["Wan'Dale Robinson", 138], ["Cooper Kupp", 136], ["Calvin Ridley", 134]] },
+    TE: { seats: 2, cliffDrop: 31,
+      avail: [["Tucker Kraft", 152], ["Dallas Goedert", 148]],
+      next: [["David Njoku", 117], ["Jonnu Smith", 110], ["Hunter Henry", 104], ["Cade Otton", 100]] },
+  };
+
+  // ---- demand side: each team's drafted count per position -------------
+  const TEAMS = [
+    { t: 1,  budget: 12, have: { QB: 1, RB: 2, WR: 2, TE: 0 } },
+    { t: 2,  budget: 8,  have: { QB: 2, RB: 1, WR: 3, TE: 1 } },
+    { t: 3,  budget: 27, have: { QB: 2, RB: 1, WR: 1, TE: 0 } },
+    { t: 4,  budget: 33, have: { QB: 0, RB: 2, WR: 2, TE: 1 } },
+    { t: 5,  budget: 19, have: { QB: 1, RB: 1, WR: 2, TE: 0 } },
+    { t: 6,  budget: 6,  have: { QB: 2, RB: 2, WR: 1, TE: 1 } },
+    { t: 7,  budget: 46, have: { QB: 1, RB: 1, WR: 1, TE: 0 } },
+    { t: 8,  budget: 4,  have: { QB: 2, RB: 2, WR: 3, TE: 0 } },
+    { t: 9,  budget: 14, have: { QB: 1, RB: 2, WR: 2, TE: 1 } },
+    { t: 10, budget: 22, have: { QB: 0, RB: 1, WR: 2, TE: 0 } },
+    { t: 11, budget: 3,  have: { QB: 2, RB: 2, WR: 2, TE: 1 } },
+    { t: 12, budget: 17, have: { QB: 1, RB: 3, WR: 1, TE: 0 } },
+  ];
+
+  // per-position rollup: demand (unmet seats), needing teams, run severity.
+  const D = {};
+  for (const pos of ORDER) {
+    const s = SUPPLY[pos];
+    const bodiesWanted = TEAMS.reduce((n, tm) => n + Math.max(0, TARGET[pos] - tm.have[pos]), 0);
+    const needTeams = TEAMS.filter((tm) => tm.have[pos] < TARGET[pos]).length;
+    const drafted = TEAMS.reduce((n, tm) => n + tm.have[pos], 0);
+    const ratio = bodiesWanted / s.seats;
+    D[pos] = { ...s, bodiesWanted, needTeams, drafted, ratio,
+      sev: ratio >= 2 ? "run" : ratio > 1 ? "tight" : "safe" };
+  }
+
+  const BOARD_CAP = 5;
+  const chip = (pos) => '<span class="chip" style="background:' + COLORS[pos] + '">' + pos + "</span>";
+  const abbr = (nm) => { const p = nm.split(" "); return p.length < 2 ? nm : p[0][0] + ". " + p.slice(1).join(" "); };
+  const el = (id) => document.getElementById(id);
+
+  // team icon: one pip per seat the team wants at this position, filled in the
+  // position colour as they roster it. Discrete, so you count rather than judge
+  // a length -- and a team that's finished dims out of the way.
+  const MONEY_DEAD = 5;  // below this a seat can't win a contested body
+
+  function teamIcon(tm, pos) {
+    const target = TARGET[pos], have = Math.min(tm.have[pos], target);
+    const tint = "color-mix(in srgb, " + COLORS[pos] + " 72%, #fff)";
+    let pips = "";
+    for (let i = 0; i < target; i++)
+      pips += '<span class="pip"' + (i < have ? ' style="background:' + tint + '"' : "") + "></span>";
+    const done = have >= target;
+    const note = done ? "full" : (target - have) + " to go, $" + tm.budget +
+      (tm.budget < MONEY_DEAD ? " — too thin to win one" : "");
+    return '<span class="tm' + (done ? " done" : "") + '" title="T' + tm.t + " — " +
+      tm.have[pos] + "/" + target + " " + pos + " · " + note + '">' +
+      '<span class="tm-top"><b>T' + tm.t + "</b><i>$" + tm.budget + "</i></span>" +
+      '<span class="pips">' + pips + "</span></span>";
+  }
+
+  // richest first: the grid should read top-left as "who takes the next one".
+  const BY_MONEY = [...TEAMS].sort((a, b) => b.budget - a.budget || a.t - b.t);
+
+  function render() {
+    let html = '<div class="grid4">';
+    for (const pos of ORDER) {
+      const d = D[pos];
+      let board = "";
+      for (const [nm, pt] of d.avail.slice(0, BOARD_CAP))
+        board += '<div class="b-pl">' + abbr(nm) + "<i>" + pt + "</i></div>";
+      if (d.avail.length > BOARD_CAP) board += '<div class="b-more">+' + (d.avail.length - BOARD_CAP) + " more →</div>";
+      const icons = BY_MONEY.map((tm) => teamIcon(tm, pos)).join("");
+      html += '<div class="pcard sev-' + d.sev + '" onclick="openOverlay(\'' + pos + '\')">' +
+        '<div class="p-hd">' + chip(pos) + " <b>" + d.drafted + "</b> / " + POS_TOTAL[pos] + " drafted" +
+          '<span class="p-verd">' + d.seats + " to next tier</span></div>" +
+        '<div class="p-lbl">' + d.needTeams + " teams still need " + pos + "</div>" +
+        '<div class="teams">' + icons + "</div>" +
+        '<div class="p-lbl">on the board</div><div class="board">' + board + "</div>" +
+        '<div class="p-foot">−' + d.cliffDrop + " cliff · pips = rostered / " + TARGET[pos] +
+          " · richest first</div></div>";
+    }
+    el("grid").innerHTML = html + "</div>";
+  }
+
+  // ---- overlay: available board + every team's fill --------------------
+  function openOverlay(pos) {
+    const d = D[pos];
+    el("ovChip").outerHTML = '<span class="chip" id="ovChip" style="background:' + COLORS[pos] + '">' + pos + "</span>";
+    el("ovTitle").textContent = pos + " — supply & demand";
+    el("ovSub").textContent = d.bodiesWanted + " wanted · " + d.seats + " seats · " + d.needTeams + " teams short";
+    let body = '<div class="ov-sec">' + d.seats + " available (before −" + d.cliffDrop + " cliff)</div>";
+    d.avail.forEach(([nm, pt], i) => {
+      body += '<div class="ov-pl"><span class="num" style="color:#bbb;font-size:0.66rem;text-align:right">' +
+        (i + 1) + '</span><span>' + nm + '</span><span class="pt">' + pt + "</span></div>";
+    });
+    body += '<div class="ov-cliff">▾ −' + d.cliffDrop + " pts to next tier</div>";
+    body += '<div class="ov-sec">next tier</div>';
+    d.next.forEach(([nm, pt], i) => {
+      body += '<div class="ov-pl"><span class="num" style="color:#bbb;font-size:0.66rem;text-align:right">' +
+        (d.avail.length + i + 1) + '</span><span>' + nm + '</span><span class="pt">' + pt + "</span></div>";
+    });
+    el("ovBody").innerHTML = body;
+    el("ovBack").classList.add("on");
+  }
+  function closeOverlay() { el("ovBack").classList.remove("on"); }
+  el("ovBack").addEventListener("click", (e) => { if (e.target.id === "ovBack") closeOverlay(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeOverlay(); });
+
+  render();
+</script>
+</body></html>

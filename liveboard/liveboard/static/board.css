@@ -1,0 +1,1319 @@
+
+  /* One knob for board type size: every font-size and every width that has to
+     hold digits is a multiple of it, so nudging density is one edit rather
+     than a dozen. Raising it eats vertical room -- re-check that a full
+     16-man roster still clears the fold. The left column overrides it on
+     `.side`, so this value is the roster board's alone. */
+  :root { --fs: 1.17; }
+
+  /* Grey is a floor, not a preference, and it is the same floor everywhere on
+     this page. At 9px on white, #999 is about 2.8:1 and #ccc about 1.6:1 --
+     printed rather than readable. So: nothing secondary goes lighter than
+     #949494, and anything carrying a fact -- a dollar figure, a count, a name
+     -- goes to #777 or darker. The rule used to hold for the pool and log rows
+     alone, which left band notes, hints and pressure labels at #bbb and #aaa
+     while the rows beside them were legible; those are raised now.
+     The hierarchy survives it: what says which line is secondary is the *gap*
+     between it and the figure next to it, and a gap is preserved by moving both
+     ends up together. Non-text greys are not covered -- rules, the budget
+     track, unlit pips and scrollbars are shapes, not something being read. */
+  html, body { height: 100%; }
+  /* 60 / 40, not half and half: the left column now carries four position cards
+     that each hold a tier list, and that needs the room more than a twelfth
+     roster column does. The rosters stay four across -- names ellipsize at this
+     width, which is the price paid for the tier being readable. */
+  body { margin: 0; padding: 0; overflow: hidden;
+    display: grid; grid-template-columns: 3fr 2fr; }
+
+  /* Left: what is happening right now -- the draft's state and whatever is on
+     the block. Right: the rosters. Splitting them this way gives the grid the
+     whole viewport height instead of sharing it with the chrome, which is what
+     lets a full 16-man roster fit. Space under the header is left free. */
+  /* Three bands down the left: what is happening now (1/5), run pressure (2/5),
+     then the pool and the log sharing the last 2/5. Flex rather than fixed grid
+     rows, because a collapsed band then hands its height to its siblings with
+     no arithmetic -- `flex: 0 0 auto` and the others simply grow. */
+  /* The left column runs a size of its own. Its rows carry more per line than
+     the roster cards do -- five columns inside a ~230px card -- and were squeezed
+     down to 7px labels to fit. The knob is scoped here so raising it cannot move
+     a roster card by a pixel. */
+  .side { --fs-base: 1.30; --fs: var(--fs-base);
+    display: flex; flex-direction: column; min-width: 0;
+    padding: 8px 10px; gap: 6px; border-right: 1px solid #eee; overflow: hidden; }
+  /* Each band is a box, not a run of text with a heading over it. Folding is a
+     double-click with no button to leave behind, so without a frame a shut band
+     would vanish into the gap between its neighbours -- the border and the
+     tinted header strip are what stay on screen to say it is still there. */
+  .band { display: flex; flex-direction: column; min-height: 0; min-width: 0;
+    position: relative; border: 1px solid #e0e0e0; border-radius: 8px;
+    background: #fff; overflow: hidden; }
+  /* Sized to its content, not to a share. Band 1 holds three fixed things -- the
+     league line, the seat picker, the block -- so a share only parked white space
+     under them, and worse: folding a band below handed this one a third of the
+     freed height, which pushed the header you had just double-clicked a hundred
+     pixels down the screen. Content-sized, it never moves and never takes. */
+  /* A fixed fifth of the column, not "whatever the content wants". It used to be
+     content-sized on the argument that the things in it were fixed, and they
+     were -- but three of them stacked, and the band grew to a third of the
+     screen answering a question you glance at. A share instead, and the one
+     thing in it that can scale (the chart) takes what is left after the labels.
+     Folding still wins: `.band.collapsed` is two classes to this one's one. */
+  .band-live { flex: 0 0 20%; min-height: 0; }
+  /* Band 1 runs across rather than down. Even split: the bid panel is the one
+     that changes every few seconds and the chart is the one with the most to
+     show, so neither gets to crowd the other out. */
+  .band-live > .bandbody.live2 { flex-direction: row; align-items: stretch;
+    gap: 8px; }
+  .lpane { display: flex; flex-direction: column; gap: 4px; min-width: 0;
+    min-height: 0; }
+  .bidpane { flex: 1 1 0; }
+  .moneypane { flex: 1 1 0; }
+  /* The chart is the one thing on this band that can be any height, so it is
+     the one that absorbs the difference: the labels, the tags and your standing
+     line take what they need and the plot gets the rest. Which is why the bar
+     heights arrive as percentages -- see `_LEDGER_H`. */
+  .led, .ch { flex: 1; min-height: 0; }
+  /* The same type the chart's own legend uses -- these are labels on two halves
+     of one band, not headings over two sections. */
+  .lpane h3 { margin: 0; font-size: calc(8px * var(--fs)); color: #767676;
+    font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+  /* The swap targets themselves. A column, so the fragment inside can claim the
+     pane's height rather than sizing to its own content and leaving the chart
+     to draw itself in whatever it happened to need. */
+  .lpane > div { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .band-runs { flex: 2 1 0; }
+  /* A wrapper, not a section: the pool and the log carry their own headers and
+     their own frames, and a box around the pair would only double every line. */
+  .band-panes { flex: 2 1 0; border: none; background: none; overflow: visible; }
+  /* Pool and log sit side by side, so collapsing one alone only frees width in
+     their shared row -- the row still claims its usual share of the column's
+     height. Only once both are shut does that row have nothing left to say,
+     and run pressure can have the height back. */
+  .side.panes-collapsed .band-runs { flex: 1 1 0; }
+  .side.panes-collapsed .band-panes { flex: 0 0 auto; }
+  .band > .bandhd { display: flex; align-items: baseline; gap: 6px; flex: none;
+    padding: 3px 7px; background: #f7f7f7; border-bottom: 1px solid #e8e8e8; }
+  .bandhd h2 { font-size: calc(10px * var(--fs)); margin: 0; color: #555;
+    text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
+  .bandhd .note { font-size: calc(9px * var(--fs)); color: #949494;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .band > .bandbody { flex: 1; min-height: 0; display: flex;
+    flex-direction: column; gap: 5px; padding: 5px 6px; }
+  /* Shut, a band is its title bar and nothing else -- so the strip stops being a
+     lid and becomes the whole box, and the fill says at a glance which of the
+     four you have put away. */
+  .band.collapsed { background: #fafafa; }
+  .band.collapsed > .bandhd { border-bottom: none; }
+
+  /* The header *is* the control -- double-click it to fold. No caret, because a
+     16px button is a small target to hunt for mid-auction and there are six of
+     them. The cost is that a gesture leaves nothing on screen saying it exists,
+     so the header lights up under the cursor and says what it does: the hover
+     state is the entire affordance, and without it this would be a secret. */
+  .band > .bandhd { cursor: pointer; user-select: none; border-radius: 3px; }
+  .band > .bandhd:hover { background: #ededed; }
+  .band > .bandhd:hover h2 { color: #1a1a1a; }
+  .band > .bandhd::after { content: "\25BE"; margin-left: auto; flex: none;
+    font-size: calc(8px * var(--fs)); color: #949494; line-height: 1.6; }
+  .band > .bandhd:hover::after { color: #888; }
+  .collapsed > .bandbody { display: none; }
+  .band.collapsed { flex: 0 0 auto; }
+  .collapsed > .bandhd::after { transform: rotate(-90deg); }
+
+  /* Band 1 is the one place on the left that was never too small, so its
+     multipliers come down as the column's knob goes up: the room the bigger type
+     needs is taken from the band that did not need the size, not from the pool. */
+  .side h1 { font-size: calc(12px * var(--fs)); margin: 0; }
+
+  /* A column, so the menu bar takes its own height off the top and the grid
+     gets exactly what's left -- the grid sizes to that, and a bar measured in
+     `height: 100%` terms would have pushed the bottom row off screen.
+
+     Framed the same way every band on the left is: a bordered, rounded box
+     with a tinted header strip, so "Rosters" reads as one more band rather
+     than a panel with different rules. */
+  .board { min-width: 0; overflow: hidden; display: flex; flex-direction: column;
+    border: 1px solid #e0e0e0; border-radius: 8px; background: #fff; }
+
+  /* The board's own controls, over the thing they control rather than across
+     the aisle in the state column. Same strip as `.bandhd`: tinted background,
+     bottom rule, flush with the box the border-radius above clips it into. */
+  .menubar { display: flex; align-items: center; gap: 6px; flex: none;
+    min-width: 0; padding: 3px 7px; background: #f7f7f7;
+    border-bottom: 1px solid #e8e8e8; }
+  .menubar h2 { font-size: calc(10px * var(--fs)); margin: 0; color: #555;
+    text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700;
+    white-space: nowrap; }
+  /* The row filter sits with the title it filters, so `.seg`'s own
+     `margin-left: auto` is undone here -- it is written for a band header, where
+     the segment is the only thing after the title. This bar has two actions at
+     its other end, and a filter flung against them would read as a third one.
+     So: what the board is showing on the left, what you can do to it on the
+     right. */
+  .menubar .seg { margin-left: 0; }
+  .menubar #max { margin-left: auto; }
+
+  button { background: #f6f6f6; color: #1a1a1a; border: 1px solid #ddd;
+    border-radius: 6px; padding: 2px 8px; font: inherit; cursor: pointer; }
+  button:hover { border-color: #1a1a1a; }
+
+  /* Naming a seat. Positioned at the cursor by the client, above everything --
+     including the maximized board, which is `z-index: 10` and fixed, so this
+     has to clear it or right-clicking a card maximized would open a menu behind
+     the card. */
+  #seatmenu { position: fixed; z-index: 20; background: #fff;
+    border: 1px solid #ccc; border-radius: 6px; padding: 6px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.16); display: flex;
+    flex-direction: column; gap: 4px; width: 190px; }
+  #seatmenu[hidden] { display: none; }
+  .smhd { font-size: calc(9px * var(--fs)); color: #767676; }
+  .smhd b { color: #1a1a1a; }
+  #smname { font: inherit; font-size: calc(11px * var(--fs)); padding: 3px 5px;
+    border: 1px solid #ccc; border-radius: 4px; width: 100%; box-sizing: border-box; }
+  #smname:focus { outline: none; border-color: #1a1a1a; }
+  .smhint { font-size: calc(8px * var(--fs)); color: #949494; }
+  #smscan { font-size: calc(9px * var(--fs)); padding: 2px 4px; }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: #1a7f37;
+    display: inline-block; }
+  .dot.stale { background: #c0392b; }
+
+  /* What the room has spent, in the band's own header: one line about the whole
+     draft, which is what a header is for. It sat above the chart until the band
+     became a fixed share of the column, where it was thirty pixels the chart
+     needed more. The rail comes with it -- it is the same fact drawn, and five
+     pixels of it fit on a header row.
+
+     Pushed right, so it lands away from the connection state on the left and
+     the two never read as one sentence. */
+  .led { display: flex; flex-direction: column; gap: 4px; }
+  .spend { margin-left: auto; display: flex; align-items: baseline; gap: 5px;
+    flex: none; }
+  .ledbig { font-size: calc(12px * var(--fs)); font-weight: 700; color: #1a7f37;
+    line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .ledof { font-size: calc(9px * var(--fs)); color: #767676;
+    font-variant-numeric: tabular-nums; }
+  .ledpct { font-size: calc(9px * var(--fs));
+    color: #767676; font-variant-numeric: tabular-nums; }
+  .ledpct b { color: #1a1a1a; font-weight: 700; }
+  .rail { height: 5px; width: calc(70px * var(--fs)); border-radius: 3px;
+    background: #eee; overflow: hidden; align-self: center; flex: none; }
+  .rail i { display: block; height: 100%; background: #1a7f37; }
+
+  /* Twelve columns of max bid, ranked. `budget_left` would have been the
+     friendlier number and the wrong one: a seat holding eight open slots owes a
+     dollar of its balance to each, and the auction is decided on what can go on
+     one player. Ranked because the question is who can outbid you, and that is
+     an order -- the leftmost column is the answer and the fall to the broke
+     tail is the shape of the room. */
+  .ch { display: flex; flex-direction: column; gap: 3px; }
+  .chhd { display: flex; align-items: baseline; gap: 8px;
+    font-size: calc(8px * var(--fs)); color: #767676; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.04em; }
+  /* Your own standing, under the chart rather than beside the legend: in three
+     fifths of the band there is no row wide enough for both, and of the two
+     this is the sentence that gets read. */
+  .ch > .me { font-weight: 400; text-transform: none; letter-spacing: 0;
+    font-size: calc(9.5px * var(--fs)); color: #767676; }
+  .ch > .me b { color: #1a1a1a; }
+  /* What the league calls your seat, next to what your account is called. Held
+     back because it is the check, not the fact: you read the username to know
+     the seat is yours and this to know the scan agreed. */
+  .ch > .me .asnm { color: #767676; }
+  /* No seat to mark. Amber rather than red: nothing is broken, the draft simply
+     has not published an order to find you in -- which is every mock, and so
+     every rehearsal. */
+  .ch > .me.unseated { color: #b26a00; }
+
+  /* Heights are written inline by the server as percentages -- it knows the
+     budget, which is what a bar is a share of, and it no longer needs to know
+     the box, which is whatever this flex line is given. The dashed line is your
+     own ceiling, so every bar above it is a seat that can take a player off you
+     -- and it is left unlabelled because a tick sitting on the plot collides
+     with whichever column happens to be under it. */
+  .plot { position: relative; flex: 1; min-height: 24px; display: flex;
+    align-items: flex-end; gap: 4px; border-bottom: 1px solid #ddd; }
+  .gl { position: absolute; left: 0; right: 0; border-top: 1px dashed #e4e4e4; }
+  .col { flex: 1; min-width: 0; display: flex; flex-direction: column;
+    justify-content: flex-end; align-items: center; height: 100%; }
+  .col .amt { font-size: calc(9px * var(--fs)); font-weight: 700; color: #1a1a1a;
+    line-height: 1.1; margin-bottom: 2px; font-variant-numeric: tabular-nums;
+    white-space: nowrap; }
+  /* The floor a seat that is out of the market still gets: at $3 the honest
+     height rounds to nothing, and nothing is not what $3 means. Here rather
+     than in the figure the server writes, because it is two pixels and pixels
+     are the one unit that side no longer speaks. */
+  .col .bar { width: 100%; min-height: 2px; background: #1a7f37;
+    border-radius: 2px 2px 0 0; }
+  .col.broke .bar { background: #c0392b; }
+  /* Your own column is tinted for its full height, not just coloured at the
+     bar. Late in a draft your max bid is a few dollars and the bar is the 2px
+     minimum -- a recoloured sliver is not findable, and the one column you look
+     for first cannot be the one that disappears. The tint is a locator; the bar
+     itself is still drawn like everyone else's. */
+  .col.me { background: #f2f2f2; border-radius: 2px 2px 0 0; }
+  .col.me .bar { background: #1a1a1a; }
+  .chft { display: flex; gap: 4px; }
+  /* Twelve tags under twelve columns, so each is a twelfth of the band whatever
+     is in it: the tag has to stay under its own bar, which means it clips rather
+     than widening the column it labels. The full name is in the bar's tooltip. */
+  .chft span { flex: 1; min-width: 0; text-align: center;
+    font-size: calc(8.5px * var(--fs)); color: #949494;
+    font-variant-numeric: tabular-nums; overflow: hidden; white-space: nowrap;
+    text-overflow: ellipsis; }
+  .chft span.me { color: #1a1a1a; font-weight: 700; }
+  .chft span.broke { color: #c0392b; }
+  /* Who is actually bidding on the player next door. Purple, and the same
+     purple on the pressure tiles and on the bid panel's chips: one hue meaning
+     one thing in three places is what lets the pair of panels be read in a
+     glance rather than cross-referenced. Purple rather than amber because
+     amber is a hair from TE's own tint (`#ffae58`) -- this sits in the one
+     stretch of the wheel none of QB/RB/WR/TE or the money green occupy.
+
+     The tint sits behind the column and the bar keeps its own colour -- green
+     is what a seat can spend and that must not change meaning because the seat
+     is spending it. Declared after `.col.me` so a bidding seat of your own
+     shows the bid: which of the two you need is never in question mid-auction.
+     Stronger for whoever holds the offer right now. */
+  .col.bid-in { background: #f3e8fb; border-radius: 2px 2px 0 0; }
+  .col.bid-high { background: #e6cdf7; border-radius: 2px 2px 0 0; }
+  .chft span.bid-in, .chft span.bid-high { color: #9333ea; font-weight: 700; }
+
+  /* What is on the block. The one panel on the page that is not white, because
+     it is the thing you look up at between bids.
+
+     A column now rather than a strip: beside the chart it has two fifths of the
+     width and the chart's full height, so the three questions asked mid-auction
+     -- what is it worth, what is it at, who is still in -- each get a line
+     instead of sharing one. It fills its half, so the two panels square off
+     against each other rather than one floating at the top of a tall box. */
+  .block { background: #f6f6f6; border: 1px solid #ddd; border-radius: 8px;
+    padding: 4px 9px; display: flex; flex-direction: column; gap: 4px;
+    justify-content: center; flex: 1; min-height: 0; overflow: hidden;
+    box-sizing: border-box; }
+  .block.idle { color: #888; font-size: calc(11px * var(--fs));
+    align-items: center; justify-content: center; text-align: center; }
+
+  /* Two halves, split by what the fact is for rather than by how much room it
+     needs. This was one wrapping line of `·`-separated spans, and the run of
+     them was the whole problem: nothing held a column, so the gaps moved with
+     every player, and the pill brought its own leading and sat off the baseline
+     of the text beside it. Neither can happen to a two-box row. */
+  .onmain { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .onid { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column;
+    gap: 1px; }
+  /* The pill beside the name, not above the team: it says which of the four
+     boards this lot belongs to, which is part of who he is. */
+  .onhead { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  /* Bigger than it was as a strip, because the panel it now sits in is as tall
+     as the chart beside it and this is what the height is for: the player on
+     the block is the thing you look up at, and it should be readable from
+     further away than anything else on the page. */
+  .who { font-size: calc(15px * var(--fs)); font-weight: 700;
+    line-height: 1.1; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; min-width: 0; }
+  /* The pill was set for a strip that had a whole row to itself; next to the
+     name it is the tallest thing in the panel and the panel is a fifth of a
+     fifth of the screen. Same colour, same job, one line's worth of it. */
+  .onhead .badge { font-size: calc(8px * var(--fs)); padding: 1px 5px;
+    line-height: 1.5; flex: none; }
+  /* The three things about the lot that never move, on one quiet line. #777 and
+     not `.muted`: these carry facts, so the page's own contrast floor applies. */
+  .onsub { display: flex; align-items: center; gap: 6px; min-width: 0;
+    font-size: calc(9.5px * var(--fs)); color: #777; white-space: nowrap;
+    line-height: 1.25; }
+  /* A drawn dot rather than a `·` in the text. The character sat on the text
+     baseline and inherited its leading, so it moved whenever its neighbours
+     did; a 3px circle centred by the flex row cannot. */
+  .onsep { width: 3px; height: 3px; border-radius: 50%; background: #c4c4c4;
+    flex: none; }
+  .onsub .nm { overflow: hidden; text-overflow: ellipsis; }
+
+  /* The division round, in its own side column rather than under the name:
+     WK1-3 are three figures that move together and are read as a shape, and
+     dropped into the `·`-separated line they would read as three more
+     unrelated facts about the lot. Each carries its own label because this
+     panel has one player in it and no header row to name columns from, unlike
+     the pool. A border-left echoes `.onmoney`'s, so identity / weeks / money
+     read as three columns rather than a row that happens to have a gap in it.
+
+     Same green/red off season pace as `.prow .pwk`, and the same hues -- a week
+     that is called out in the pool has to still be called out once the player
+     hits the block, or the colour means one thing in one pane and another in
+     the next. */
+  .onwk { flex: none; display: flex; flex-direction: column;
+    align-items: flex-end; gap: 2px; border-left: 1px solid #dcdcdc;
+    padding-left: 10px; }
+  .onwkc { display: flex; align-items: baseline; gap: 4px; }
+  .onwkl { font-style: normal; font-size: calc(7.5px * var(--fs));
+    color: #949494; font-weight: 700; letter-spacing: 0.05em; }
+  .onwkv { font-style: normal; font-size: calc(10px * var(--fs));
+    font-variant-numeric: tabular-nums; color: #6b6b6b; font-weight: 700; }
+  .onwkv.g { color: #1a7f37; }
+  .onwkv.r { color: #c0392b; }
+
+  /* The two figures you act on, and nothing else. Stacked and right-aligned in
+     a fixed column so they line up digit for digit -- the gap between them is
+     itself the read: how far under the crowd's price the bidding still is. */
+  .onmoney { flex: none; display: flex; flex-direction: column;
+    align-items: flex-end; gap: 1px; border-left: 1px solid #dcdcdc;
+    padding-left: 10px; }
+  .onrow { display: flex; align-items: baseline; gap: 7px; }
+  .figl { font-size: calc(7.5px * var(--fs)); color: #949494; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.05em; }
+  /* Fixed, not content-sized: a column that resizes around $9 and $52 is a
+     column that fails at exactly the moment the bidding gets interesting. */
+  .figv { width: calc(45px * var(--fs)); text-align: right;
+    font-variant-numeric: tabular-nums; }
+  /* The price, in the biggest type in the panel: it is the one number on this
+     page that decides whether you say anything. */
+  .bidamt { color: #1a7f37; font-weight: 700; font-size: calc(16px * var(--fs));
+    line-height: 1.05; font-variant-numeric: tabular-nums; }
+  /* A bid of nothing is not a small green amount of money -- at this size the
+     dash in money green reads as a filled bar rather than as an absence. */
+  .bidamt.none { color: #949494; font-weight: 600; }
+  /* Deliberately not money green. The live bid owns that colour here, and two
+     green figures one above the other are read as the same kind of number when
+     the whole point of the pair is that one is real and one is an opinion. */
+  .onproj { font-size: calc(11px * var(--fs)); font-weight: 700; color: #777;
+    line-height: 1.2; }
+
+  /* Every raise on this lot, in the order it happened, oldest on the left.
+     "Held the high bid at some point", precisely -- Sleeper publishes the offer
+     on the clock and no history, so this is the board's own memory and never a
+     count of bids it did not see. Unlabelled: the strip is the one part of the
+     panel that has to hold a long lot, and a word across the front of it cost a
+     card and a half of the axis that was short. The qualification lives in the
+     rungs' tooltips instead.
+
+     This was two rows -- a chip per seat, and an arrow-joined trail under it --
+     and both were runs of text on the axis the panel has least of. Both gave up
+     at the moment the lot got interesting: the chips clipped the late arrivals,
+     the trail ellipsised the *recent* raises off its right end. One strip that
+     scrolls sideways has neither problem, and it buys back the second row's
+     height for cards tall enough to read down. The only scroller on this page
+     that runs horizontally, which is the point: everything else is a list, and
+     this is a sequence. */
+  .rungs { display: flex; align-items: stretch; gap: 4px; flex: none;
+    min-width: 0; overflow-x: auto; overflow-y: hidden;
+    border-top: 1px solid #dcdcdc; padding-top: 4px;
+    scrollbar-width: thin; scrollbar-color: #ccc transparent; }
+  .blbl { font-size: calc(8px * var(--fs)); color: #949494; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.04em; margin-right: 2px;
+    flex: none; align-self: center; }
+  /* A card carries a seat over the figure it took the lot to. Read down rather
+     than across, because the strip is read as a sequence and a card taller than
+     it is wide is a beat in one: twelve of these look like a ladder where
+     twelve chips in a row looked like the same word repeated. The tag may
+     ellipsize, the number never may -- a card reading "$4" when the seat raised
+     to $41 is worse than no card at all. Hence the cap on the tag alone. */
+  .rung { flex: none; display: flex; flex-direction: column; align-items: center;
+    gap: 1px; padding: 2px 5px; border-radius: 4px; border: 1px solid #e6e6e6;
+    background: #fff; min-width: calc(30px * var(--fs)); line-height: 1.15; }
+  .rung .rn { font-size: calc(8px * var(--fs)); font-weight: 700; color: #777;
+    max-width: calc(40px * var(--fs)); overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .rung .ra { font-size: calc(10px * var(--fs)); font-weight: 700;
+    color: #9333ea; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  /* The tip of the strip is filled rather than outlined: of the cards, one is a
+     fact about this second and the rest are about the last thirty. */
+  .rung.now { background: #9333ea; border-color: #9333ea; }
+  .rung.now .rn { color: #e9d5ff; }
+  .rung.now .ra { color: #fff; }
+  /* A settled lot ends in money green -- the same green the price above it
+     takes -- so a checkpoint reads as finished from across the room rather than
+     as a live auction whose last raise happens to be the winning one. */
+  .rung.sold { background: #eaf6ec; border-color: #1a7f37; }
+  .rung.sold .rn { color: #1a7f37; }
+  .rung.sold .ra { color: #1a7f37; }
+
+  /* Four across, three down: twelve seats, one screen, fixed positions so a
+     card stays where you last saw it between refreshes. Wider than it is tall,
+     which is the shape the card wants now that the bench moved into its own
+     pane -- a row per starter needs height, and three rows of four give each
+     card a third more of it than four rows of three did. */
+  /* An open row is exactly `--rowfull` tall, and the client works that height
+     out from how many rows are folded (see `rowHeight`): folding is for making
+     the rows you kept bigger, so they share out what the folded ones gave up --
+     but the growing stops at the two-open height, and past that the freed space
+     is simply left empty. That cap is what makes the fold feel like the pressure
+     band's: the board it leaves behind is the board you were already reading,
+     one row taller, rather than a differently-sized object every time. It used
+     to hand a whole third to whoever was left and step the type up to match,
+     which resized every card on the board to put four of them away.
+
+     `--rowfull` is written by the client, which is the only side that knows how
+     many rows there are and how tall a strip came out.
+     `align-content: start` is the other half: with the tracks now free to sum to
+     less than the pane, the default `stretch` would blow a board of folded
+     strips back up to fill it. Rows are always written as an explicit
+     `grid-template-rows` by the client; `grid-auto-rows` is the no-JS paint. */
+  #rosters { flex: 1; min-height: 0; padding: 6px 8px; }
+  .grid { display: grid; gap: 5px; height: 100%; align-content: start;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-auto-rows: minmax(0, 1fr); }
+  .card { background: #fff; border: 1px solid #ddd; border-radius: 6px;
+    padding: 4px 7px 6px; min-width: 0; overflow: hidden;
+    display: flex; flex-direction: column; }
+  /* Banded to the bar above it: the row's tint as a cap along the top edge and
+     as the card's border. Ahead of the state rules below on purpose -- being
+     dragged, being your seat, or being folded all have to beat the band, and at
+     equal specificity that is decided by which rule comes last. */
+  .card[data-row] { border-color: var(--bandline);
+    box-shadow: inset 0 3px 0 var(--bandline); }
+  /* Drag to reorder. The card being carried fades so the gap it will leave is
+     visible, and the card under the cursor shows a leading edge on the side the
+     drop will insert at -- "this is where it lands", not merely "this is hovered". */
+  .card.dragging { opacity: 0.4; }
+  .card.dropzone { box-shadow: inset 3px 0 0 #1a1a1a; border-color: #1a1a1a; }
+  .card header { cursor: grab; flex: none; margin-bottom: 3px;
+    border-bottom: 1px solid #eee; padding-bottom: 3px; }
+  .card.dragging header { cursor: grabbing; }
+  .card.me { border-color: #1a1a1a; box-shadow: 0 0 0 1px #1a1a1a; }
+  .card.me .team::after { content: " (you)"; color: #666; font-weight: 400;
+    font-size: calc(9px * var(--fs)); }
+  /* Whichever seat is on the clock -- a gold star rather than another ring,
+     so it reads as its own kind of mark instead of competing with the black
+     `.me` outline or the purple bidding colours. */
+  .card.onclock .team::before { content: "★ "; color: #d4a017; }
+  .card header .top { display: flex; align-items: baseline; gap: 5px; }
+  .team { font-weight: 700; font-size: calc(11px * var(--fs)); color: #444; }
+  /* A named seat leads with the manager and keeps the slot beside it, small and
+     grey: the number is what this card and Sleeper's own board have in common,
+     and the board can be dragged out of seat order. A name is typed or comes
+     from a league, so it can be long -- it gets the room the segment does not
+     need, and clips rather than pushing LINEUP/BN off the card. */
+  .card header .top.named { gap: 4px; }
+  .card header .top.named .team, .teamf { min-width: 0; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; color: #1a1a1a; }
+  /* Smaller than the "S5" it replaces, because it is longer than "S5" and the
+     row it shares with the segment is 30-odd pixels wide. A name at 11px reads
+     four characters there; at 9px it reads seven, which is a first name. */
+  .card header .top.named .team { font-size: calc(9px * var(--fs)); }
+  /* Compact shows the name cut to its first word, maximized the whole of it.
+     Both are in the markup so the swap is free -- the same bargain the player
+     rows make. The segment beside it takes two thirds of this row on the
+     compact board, and that is the room there is. */
+  .teamf { display: none; font-weight: 700;
+    font-size: calc(11px * var(--fs)); }
+  .slot { flex: none; font-size: calc(8px * var(--fs)); color: #999;
+    font-weight: 700; }
+  /* Your own card, once it has a name, says so with the slot badge rather than
+     with " (you)". The words fit beside "S5" and do not fit beside a name --
+     they pushed the name itself into an ellipsis, which is the one thing on the
+     card that must not be guessed at. The heavy border says the same thing and
+     was always the louder half of the mark. */
+  .card.me .top.named .team::after { content: none; }
+  .card.me .slot { color: #1a1a1a; }
+
+  /* The header is money and nothing else. Balance in the biggest type on the
+     card, the reach beside it, and a bar of both -- everything else a seat
+     could say moved down into the fold strip, where it can be labeled. */
+  .big { font-size: calc(13px * var(--fs)); font-weight: 700; color: #1a7f37;
+    line-height: 1.15; font-variant-numeric: tabular-nums; }
+  .max { margin-left: auto; font-size: calc(8.5px * var(--fs)); color: #888;
+    white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .max b { color: #1a1a1a; font-weight: 700; font-size: calc(9.5px * var(--fs)); }
+  /* Green is spendable, grey is the dollar per unfilled slot that is in the
+     account but already owed -- which is the whole difference between a seat
+     with $80 and one hole and a seat with $80 and eight. */
+  .budget { height: 3px; border-radius: 2px; margin-top: 3px; display: flex;
+    background: #eee; overflow: hidden; }
+  .budget i { display: block; height: 100%; background: #1a7f37; }
+  .budget i.held { background: #ccc; }
+  /* Out of the market: whatever is left cannot win a player anyone else wants,
+     so the seat stops being one you bid against. Figure and bar go together, so
+     the state reads whether you take in the number or only the colour. */
+  .card.broke .big { color: #c0392b; }
+  .card.broke .budget i:not(.held) { background: #c0392b; }
+
+  /* The card's footer: how much of the lineup is bought, and what it projects.
+     Below the panes rather than in the header, because the header is money and
+     nothing else -- and down here they are the same numbers whichever pane is
+     showing. Deliberately not money green: the header owns that colour, and a
+     second green figure on the card would be read as dollars. */
+  .proj { flex: none; display: flex; align-items: baseline; gap: 4px;
+    margin-top: 3px; padding-top: 3px; border-top: 1px solid #eee; }
+  .proj .pl { font-size: calc(8px * var(--fs)); color: #888; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.04em; }
+  /* Compact, the count goes unlabeled and the projection does not: a ratio says
+     what it is, a bare 1,323 does not. The word is in the markup and comes back
+     when the overlay has room for it -- the same bargain the lineup's column
+     labels make. */
+  .proj .str { display: none; }
+  body.maxed .proj .str { display: inline; }
+  /* The projection is the right-hand figure, so its label carries the gap. */
+  .proj .pts { margin-left: auto; }
+  .proj b { font-size: calc(11px * var(--fs)); color: #1a1a1a;
+    font-weight: 700; font-variant-numeric: tabular-nums; }
+  /* The target sits back from the count -- what is bought is the figure, what
+     is asked for is the scale. */
+  .proj .fill i { font-style: normal; font-weight: 400; color: #949494;
+    font-size: calc(9px * var(--fs)); }
+  /* A lineup with a hole in it says so. Amber, not the out-of-market red: this
+     is the ordinary state of a card until the last rounds, and red on eleven of
+     twelve cards all draft would mean nothing by the time it mattered. */
+  .proj .fill.short { color: #b26a00; }
+
+  /* Folded, a row of four cards is a strip of money and pips: the four seats
+     still in their four columns, each saying what it can spend and which
+     positions it has filled. That is what you want from seats you are not
+     studying, and it is also the thing you double-click to bring the row back --
+     so the fold leaves a control behind rather than a gap.
+
+     `.body` is hidden rather than the panes inside it, which sidesteps the
+     specificity trap the pressure cards hit (see the note further down): with
+     the parent gone, no per-pane rule has anything left to win. */
+  .card.collapsed { background: #fafafa; }
+  .card.collapsed > .body { display: none; }
+  .card.collapsed header { margin-bottom: 0; border-bottom: none;
+    padding-bottom: 0; }
+  .card.collapsed .seg { display: none; }
+  .card.collapsed .proj { display: none; }
+  .card .foldsum { display: none; }
+  /* A grid rather than a wrapping row, because the positions have to line up
+     across four cards side by side and a flex row sizes each one to its own
+     contents -- so a seat with five running backs put its receivers somewhere no
+     other card's were. Tracks instead: four across when a card is wide enough,
+     two when it is not, and a position's depth fills its own track without ever
+     moving the position beside it. */
+  .card.collapsed .foldsum { display: grid; column-gap: 6px; row-gap: 4px;
+    padding-top: 4px; align-items: start;
+    grid-template-columns: repeat(auto-fit, minmax(calc(58px * var(--fs)), 1fr)); }
+  .foldsum .fpos { display: flex; align-items: flex-start; gap: 4px;
+    min-width: 0; }
+  .foldsum .ms { font-style: normal; font-weight: 700; color: #888;
+    font-size: calc(9.5px * var(--fs)); line-height: calc(11px * var(--fs)); }
+  /* Slots on the first line, depth on the second, stacked under the position
+     they belong to. Inline, a surplus pip made every position a different width
+     and pushed the tight end onto a row of its own -- so which positions a card
+     had left to fill stopped being readable across four folded cards at once.
+     Stacked, the first line of a track is always that position's own slots. */
+  .foldsum .fstack { display: flex; flex-direction: column; gap: 1.5px;
+    min-width: 0; }
+  /* Deliberately large pips. This strip is the whole of
+     what a folded card says, and shrinking it to hold four positions on one row
+     made it a texture rather than something you read. It takes the size it needs
+     and the grid above drops to two tracks when a card is too narrow for four --
+     two legible rows beat one you have to lean in for, and the folded row's
+     height is measured by the client either way. */
+  .foldsum .pips { gap: 2px; }
+  .foldsum .pip { height: calc(9px * var(--fs)); width: calc(10px * var(--fs));
+    border-radius: 2.5px; }
+  .foldsum .pip.half { width: calc(5.5px * var(--fs)); }
+  /* Depth is as wide as a slot and half as tall: it has to be legible -- a spare
+     body is a thing you are reading the strip *for* -- so the difference from an
+     owned slot is height and tint, not size. Squeezed to half width it was a
+     speck, and a speck you cannot count is not depth, it is texture.
+
+     Filled at a tint rather than outlined, unlike the panes' surplus pip: at
+     this size a 1px ring is most of the pip, and the shape stopped reading. */
+  .foldsum .pip.extra { width: calc(10px * var(--fs)); height: calc(5px * var(--fs));
+    box-shadow: none;
+    background: color-mix(in srgb, var(--pos, #7c90a0) 50%, #fff); }
+  /* What divides twelve cards into three rows you can name, now that the bars
+     that used to do it are gone: the four cards of a row share a tint, and
+     neighbouring rows take different ones, so a row reads as a group of four
+     rather than as twelve cards in a field. It is worn as a cap along each
+     card's top edge and as its border -- the bar it used to continue from is a
+     button in the menu bar now, and the group has to hold together without it.
+
+     A colour per row, not two alternating: three rows are few enough to each be
+     their own, and a row you can name by its colour is a row you can find again
+     after looking away. Pale and low-chroma on purpose -- the four position hues
+     on the lines are the palette that is meant to be read. These sit in the gaps
+     that palette leaves (violet, slate blue, green against pink / teal / blue /
+     orange), so a band is never mistaken for a position. Past three, rows fall
+     back to grey. */
+  .card[data-row] { --band: #e4e8ec; --bandline: #c9d0d7; }
+  .card[data-row="0"] { --band: #e7e3f2; --bandline: #cdc5e4; }
+  .card[data-row="1"] { --band: #dde6f0; --bandline: #bdcbdb; }
+  .card[data-row="2"] { --band: #dfeee1; --bandline: #bfd9c3; }
+
+  /* Three panes over one roster, as tabs across the card. On the dark board
+     these hid until hover because twelve cards' worth of lit chrome drowned the
+     data; on white they can simply be visible. */
+  .seg { display: flex; gap: 2px; margin-left: auto; flex: none; }
+  /* 8.5px, not the 7.5px these were: at the smaller size a two-letter button was
+     nearly all border, and the roster filter that joined them is a control you
+     aim at rather than glance over. One number for all of them -- the card tabs,
+     the three position filters and the row filter are the same control doing the
+     same job in different panels, and one of them sized to look more important
+     than the rest is a board with no convention in it. */
+  .seg button { padding: 1px 5px; font-size: calc(8.5px * var(--fs)); line-height: 1.4;
+    font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase;
+    border: 1px solid #e2e2e2; background: #f6f6f6; color: #888;
+    border-radius: 3px; }
+  .seg button:hover { color: #555; border-color: #cbd8ea; }
+  .seg button[aria-pressed="true"] { color: #fff; background: #1a1a1a;
+    border-color: #1a1a1a; }
+  .seg button:disabled { color: #ccc; border-color: #eee; cursor: default; }
+  .seg button:disabled:hover { color: #ccc; border-color: #eee; }
+  /* On, but not yours to change -- the row filter maximized, where every row is
+     open and nothing folds. Without this the pressed black survives the disabled
+     state and half the segment reads as live while the other half is greyed
+     out, which says the two halves do different things. */
+  .seg button:disabled[aria-pressed="true"] { background: #ececec;
+    border-color: #e2e2e2; color: #999; }
+  /* Rewound with a pick landing behind your back: the LIVE button pulses in
+     the same purple the bidding chips use, rather than a colour of its own --
+     it is telling you the same kind of fact (something moved) in the same
+     palette as everywhere else that fact is drawn. Stops the moment you're
+     back live, since `applyNav` drops the class as soon as `nav.live` is true. */
+  .seg button#navlive.flash { animation: navlive-pulse 1s ease-in-out infinite; }
+  @keyframes navlive-pulse {
+    0%, 100% { background: #9333ea; border-color: #9333ea; color: #fff; }
+    50% { background: #fff; border-color: #9333ea; color: #9333ea; }
+  }
+
+  /* The pick position, between the step buttons -- not a button itself, so it
+     shares the segment's box without taking part in its aria-pressed states. */
+  .navseg { align-items: center; }
+  .navpos { font-size: calc(7.5px * var(--fs)); font-weight: 700; color: #888;
+    letter-spacing: 0.02em; padding: 0 2px; white-space: nowrap; }
+  /* Covers a hundred picks in one drag, where ◀/▶ cover one. `accent-color`
+     rather than a custom track/thumb: it reuses the same dark the pressed
+     segment state above already uses, so the fill reads as the same "this is
+     the selected one" rather than a colour invented just for this control. */
+  .navseg input[type="range"] { width: 90px; margin: 0 2px;
+    vertical-align: middle; accent-color: #1a1a1a; }
+  .navseg input[type="range"]:disabled { opacity: 0.4; }
+
+  /* All three panes ship in every card and CSS shows one, so switching costs no
+     fetch and two panes can never show different moments of the draft. No class
+     means LINEUP, which is what the board loads on. */
+  .body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  /* A pane scrolls rather than clipping. Three rows of four fit the default
+     ten-slot lineup with room to spare, but a deeper lineup must not silently
+     hide a player. */
+  .pane { display: none; overflow-y: auto; scrollbar-width: thin;
+    scrollbar-color: #ccc transparent; }
+  .card .pane.lineup { display: flex; flex-direction: column;
+    flex: 1; min-height: 0; }
+  .card.view-bench .pane.lineup { display: none; }
+  .card.view-bench .pane[data-pane="bench"] { display: block; }
+  .empty { color: #949494; font-size: calc(9px * var(--fs)); padding: 4px 2px; }
+
+  /* One line per player, and the position is the *field the name sits on*: a
+     pale tint of the position colour, mixed against white. A coloured chip put
+     the loudest thing in the row next to the thing you actually read; this way
+     the row is legible at a glance as "a receiver" without anything competing
+     with the name. Fixed widths and tabular figures keep the numbers in real
+     columns you can read down. */
+  .ln { display: grid; align-items: center; gap: 3px; padding: 1px 3px;
+    margin-bottom: 1px; border-radius: 3px;
+    grid-template-columns: calc(22px * var(--fs)) minmax(0, 1fr) calc(26px * var(--fs));
+    font-size: calc(10px * var(--fs)); line-height: 1.35; min-width: 0;
+    background: color-mix(in srgb, var(--pos, #7c90a0) 26%, #fff); }
+  /* The lineup's rows share whatever height the card has: the line-height above
+     is a floor, and `flex: 1` spends the rest of the card on the gaps between
+     rows. A fixed row height had to be tuned to one viewport -- generous enough
+     to fill a tall screen, it overflowed a short one. */
+  .pane.lineup .ln { flex: 1 1 auto; }
+  .colhead { display: none; }
+  /* The slot label is a label: same grey on every row, so the eye reads the
+     tint for position and this only for which seat of the lineup it is. */
+  .ms { font-style: normal; font-size: calc(7.5px * var(--fs)); text-transform: uppercase;
+    font-weight: 700; text-align: left; color: #555; }
+  /* A hole reads as absence, not as a position: flat grey, no tint. */
+  .ln.open { background: #f4f4f4; }
+  .ln.open .ms { color: #949494; }
+  .ln.open .mn, .ln.open .mnf { color: #949494; }
+  /* Depth keeps its position tint -- in a pane of its own nothing else says what
+     these bodies are -- but sits back a step from the lineup. */
+  .ln.bench { opacity: 0.75; }
+  .mn, .mnf { font-weight: 400; color: #1a1a1a; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  /* Compact shows the short name, maximized the full one. Both are in the
+     markup so the swap is free. */
+  .mnf { display: none; }
+  .mb, .mp, .mc { font-style: normal; font-size: calc(9px * var(--fs)); text-align: right;
+    font-variant-numeric: tabular-nums; }
+  .mc { color: #1a7f37; font-weight: 700; }
+  .ln.open .mc { color: #949494; font-weight: 400; }
+  /* Bye and points are the first things to go when space is short; they live
+     in the hover tooltip until the overlay has room for them. */
+  .mb, .mp { display: none; color: #666; }
+  /* A bye in the division/playoff stretch (wk 12-17) borrows the board's
+     "broke" red rather than inventing a new colour: both are "you don't want
+     this," one about money and one about the calendar. */
+  .mb.late { color: #c0392b; font-weight: 700; }
+
+  /* The fold summary's pips. Targets are fractional and the indicator is a run
+     of pips, not a fill bar: a ratio bar pins at 100% the moment you reach the
+     target, so a seat one body short and a seat two deep drew the same
+     picture. This is the one place the position colour stays at full
+     strength -- the pips are the mark being read, not a field behind text.
+
+     One pip per whole starter the target asks for, the half-slot drawn half as
+     wide, so the row's own length is the requirement -- 2.5 is visible rather
+     than merely readable. Surplus sits outside the run, outlined.
+
+     An empty slot is neutral grey, never a tint of the position. Tinted, a slot
+     you do not own was still QB pink or WR blue, and the difference between the
+     two ends of a row came down to saturation -- which reads as "a bit filled"
+     rather than "not filled", and reads differently at every position because
+     the four colours are not equally light. The position colour now means one
+     thing only: you own this one. */
+  .pips { display: flex; align-items: center; gap: 2px; }
+  .pip { height: calc(6px * var(--fs)); width: calc(8px * var(--fs)); border-radius: 2px;
+    background: #ececec; box-shadow: inset 0 0 0 1px #e0e0e0; }
+  .pip.half { width: calc(4px * var(--fs)); }
+  .pip.on { background: var(--pos, #7c90a0); box-shadow: none; }
+  .pip.extra { background: none; width: calc(5px * var(--fs));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--pos, #7c90a0) 45%, #fff); }
+
+  /* -- Run pressure -------------------------------------------------------
+     One card per position, in the left column under the block. The card is
+     supply (what's left in the tier) over demand (which seats still want one),
+     and the twelve tiles are the same twelve seats as the board across the
+     aisle, in the same arrangement -- drag a roster card and these follow.
+     All four cards are the same size, TE included: one starter is still a
+     position you can be run out of, and the room is there. */
+  /* Two boxes, not one: the rail the folded cards stack in, pinned down the left
+     edge, and the row of open cards taking everything right of it. A single flex
+     row cannot do this -- it will lay its children out in a line and that is the
+     whole of its offer, so a folded card had to stay in the line, a sliver
+     wedged between two cards you were reading. Splitting the row from the rail
+     is what lets the put-away cards leave the row entirely.
+
+     The rail is on the left because it is the part of this band that does not
+     move. Four positions are always either in it or beside it, so the eye should
+     find a folded one in the same place whichever cards are open -- and a rail
+     that slid left every time you opened another card would be a landmark that
+     moves. Both boxes are rendered every tick; the client moves cards between
+     them. */
+  #pressure { min-height: 0; flex: 1; display: flex; gap: 5px;
+    overflow: hidden; }
+  /* Cards size to their content and sit at the top of the band. Stretching them
+     to the band's full height just puts a hand of white space under the board
+     list and makes four short cards look like four half-empty ones. */
+  .pgrid { display: flex; gap: 5px; align-items: flex-start; flex: 1 1 auto;
+    min-width: 0; }
+  /* Deselect everything and the row has nothing in it. Left displayed it is an
+     empty flex child with `flex: 1`, which would hold the whole band open and
+     push the rail off the right edge -- the one arrangement where every card is
+     put away and none of them can be seen. */
+  .pgrid:empty { display: none; }
+  /* The rail: folded cards in a column at the left edge, always in QB / RB / WR
+     / TE order however you clicked them, so a card is always found where it was
+     last time. It takes exactly the width its widest header needs and no more --
+     which is the point of folding one at all. Everything it gives up goes to the
+     cards still open, the same bargain the row struck below, now paid in a
+     column instead of a sliver. */
+  .prail { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto;
+    align-items: stretch; min-width: 0; }
+  /* Nothing folded, no rail -- and no 5px of gap held open beside the last card
+     for a box with nothing in it. */
+  .prail:empty { display: none; }
+  /* Capped at the band's height, not stretched to it: a card sizes to whatever
+     it holds, but a tier list of twenty names must scroll inside the card
+     rather than growing it down over the pool and the log below. */
+  /* Open cards divide the row between them, so folding one hands its width to
+     the ones you are still reading. Pinned to a fixed quarter, folding bought
+     quiet and nothing else: three rails and a quarter-width card with half the
+     band standing empty beside it. The tier list and the board list are both
+     name columns that ellipsize, and width is the only thing that helps them --
+     so the room a folded card gives up should go where you are looking. */
+  .pcard { border: 1px solid #ddd; border-radius: 6px; padding: 4px 5px 5px;
+    min-width: 0; display: flex; flex-direction: column; gap: 3px;
+    flex: 1 1 0; max-height: 100%; }
+  /* Folded, a card is its header and nothing else: the badge and how many are
+     left, which is the one line you would still want from a position you have
+     stopped working on. It shrinks to what those two need -- a rail, so the eye
+     reads "put away" from the shape without having to read the card. */
+  .pcard.collapsed { flex: 0 0 auto; }
+  .pcard.collapsed > *:not(.phd) { display: none; }
+  /* A folded card keeps the badge, how much of the position is gone, and how
+     many are left -- the three facts you would still want from a position you
+     have stopped working on. Only the pane toggle goes, because it is a control
+     for something that is no longer on screen. */
+  .pcard.collapsed .pseg { display: none; }
+  /* The pill is pushed right by `margin-left: auto` in a full-width header. In
+     the rail the cards are all one width, so pushing right would set the pills
+     against an edge with a ragged gap in front of each -- and the counts they
+     are meant to be read against are back at the badge. Hugging instead makes
+     the four rails one left-aligned list, which is how a column is read. */
+  .pcard.collapsed .pverd { margin-left: 4px; }
+  /* Settled: no seat is short here any more, so the position cannot run and the
+     card steps back from the ones that can. Recessive, not hidden -- the tier
+     and the counts are still readable, and hovering brings it back to full
+     strength for as long as you are actually reading it. */
+  .pcard.done { opacity: 0.55; }
+  .pcard.done:hover { opacity: 1; }
+  .pcard:hover { border-color: #bbb; }
+  /* The header folds the card, one single click, the same gesture on all four --
+     and the same act as the filter button above it, which un-presses when you
+     use it. In the rail it works the other way and brings the card back, so a
+     card you put away from the band is never something you have to go up to the
+     filter to undo.
+
+     No caret: the hover fill is the affordance, as it is on the band headers.
+     `user-select: none` so the badge and the counts do not highlight when the
+     click lands slightly askew. No `title`, because the one gesture reads
+     "fold" on an open card and "unfold" on a railed one, and a fixed tooltip
+     would be wrong half the time. */
+  .phd { display: flex; align-items: center; gap: 4px; min-width: 0;
+    cursor: pointer; user-select: none; border-radius: 3px; }
+  .phd:hover { background: #f2f2f2; }
+  /* The buttons inside the header are not the fold and must not look like it. */
+  .phd .pseg { cursor: default; }
+  .phd .badge { min-width: calc(20px * var(--fs)); font-size: calc(8px * var(--fs));
+    padding: 1px 3px; }
+  /* The first thing in the header to give way when the card is narrow: the
+     verdict pill and the pane buttons are both worth more than "16/36". */
+  .pcount { font-size: calc(9px * var(--fs)); color: #888;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .pcount b { color: #1a1a1a; }
+  /* Severity is a status, so it is never the colour alone: the pill always
+     says how many are left, and the ramp only sharpens what the number says. */
+  .pverd { margin-left: auto; font-size: calc(8px * var(--fs)); font-weight: 700;
+    padding: 0 4px; border-radius: 3px; white-space: nowrap;
+    background: var(--sevbg); color: var(--sev); }
+  .sev-run { --sev: #c0392b; --sevbg: #fdecec; }
+  .sev-tight { --sev: #b7791f; --sevbg: #fdf6e6; }
+  .sev-safe { --sev: #1a7f37; --sevbg: #eefaf0; }
+  /* How much of the league's want at this position is bought, in the shape the
+     roster card already uses for money: colour is need answered, grey is supply
+     spent on somebody's fourth, and the track is what is still owed. It sits
+     under the header rather than in it so the fold takes it with everything
+     else -- three pixels on a rail is a smear. */
+  .phealth { height: 3px; border-radius: 2px; display: flex;
+    background: #eee; overflow: hidden; }
+  .phealth i { display: block; height: 100%; background: var(--pos, #7c90a0); }
+  .phealth i.over { background: #ccc; }
+  .plbl { font-style: normal; font-size: calc(8px * var(--fs)); color: #949494;
+    text-transform: uppercase; letter-spacing: 0.03em;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* Four across, three down -- the roster grid's shape, so a seat sits in the
+     same place in both halves of the screen and the eye can carry across. */
+  .tiles { display: grid; gap: 2px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .tile { border: 1px solid #eee; border-radius: 3px; padding: 1px 3px 2px;
+    min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .ttop { display: flex; align-items: baseline; gap: 2px; min-width: 0; }
+  .ttop b { font-size: calc(8px * var(--fs)); font-weight: 700; color: #444;
+    min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: clip; }
+  .ttop i { font-style: normal; margin-left: auto; font-size: calc(8px * var(--fs));
+    color: #1a7f37; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .tile .pips { gap: 1px; }
+  .tile .pip { height: calc(4px * var(--fs)); width: 100%; }
+  /* A seat that has met its target has stopped buying. Receding it leaves the
+     live demand as the only thing standing in the grid, which is the read. */
+  /* Settled: this seat has what it wanted here and is out of the bidding. A
+     filled grey block with a check, not a fade -- at 8px an opacity is a
+     subtlety, and which seats are still hunting is the one thing the grid is
+     for. The check occupies exactly the pips' height so the 4x3 grid holds its
+     shape as seats fill up. */
+  .tile.done { background: #e7e7e7; border-color: #dadada; }
+  .tile.done .ttop b { color: #8c8c8c; font-weight: 400; }
+  .tile.done .ttop i { color: #949494; font-weight: 400; }
+  /* In the bidding on whatever is on the block, in the same purple the money
+     chart's columns take -- this grid is read *about that player*, so which of
+     these twelve are actually in on him belongs on the tiles you are already
+     looking at.
+
+     After `.done`, so a seat that has filled the position still shows that it
+     is bidding: a seat with four receivers bidding on a fifth is the most
+     interesting thing this grid can tell you, and the settled grey is exactly
+     what would hide it. */
+  .tile.bid-in { background: #f3e8fb; border-color: #c9a0e8; }
+  .tile.bid-high { background: #e6cdf7; border-color: #9333ea; }
+  .tile.bid-in .ttop b, .tile.bid-high .ttop b { color: #9333ea;
+    font-weight: 700; }
+  /* The same mark `.card.me` puts on your roster card, so "which of these
+     twelve is me" reads the same way on both sides of the board. A border
+     colour alone would lose to `.done`/`.bid-*` repainting it, so the outline
+     is a box-shadow layered outside the border rather than a fight over which
+     rule sets `border-color` last. */
+  .tile.me { box-shadow: 0 0 0 1px #1a1a1a; }
+  /* Same gold star as the roster card, ahead of the seat tag -- small enough
+     for the tile's own type scale rather than another outline crowding the
+     `.me`/`.done`/`.bid-*` ring and background this tile may already carry. */
+  .tile.onclock .ttop b::before { content: "★ "; color: #d4a017; }
+  .tfull { display: flex; align-items: center; justify-content: center;
+    height: calc(4px * var(--fs)); font-size: calc(7px * var(--fs));
+    line-height: 1; color: #8c8c8c; }
+
+  /* Rows inside are `.trow.compact`s, the tier row with team and points
+     dropped -- see the `.trow` rules and `.trow.compact` further down. */
+  .bd { display: flex; flex-direction: column; }
+  .bmore { font-size: calc(8px * var(--fs)); color: #1a7f37; font-weight: 700; }
+  .pfoot { font-size: calc(8px * var(--fs)); color: #949494;
+    font-variant-numeric: tabular-nums; }
+
+  /* Two panes over one position, switched by the card's own RUNS/TIER buttons.
+     Both ship in every card and CSS shows one -- so switching costs no fetch,
+     the two can never describe different moments of the draft, and above all
+     the other three positions stay on screen. The tier used to be an overlay
+     that covered them, which is precisely when you want to compare. */
+  .ppane { display: none; flex-direction: column; gap: 3px; min-height: 0; }
+  .pcard .ppane.runs { display: flex; }
+  .pcard.view-tier .ppane.runs { display: none; }
+  .pcard.view-tier .ppane.pdet { display: flex; flex: 1; }
+  /* Last word on the panes, and it has to win twice over: `.pcard .ppane.runs`
+     ties `.pcard.collapsed .ppane` on specificity and is beaten on order, but
+     `.pcard.view-tier .ppane.pdet` is a class heavier and beats order -- which
+     is why a folded card used to go on rendering its whole tier list squeezed
+     into a rail. Hence the long selector: it has to out-weigh that rule, not
+     merely follow it. Folded is folded, whichever pane the card was left on --
+     and that pane comes back untouched when you unfold, because `pviews` never
+     heard about any of this. */
+  .pcard.collapsed.view-tier .ppane.pdet,
+  .pcard.collapsed .ppane { display: none; }
+  .pseg { margin-left: 0; }
+  .pseg button { padding: 0 3px; font-size: calc(8px * var(--fs)); }
+  .pdbody { overflow-y: auto; scrollbar-width: thin;
+    scrollbar-color: #ccc transparent; min-height: 0; flex: 1; }
+
+  /* -- the tall card -------------------------------------------------------
+     Pool and log both shut hand run pressure their height (`.side.panes-
+     collapsed`, above), and a card sitting on that height with one pane open
+     and the other a click away is the same waste the wide card was fixing
+     for width. So the two panes stack instead of switching -- RUNS on top,
+     TIER below it scrolling in its own box -- and the toggle that chose
+     between them goes, the same trade the wide card makes for width below.
+
+     Six classes deep so it outweighs both toggle rules outright, the same
+     problem the wide card's own comment works through: `.pcard.view-tier
+     .ppane.pdet { flex: 1 }` is four classes, and a selector that only tied
+     it would be won or lost by source order -- fragile the day a rule gets
+     appended below either one. This beats them regardless of order, and
+     regardless of which pane `pviews` last left the card on.
+
+     `.pgrid`'s `align-items: flex-start` is what keeps cards short-and-
+     content-sized the rest of the time (see its own comment) -- exactly what
+     a stacked card must not do, or the second pane has no height to divide.
+     Stretching only here, only while both panes are shut, leaves every other
+     state -- normal height, wide card -- reading a content-sized card.
+
+     RUNS gets only what its tiles and cliff line need, not an equal half:
+     the TIER list is the longer of the two whatever the card's total height,
+     and giving it the rest means less of it has to scroll. */
+  .side.panes-collapsed .pgrid { align-items: stretch; }
+  .side.panes-collapsed .pcard:not(.collapsed) .pbody { flex-direction: column; }
+  .side.panes-collapsed .pcard:not(.collapsed) .pbody > .ppane.runs,
+  .side.panes-collapsed .pcard:not(.collapsed) .pbody > .ppane.pdet {
+    display: flex; min-height: 0; }
+  .side.panes-collapsed .pcard:not(.collapsed) .pbody > .ppane.runs { flex: 0 0 auto; }
+  .side.panes-collapsed .pcard:not(.collapsed) .pbody > .ppane.pdet {
+    flex: 1 1 auto; border-top: 1px solid #f0f0f0; padding-top: 6px; }
+  /* Nothing left to switch between. */
+  .side.panes-collapsed .pcard .pseg { display: none; }
+  /* Position by tint, the way a roster row's `.ln` does -- a card this tall
+     is otherwise a long stretch of white with the colour confined to a 3px
+     health bar and a badge. Lighter than `.ln`'s 26%: this is a whole card's
+     background, not one line, and it has the severity pill and tiles to
+     leave legible over it. */
+  .side.panes-collapsed .pcard:not(.collapsed) {
+    background: color-mix(in srgb, var(--pos, #7c90a0) 8%, #fff); }
+
+  /* -- the wide card ------------------------------------------------------
+     One card, two shapes. Everything above is drawn for the ~230px a card gets
+     when all four are open; fold three and the survivor was handed 760px and
+     did nothing with it but stretch -- twelve tiles at 185px apiece holding an
+     8px label and a five-pixel hairline, and a tier list still hidden behind a
+     toggle that only ever existed because 230px could hold one pane at a time.
+     With room, the card stacks into what the tall card already is: tiles on
+     top, sized to what they need, and the tier list filling everything below
+     them -- the same layout `.side.panes-collapsed` uses when the extra room
+     comes from height instead of width, because it's the same problem either
+     way and the tier list already knows how to scroll inside what it's given.
+
+     A row split -- tiles beside the list rather than above it -- was tried
+     first and undone: it stretched the tiles pane to match the list's height
+     with nothing to fill it, since the list is the longer of the two at
+     essentially any card size, and the empty space under a 4x3 tile grid was
+     the wide card's own version of the toggle it was replacing.
+
+     The query is on the card's own width, not the viewport's. What makes a card
+     wide here is how many of its siblings you folded, and no media query can
+     see that. */
+  /* `:not(.collapsed)` is load-bearing twice over. `container-type: inline-size`
+     implies inline-size containment, which forbids an element sizing to its own
+     contents -- and a folded card is exactly that, `flex: 0 0 auto`, a rail as
+     wide as its badge. Scoping containment to open cards keeps the rail a rail,
+     and buys the guarantee that no rule below can ever fire inside a folded
+     card, whatever width the rail happens to be. */
+  .pcard:not(.collapsed) { container-type: inline-size; container-name: pcard; }
+  /* Narrow, this is a no-op: a column of the same two panes the card would have
+     laid out itself. It exists so that going to a row at width takes the panes
+     and leaves the header and the health bar spanning above them. */
+  .pbody { display: flex; flex-direction: column; gap: 3px;
+    min-height: 0; min-width: 0; flex: 1 1 auto; }
+
+  /* Two open cards on a laptop are ~350px apiece, and the stack has to reach
+     them: two positions open is the ordinary way this band is read, and hiding
+     the tier list behind a toggle at exactly that size was the shape being
+     asked to change.
+
+     Under 340px it stops: three open cards on a laptop are ~235px each, which
+     is one pane's worth, and the toggle still earns its keep there. */
+  @container pcard (min-width: 330px) {
+    /* Both panes at once, which is what retires the toggle -- and both of them
+       sized by this block rather than by the toggle's rules.
+
+       `:not(.collapsed)` is doing specificity work here, not just repeating the
+       container's own condition. The pane rules this has to overrule --
+       `.pcard.view-tier .ppane.runs { display: none }` and
+       `.pcard.view-tier .ppane.pdet { flex: 1 }` -- are four classes, and
+       `.pcard .pbody > .ppane.pdet` is four classes too. A tie is settled by
+       source order, which would work today and quietly stop working the day
+       somebody appends a rule below. Five classes wins outright and says so. */
+    .pcard:not(.collapsed) .pbody { flex-direction: column; }
+    .pcard:not(.collapsed) .pbody > .ppane.runs,
+    .pcard:not(.collapsed) .pbody > .ppane.pdet { display: flex; min-height: 0; }
+    .pcard:not(.collapsed) .pbody > .ppane.runs { flex: 0 0 auto; }
+    /* Full width was already enough for all five tier columns in the ~230px
+       narrow default (see the `.trow` comment below), so the stack never has
+       to drop a column the way the old side-by-side split did at this width. */
+    .pcard:not(.collapsed) .pbody > .ppane.pdet { flex: 1 1 auto;
+      border-top: 1px solid #f0f0f0; padding-top: 6px; }
+    /* Nothing left to switch between. */
+    .pcard .pseg { display: none; }
+  }
+
+  /* Rank, name, team, points, $PROJ -- the same five things in the same order
+     as the maximized roster row, so the eye does not have to re-learn a table
+     between the two halves of the screen.
+     Tight gaps and narrow numerals because this now lives inside a ~230px card
+     rather than a 340px panel: at the old spacing the fixed columns ate 149px
+     and left the name 73px, which is where "M. Stafford" starts losing its. */
+  /* Leading tighter than the page's 1.4: the type went up a size and the row
+     stayed where it was, so the list reads bigger without showing fewer names. */
+  .trow { display: grid; align-items: baseline; gap: 4px; padding: 1px 2px;
+    font-size: calc(10px * var(--fs)); line-height: 1.2;
+    grid-template-columns:
+      calc(12px * var(--fs)) minmax(0, 1fr) calc(18px * var(--fs))
+      calc(20px * var(--fs)) calc(22px * var(--fs)); }
+  .trow:not(:last-child) { border-bottom: 1px solid #f6f6f6; }
+  .trow i { font-style: normal; font-variant-numeric: tabular-nums;
+    text-align: right; color: #6b6b6b; font-size: calc(10px * var(--fs)); }
+  .trow .tr { text-align: left; color: #777; }
+  .trow .ttm { text-align: left; color: #808080; }
+  .trow .tpr { color: #1a7f37; font-weight: 700; }
+  /* Below the cliff is a different class of player, not merely a later one. */
+  .trow.below { opacity: 0.55; }
+  .trow.gone { display: block; color: #c0392b; }
+  /* The RUNS pane's preview: same row, team and points dropped -- the detail
+     you read once you already know who is left, not the fact itself. */
+  .trow.compact { grid-template-columns:
+    calc(12px * var(--fs)) minmax(0, 1fr) calc(22px * var(--fs)); }
+  .tcliff { margin: 5px 0; padding-top: 4px; border-top: 2px dotted #e0a89f;
+    color: #c0392b; font-size: calc(9px * var(--fs)); font-weight: 700;
+    text-align: center; }
+  .tcliff.none { border-top-color: #eee; color: #949494; }
+
+  /* -- pool and log, sharing the bottom band ------------------------------
+     Side by side so the two questions they answer -- who is left, and what the
+     room just paid -- can be read against each other without a switch. */
+  /* Flex, again for the collapse: fold the log away and the pool takes its
+     width, rather than leaving half the band empty. Written as a child rule so
+     it outranks the column direction every other band body gets. */
+  .band > .bandbody.panes { display: flex; flex-direction: row; gap: 6px;
+    flex: 1; min-height: 0; padding: 0; }
+  /* Border and padding come from `.band` -- a pane is one of the four foldable
+     sections and is framed like the other three, not like a lesser inset. */
+  .pane2 { display: flex; flex-direction: column; min-height: 0; min-width: 0;
+    flex: 1 1 0; }
+  /* A collapsed pane keeps its title and drops everything else, the subtitle
+     included -- that note otherwise sets the width and leaves a "collapsed"
+     pane still holding a fifth of the band. */
+  .pane2.collapsed { flex: 0 0 auto; }
+  .collapsed > .bandhd .note { display: none; }
+  .pane2 > .bandhd { flex: none; }
+  /* A fifth larger again than the rest of the column, and only inside the list
+     -- the two headers stay the size the other bands' headers are, or the eye
+     would read the pool as the more important section rather than the roomier
+     one. These are the two panes you read a line at a time rather than scan as
+     a shape, and they have the width to spend on it that a 220px card does not.
+     Derived from the column's own knob so the two move together. */
+  .pane2 .listwrap { --fs: calc(var(--fs-base) * 1.2);
+    flex: 1; min-height: 0; overflow-y: auto;
+    scrollbar-width: thin; scrollbar-color: #ccc transparent; }
+
+  /* The position filters, riding at the right of each band's header: the pool's,
+     the log's, and run pressure's. The same type as every other segment on the
+     board -- what a band header buys them is tighter padding, since five buttons
+     have to sit beside a title and a note.
+
+     One treatment for all three, though run pressure's does a heavier job: the
+     pool's narrows a list you are already reading, where that one decides which
+     cards are open at all. Sizing it up and colouring each button by position
+     said so, and said it too loudly -- three filters on one column reading three
+     different ways is a column with no convention in it, and the position colour
+     is already spoken everywhere it matters here: the badge on every card, the
+     rail, the health bar. The filter does not need to say it a fourth time. */
+  .fseg button, .rseg button { padding: 0 3px; }
+  /* Not one of the three filters above -- the nav steps through picks, it
+     does not narrow anything -- but it rides in a band header the same way,
+     so it takes the same tighter header-row padding rather than its own. */
+  .navseg button { padding: 0 3px; }
+  /* A folded band is a title and nothing else; its filter goes with the rest.
+     The checkpoint nav is not a filter on this band's own list -- it is what
+     moment the whole board is showing -- so it stays visible even folded. */
+  .collapsed > .bandhd .fseg,
+  .collapsed > .bandhd .rseg { display: none; }
+  /* Said when a filter matches nothing, in place of an empty box that reads as
+     a broken pane. Outside the scroller, since it is about the list rather than
+     in it, and the scroller is what gets replaced twice a second -- but above
+     it, where the missing rows would have been, rather than at the foot of a
+     pane the eye has no reason to reach. */
+  .fnone { flex: none; color: #888; font-size: calc(10px * var(--fs));
+    padding: 4px 6px; }
+  .collapsed > .fnone { display: none; }
+  /* The filter itself: no JS runs per row and none runs per refresh. The client
+     writes one attribute on the wrapper and the rows sort themselves out.
+     Written per position rather than with a variable because CSS cannot compare
+     two attributes, and four positions is a short list. */
+  .listwrap[data-filter="QB"] .prow:not([data-pos="QB"]),
+  .listwrap[data-filter="QB"] .lrow:not([data-pos="QB"]),
+  .listwrap[data-filter="RB"] .prow:not([data-pos="RB"]),
+  .listwrap[data-filter="RB"] .lrow:not([data-pos="RB"]),
+  .listwrap[data-filter="WR"] .prow:not([data-pos="WR"]),
+  .listwrap[data-filter="WR"] .lrow:not([data-pos="WR"]),
+  .listwrap[data-filter="TE"] .prow:not([data-pos="TE"]),
+  .listwrap[data-filter="TE"] .lrow:not([data-pos="TE"]) { display: none; }
+
+  .prow, .lrow { display: grid; align-items: center; gap: 5px; padding: 3px 2px;
+    font-size: calc(10px * var(--fs)); line-height: 1.2; min-width: 0; }
+  /* pos · name · team · bye · pts · wk1 · wk2 · wk3 · $PROJ. The three weeks
+     are the division round -- see `_early_week_cell` -- and share the pts
+     column's width rather than getting their own, since they are read as a
+     trio against the number just to their left rather than individually. */
+  .prow { grid-template-columns:
+    calc(22px * var(--fs)) minmax(0, 1fr) calc(20px * var(--fs))
+    calc(14px * var(--fs)) calc(22px * var(--fs))
+    calc(24px * var(--fs)) calc(24px * var(--fs)) calc(24px * var(--fs))
+    calc(24px * var(--fs)); }
+  /* The pool's own column header, `_POOL_HEADER` -- sticky at the top of the
+     scrolling list rather than fixed above it, so it survives the pane's own
+     scroll the way the band's title above it does not. A heavier rule than
+     the row divider below marks it as the fixed row rather than the first of
+     the list. */
+  .prow.phdr { position: sticky; top: 0; z-index: 1; background: #f7f7f7;
+    border-bottom: 2px solid #e8e8e8; padding: 4px 2px; }
+  .prow.phdr i { font-size: calc(8.5px * var(--fs)); font-weight: 700;
+    color: #555; text-transform: uppercase; letter-spacing: 0.04em; }
+  .prow.phdr .phdname { text-align: left; }
+  /* A real rule between rows, not the near-invisible one this replaced --
+     the old `#f7f7f7` divider was closer to no divider at all, and a list
+     this dense needs the eye to catch where one player ends and the next
+     begins without hovering to find out. */
+  .prow:not(.phdr):not(:last-child) { border-bottom: 1px solid #ddd; }
+  /* #no · seat · pos+rank · name · team · bye · pts · price · delta.
+     Nine columns, which the pane can afford: the sidebar is 3fr of a 3fr/2fr
+     page, so each of these two is ~400px rather than the ~230px a roster card
+     gets. The pill is wider than the pool's -- it carries a rank as well as a
+     position, and "WR12" is four characters where "WR" is two. */
+  .lrow { grid-template-columns:
+    calc(22px * var(--fs)) calc(18px * var(--fs)) calc(28px * var(--fs))
+    minmax(0, 1fr) calc(20px * var(--fs)) calc(14px * var(--fs))
+    calc(22px * var(--fs)) calc(22px * var(--fs)) calc(26px * var(--fs)); }
+  /* Once any seat has a name the buyer column carries "S5 · Marc" and needs
+     more than the two characters a slot number takes -- but only then, or every
+     mock would run a third of an inch of white space down the log. The width
+     comes out of the player's name, which has ~400px to give. It clips rather
+     than wrapping: which seat bought a player is read by running down this
+     column, and a row taller than its neighbours breaks that scan. */
+  .loglist.named .lrow { grid-template-columns:
+    calc(22px * var(--fs)) calc(46px * var(--fs)) calc(28px * var(--fs))
+    minmax(0, 1fr) calc(20px * var(--fs)) calc(14px * var(--fs))
+    calc(22px * var(--fs)) calc(22px * var(--fs)) calc(26px * var(--fs)); }
+  .lrow:not(:last-child) { border-bottom: 1px solid #f7f7f7; }
+  .prow b, .lrow b { font-weight: 400; min-width: 0; overflow: hidden;
+    white-space: nowrap; text-overflow: ellipsis; }
+  /* The floor these rows set is now the whole file's -- see the note at the
+     top. */
+  .prow i, .lrow i { font-style: normal; font-variant-numeric: tabular-nums;
+    text-align: right; font-size: calc(9px * var(--fs)); color: #6b6b6b; }
+  .prow .badge, .lrow .badge { font-size: calc(8px * var(--fs)); min-width: 0;
+    padding: 1px 0; }
+  .prow .ptm, .lrow .ltm { text-align: left; color: #777; }
+  /* The bye sits beside the points and both are bare two- or three-digit
+     numbers, so the bye is held a shade back: the points are what you read,
+     the bye is what you check. The row's hover names all six. */
+  .prow .pby, .lrow .lby { color: #949494; }
+  /* Same borrowed red as the roster card, for the same reason -- and the
+     same override, since a specific risk outweighs "held back" by default. */
+  .prow .pby.late, .lrow .lby.late { color: #c0392b; font-weight: 700; }
+  /* Division-round weeks, held back to plain grey until the gap from the
+     player's own season pace is real -- `_early_week_cell` sets the margin.
+     Reuses the pool's own money/bad hues rather than the log's over/under
+     pair: the two conventions answer different questions and would read as
+     one signal if they shared a class name too. */
+  .prow .pwk.g { color: #1a7f37; font-weight: 700; }
+  .prow .pwk.r { color: #c0392b; font-weight: 700; }
+  .prow .ppr { color: #1a7f37; font-weight: 700; }
+  .lrow .lno { text-align: left; color: #777; }
+  .lrow .lst { text-align: left; color: #888; font-weight: 700; min-width: 0;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .lrow .lpr { color: #1a1a1a; font-weight: 700; }
+  /* Over and under are a status pair, so they carry a sign as well as a hue --
+     the percentage is legible without the colour and vice versa. */
+  .ldl.over { color: #c0392b; }
+  .ldl.under { color: #1a7f37; }
+  .ldl.even { color: #888; }
+  .pnone { color: #949494; font-size: calc(10px * var(--fs)); padding: 4px 2px; }
+
+  /* Maximized: the board leaves its half and takes the viewport. Nothing is
+     re-rendered -- the hidden columns and the other panes were always there. */
+  body.maxed .board { position: fixed; inset: 0; z-index: 10;
+    background: #fff; padding: 14px 16px; }
+  /* A second way out, at the corner where a full-screen thing is closed. The
+     Minimize button rides along in the menu bar since that bar lives inside the
+     board, but nobody looks there first. */
+  .closebtn { display: none; }
+  body.maxed .closebtn { display: block; position: fixed; z-index: 11;
+    top: 8px; right: 12px; width: 26px; height: 26px; padding: 0;
+    font-size: 18px; line-height: 1; border-radius: 50%; color: #666; }
+  body.maxed .closebtn:hover { color: #1a1a1a; border-color: #1a1a1a; }
+  /* Same four across, three down as the compact board -- the overlay is the
+     whole viewport, so twelve seats fit at full size with the names spelled
+     out. Keeping the shape also means maximizing moves nothing: a card is where
+     it was, only bigger. */
+  body.maxed .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px;
+    height: 100%; grid-auto-rows: minmax(0, 1fr); }
+  /* A deeper lineup than this fits scrolls inside its own pane (see `.pane`)
+     rather than off the bottom of the overlay: silently hiding a player is the
+     one failure this must not have. */
+  /* `.board` supplies its own, roomier padding maximized -- `#rosters`
+     dropping its own means the grid isn't inset twice. */
+  body.maxed #rosters { overflow: hidden; padding: 0; }
+  /* Nothing folds here -- the overlay is the whole viewport and twelve open
+     cards fit it, so folding would put away something there was room for. The
+     row filter stays visible and goes disabled rather than disappearing: a
+     control that vanishes when you maximize is one you go looking for.
+     `applyRows` is the half that makes it true. */
+  /* Keep the close button's corner clear of the menu bar's own controls. */
+  body.maxed .menubar { padding-right: 30px; }
+  body.maxed .card { padding: 6px 8px; }
+  body.maxed .team { font-size: calc(12px * var(--fs)); }
+  body.maxed .top.named .team { display: none; }
+  body.maxed .teamf { display: block; font-size: calc(12px * var(--fs)); }
+  body.maxed .big { font-size: calc(15px * var(--fs)); }
+  body.maxed .max { font-size: calc(10px * var(--fs)); }
+  body.maxed .seg button { font-size: calc(9.5px * var(--fs)); }
+  body.maxed .proj .pl { font-size: calc(9px * var(--fs)); }
+  body.maxed .proj b { font-size: calc(13px * var(--fs)); }
+  /* Barely larger type than compact, because at four across on a laptop there
+     is no room for more. What maximizing actually buys is the full names and
+     the bye/points columns below, not size -- and all twelve seats still have
+     to fit one screen, which a taller row would break. */
+  body.maxed .ln { font-size: calc(10.5px * var(--fs)); padding: 0 5px; gap: 6px;
+    line-height: 1.2;
+    grid-template-columns: auto minmax(0, 1fr) calc(24px * var(--fs)) calc(30px * var(--fs)) calc(34px * var(--fs)); }
+  body.maxed .ms { font-size: calc(9px * var(--fs)); }
+  body.maxed .mn { display: none; }
+  body.maxed .mnf { display: block; }
+  body.maxed .mb, body.maxed .mp { display: block; }
+  body.maxed .mb, body.maxed .mp, body.maxed .mc { font-size: calc(10px * var(--fs)); }
+  body.maxed .colhead { display: grid; background: none; }
+  /* Column labels belong to the lineup rows; in another pane they would head an
+     empty card. More specific than the rule above, so it wins in both. */
+  .card.view-bench .colhead { display: none; }
+  body.maxed .colhead i { color: #949494; font-size: calc(8px * var(--fs)); font-weight: 700;
+    text-transform: uppercase; }
+  body.maxed .pip { height: calc(8px * var(--fs)); width: calc(11px * var(--fs)); }
+  body.maxed .pip.half { width: calc(5.5px * var(--fs)); }
+  body.maxed .pip.extra { width: calc(7px * var(--fs)); }
