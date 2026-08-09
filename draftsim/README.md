@@ -28,7 +28,31 @@ pip install -e ".[dev]"
 python -m pytest                    # tests
 python -m draftsim.inspect          # Stage 1 sanity: top players by each value model
 python scripts/simulate.py --seed 1 # Stage 3: run one draft; rerun -> byte-identical
+python scripts/tiers.py             # position tiers -> out/tiers-2026.html
 ```
+
+## Position tiers
+
+`scripts/tiers.py` writes a one-page board (`out/tiers-<season>.html`) grouping
+each position into tiers at its points cliffs — 36 QB, 36 RB, 48 WR, 24 TE and
+12 DEF by default, each row showing projected points, Sleeper's `$PROJ`, and the
+gap down to the next player. A tier is a run of players worth roughly the same
+to you, so the board answers the question a draft keeps asking: if I miss this
+guy, is the next one the same player or a step down?
+
+A tier breaks after any gap at least `--gap-factor` (default 2.5) times that
+position's **median** gap. Median, not mean, because one Josh-Allen-sized cliff
+would otherwise drag the bar past every real break in the list.
+
+```bash
+python scripts/tiers.py --gap-factor 4      # fewer, coarser tiers
+python scripts/tiers.py --top QB=32,WR=60   # different depth per position
+python scripts/tiers.py --csv ../data/projections-2025.csv
+```
+
+Rows come from `../data/projections-2026.csv`, so the board is only as fresh as
+the last `npm run export:projections`; the page header records which CSV and
+which settings produced it. The rule itself is `draftsim.tiers.tier_breaks`.
 
 For pointing this same valuation at a **real Sleeper draft**, see
 `../liveboard/README.md` — the live board is a separate package that depends
