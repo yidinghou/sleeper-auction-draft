@@ -124,8 +124,17 @@ screen answering a question you glance at. Three things follow from the pin:
 * **what the room has spent moved into the band header**, next to the draft
   label. One line about the whole draft is what a header is for, and in the body
   it was thirty pixels off the chart;
-* the bid panel is three rows, with the price and the bidder chips sharing the
-  last one — the filled chip *is* the seat holding that price.
+* the bid panel is two rows — identity and the two figures on top, and under
+  them the **bid timeline**: every raise on this lot as its own card, seat tag
+  over dollar figure, oldest on the left, scrolling sideways as the bidding
+  runs on. The filled card at the right-hand end *is* the seat holding the
+  price above it; on a settled lot the strip ends green at what it went for.
+  This replaced a chip-per-seat row plus an arrow-joined trail under it: both
+  were runs of text on the axis the panel has least of, and both gave up
+  exactly when a lot got interesting — the chips clipped the late arrivals, the
+  trail ellipsised the *recent* raises off its right end. The timeline also
+  keeps the repetition the chips collapsed: a seat that leads, is outbid, and
+  leads again gets a card each time.
 
 **Every seat in the bidding lights up amber** — in the money chart's column and
 tag, and on that seat's four run-pressure tiles. Pale for a seat that has been in

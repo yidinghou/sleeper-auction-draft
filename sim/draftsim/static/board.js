@@ -690,6 +690,27 @@ function swapKeepingScroll(id, html) {
   el.scrollTop = wasAtTop ? 0 : top + (el.scrollHeight - before);
 }
 
+// The same idea for the bid timeline, mirrored to the other axis and the other
+// end: the strip grows on the *right*, so a poll landing while you are watching
+// the bidding must keep the newest rung in view rather than snapping back to
+// the nomination. Scrolled back to read the early rungs, you keep your place --
+// until you scroll to the end again, which is how you ask to be carried along.
+// Same principle as the drag/menu/slider freezes below: a gesture in progress
+// owns the element until it lets go.
+function swapBlockKeepingTrail(html) {
+  const el = document.getElementById("block");
+  const old = el.querySelector(".rungs");
+  // 2px of slack: fractional layout widths mean an element scrolled fully right
+  // reports a scrollLeft a hair under the arithmetic maximum.
+  const atEnd = !old ||
+    old.scrollLeft >= old.scrollWidth - old.clientWidth - 2;
+  const left = old ? old.scrollLeft : 0;
+  el.innerHTML = html;
+  const next = el.querySelector(".rungs");
+  if (!next) return;
+  next.scrollLeft = atEnd ? next.scrollWidth : left;
+}
+
 // Set while a pointer is down on the slider, cleared on release. A poll
 // landing mid-drag must not yank the thumb out from under the pointer still
 // holding it -- the same reasoning as the `dragging`/`menuSeat` freeze guards
@@ -743,7 +764,7 @@ function applyState(s, force) {
   document.getElementById("draft").textContent = s.draft_label || "";
   document.getElementById("spend").innerHTML = s.spend_html || "";
   document.getElementById("ledger").innerHTML = s.ledger_html;
-  document.getElementById("block").innerHTML = s.nomination_html;
+  swapBlockKeepingTrail(s.nomination_html);
   // Everything else refreshes; the cards hold still until the drag lands, so
   // the element in hand isn't deleted out from under it. The pressure tiles
   // freeze with them rather than on their own: they are the same seats in the

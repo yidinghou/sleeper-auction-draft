@@ -948,6 +948,25 @@ def _meta_tip(player: Player, late_bye: bool = False) -> str:
 _EARLY_WEEK_MARGIN = 0.15
 
 
+def _early_week_tag(week: Optional[float], pace: float) -> str:
+    """The class suffix a division-round week earns against the player's own
+    season pace: green above it, red below it, nothing inside the margin.
+
+    Shared by the pool's columns and the block panel's strip so the two cannot
+    drift into disagreeing about which weeks are worth calling out -- the same
+    player has to read the same way whether you are scanning for him or bidding
+    on him.
+    """
+    if week is None or pace <= 0:
+        return ""
+    gap = (week - pace) / pace
+    if gap >= _EARLY_WEEK_MARGIN:
+        return " g"
+    if gap <= -_EARLY_WEEK_MARGIN:
+        return " r"
+    return ""
+
+
 def _early_week_cell(week: Optional[float], pace: float) -> str:
     """One of the three division-round columns, held back unless the gap from
     the player's own season pace is real. `pace` is `points / 17`, so a bye or
@@ -955,14 +974,32 @@ def _early_week_cell(week: Optional[float], pace: float) -> str:
     season total itself being in question."""
     if week is None:
         return '<i class="pwk">—</i>'
-    tag = ""
-    if pace > 0:
-        gap = (week - pace) / pace
-        if gap >= _EARLY_WEEK_MARGIN:
-            tag = " g"
-        elif gap <= -_EARLY_WEEK_MARGIN:
-            tag = " r"
-    return f'<i class="pwk{tag}">{week:.1f}</i>'
+    return f'<i class="pwk{_early_week_tag(week, pace)}">{week:.1f}</i>'
+
+
+def _early_week_strip(player: Optional[Player]) -> str:
+    """The block panel's own read of the division round: three labelled figures
+    under the name, coloured off season pace exactly as the pool's columns are.
+
+    The pool can lean on a header row for its column names; this panel has one
+    player in it and no header to hang WK1/WK2/WK3 off, so each figure carries
+    its own label. Nothing is drawn at all for a lot with no early-week read --
+    a CSV that predates the columns, or a nomination that is not in projections
+    -- since three dashes would take the height without answering anything.
+    """
+    if player is None:
+        return ""
+    weeks = (player.week1, player.week2, player.week3)
+    if all(week is None for week in weeks):
+        return ""
+    pace = player.points / 17
+    cells = "".join(
+        f'<span class="onwkc"><i class="onwkl">WK{n}</i>'
+        f'<i class="onwkv{_early_week_tag(week, pace)}">'
+        f'{"—" if week is None else f"{week:.1f}"}</i></span>'
+        for n, week in enumerate(weeks, start=1)
+    )
+    return f'<div class="onwk">{cells}</div>'
 
 
 # The pool's own column header -- unlike the roster card's `_column_header`,
@@ -1124,84 +1161,102 @@ def render_log(state: LeagueState, my_seat: Optional[int] = None) -> str:
     return f'<div class="loglist{named}">{rows}</div>'
 
 
-def _bidder_chips(
+def _rung(
     state: LeagueState,
+    slot: int,
+    amount: Optional[int],
+    cls: str,
+    note: str,
+) -> str:
+    """One card on the timeline: a seat, and the figure it took the lot to.
+
+    Read down rather than across -- the tag over the money -- because the strip
+    is read as a sequence and a card that is taller than it is wide is a beat in
+    one. Twelve of them side by side in a row of text all look like the same
+    word; twelve of these look like a ladder.
+    """
+    seat = state.seats.get(slot)
+    tag = _seat_tag(seat) if seat is not None else f"S{slot}"
+    tip = _seat_tip(seat) if seat is not None else f"S{slot}"
+    # A figure rides in the tooltip too: the tag clips and the seats that get
+    # squeezed are the ones you most want the number for.
+    if amount is None:
+        figure = "—"
+    else:
+        figure = f"${amount}"
+        tip += f" · {note} ${amount}"
+    return (
+        f'<span class="{("rung " + cls).strip()}" title="{_esc(tip)}">'
+        f'<span class="rn">{tag}</span>'
+        f'<span class="ra">{figure}</span>'
+        "</span>"
+    )
+
+
+def _bid_timeline(
+    state: LeagueState,
+    events: Sequence[Tuple[int, Optional[int]]],
     bidders: Union[Mapping[int, Optional[int]], Sequence[int]],
     high: Optional[int],
+    sold: Optional[Tuple[int, int]] = None,
 ) -> str:
-    """Who is in the bidding, in the order they entered it, and how far each got.
+    """The bidding as one line of it: every raise in order, oldest on the left.
 
-    "Led at", precisely -- Sleeper publishes the offer on the clock and no
-    history, so a seat that raised and was outbid between two polls was never
-    visible to anybody but the room. The figure on a chip is the highest offer
-    that seat was *seen* holding, so it is a floor on what they were willing to
-    pay and not a bid anybody reported.
+    This was two rows -- a chip per seat collapsed to its best figure, and a
+    quieter arrow-joined trail under it saying in what order. Both were runs of
+    text on the axis the panel has least of, and both gave up at exactly the
+    moment a lot got interesting: the chips clipped the late arrivals, the trail
+    ellipsised the *recent* raises off its right end. One strip that scrolls
+    sideways has neither problem, and the repetition the chips collapsed away --
+    the same seat taking the lead, losing it, taking it back -- is the thing you
+    were reading the trail for.
 
-    The row carries no label. It ran the full height of the strip to say `led
-    at` once, and the strip is the one part of the panel that has to hold twelve
-    seats -- so the words cost a chip and a half of the only axis that was
-    short. What the figures mean survives in the tooltip, which is where the
-    qualification was always going to be read anyway: nobody parses `led at`
-    mid-auction, they read `S6 $34`. The chips are already amber, already under
-    a bid, and already next to the price they are bidding into.
+    Figures are floors, not bids anybody reported: Sleeper publishes the offer
+    on the clock and no history, so a raise that happened between two polls was
+    never visible to anybody but the room. The qualification lives in the
+    tooltips, which is where it was always going to be read -- nobody parses a
+    label mid-auction, they read `S6 $34`.
 
-    The seat holding it now is filled and its figure is live; the rest are
-    outlined and theirs are historical. Same amber the chart's columns and the
-    pressure tiles take, because one hue meaning one thing across three places
-    is what makes a glance work.
+    `events` is the board's own record and the preferred source -- watched live
+    by this process or a previous one, via `bid_log.BidLog`. Without it --
+    a lot no run of the board was ever up for -- `bidders` is all there is: one
+    card per seat in entry order, which is what the chip row showed. The panel
+    must never sit under a price it cannot account for, so the fallback is a
+    fallback and not a blank.
 
-    Takes the poller's mapping, or a bare sequence of slots for the fallback
-    path where no figures are known.
+    `sold` closes the strip on a settled lot: the winner at what it actually
+    went for, which is the one figure a finished pick can vouch for on its own.
     """
-    if not bidders:
-        return '<div class="bidders"><span class="blbl">no bids yet</span></div>'
-    if isinstance(bidders, dict):
-        led = dict(bidders)
-    else:
-        led = {slot: None for slot in bidders}
-    chips = []
-    for slot, amount in led.items():
-        seat = state.seats.get(slot)
-        # From the nomination rather than from `seat.bidding`: who holds the
-        # offer is a fact on the draft payload, and the chips must say the same
-        # thing as the price above them even when nobody has decorated a seat.
-        state_cls = "bid-high" if slot == high else "bid-in"
-        label = _seat_tag(seat) if seat is not None else f"S{slot}"
-        tip = _seat_tip(seat) if seat is not None else f"S{slot}"
-        # The figure rides in the tooltip too: the chip clips at 72px and the
-        # seats that get squeezed are the ones you most want the number for.
-        body = f'<span class="cn">{label}</span>'
-        if amount is not None:
-            body += f'<span class="ca">${amount}</span>'
-            tip += f" · led at ${amount}"
-        chips.append(
-            f'<span class="chip {state_cls}" title="{_esc(tip)}">{body}</span>'
-        )
-    return f'<div class="bidders">{"".join(chips)}</div>'
-
-
-def _bid_trail(state: LeagueState, events: Sequence[Tuple[int, Optional[int]]]) -> str:
-    """The raises in the order they happened, oldest first.
-
-    `_bidder_chips` answers "who's in, at what ceiling" -- one chip per seat,
-    collapsed to their best figure. This answers "in what order": the same
-    seat can appear twice if it took the lead, lost it, and took it back. A
-    second, quieter line under the chips rather than a replacement for them --
-    the chips are still the faster read for who is in it right now.
-
-    Empty whenever the poller never watched this lot open: an older pick made
-    before this process started, or a `--replay` rehearsal. No chip row, no
-    tooltip qualifying it -- just nothing, the same as `_bidder_chips` gets
-    when it falls back to a bare sequence of slots.
-    """
-    if not events:
-        return ""
-    steps = []
-    for slot, amount in events:
-        seat = state.seats.get(slot)
-        tag = _seat_tag(seat) if seat is not None else f"S{slot}"
-        steps.append(tag if amount is None else f"{tag} ${amount}")
-    return f'<div class="trail">{" → ".join(steps)}</div>'
+    rungs = []
+    if events:
+        # The last raise is the one on the clock. Not `high`: the tip of the
+        # timeline is a fact about the strip, and a lot whose leader the payload
+        # has not caught up with should still show its most recent rung as live.
+        last = len(events) - 1
+        for i, (slot, amount) in enumerate(events):
+            cls = "now" if i == last and sold is None else ""
+            rungs.append(_rung(state, slot, amount, cls, "raised to"))
+    elif bidders:
+        led = dict(bidders) if isinstance(bidders, dict) else {s: None for s in bidders}
+        for slot, amount in led.items():
+            # From the nomination rather than from `seat.bidding`: who holds the
+            # offer is a fact on the draft payload, and the strip must say the
+            # same thing as the price above it even when nobody has decorated a
+            # seat.
+            cls = "now" if slot == high and sold is None else ""
+            rungs.append(_rung(state, slot, amount, cls, "led at"))
+    if sold is not None:
+        slot, price = sold
+        # The figures in `events` are what the poller last saw; the price is
+        # what the pick says. They normally agree -- when they do, the closing
+        # rung is the last raise wearing its result rather than a duplicate of
+        # it one pixel to the right.
+        if rungs and events and events[-1] == (slot, price):
+            rungs.pop()
+        rungs.append(_rung(state, slot, price, "sold", "won at"))
+    if not rungs:
+        return '<div class="rungs"><span class="blbl">no bids yet</span></div>'
+    return f'<div class="rungs">{"".join(rungs)}</div>'
 
 
 def render_nomination(
@@ -1259,7 +1314,7 @@ def render_nomination(
     # Who nominated rides with the team and the points, not with the money --
     # it is a fact about the lot, settled when it opened and never changing
     # again, and up in the figures it was a third thing competing with two
-    # that move. The chips below carry who is *bidding*.
+    # that move. The strip below carries who is *bidding*.
     nominator = state.seats.get(nom.nominating_slot or 0)
     if nominator is not None:
         facts.append(f'<span class="onfact nm">nom. {_seat_label(nominator)}</span>')
@@ -1268,7 +1323,7 @@ def render_nomination(
     # the two slots the draft itself publishes are everything there is to know
     # -- and a panel reading "$17 · S8" above "no bids yet" would be lying about
     # a fact printed one line up. The offering seat gets the live figure even on
-    # this path: it is the one chip whose amount the draft payload states
+    # this path: it is the one rung whose amount the draft payload states
     # outright rather than the poller having had to watch for it.
     if isinstance(bidders, dict):
         seen: Dict[int, Optional[int]] = dict(bidders)
@@ -1284,14 +1339,15 @@ def render_nomination(
     # identity -- who is on the block, and the three things about him that do
     # not move. Right is the only two numbers you act on, stacked so the gap
     # between them is itself the read: how far under the crowd's price the
-    # bidding still is. The chips take a strip of their own underneath, which
-    # is what lets a fourth and fifth bidder arrive without squeezing the price.
+    # bidding still is. The timeline takes a strip of its own underneath, which
+    # is what lets a fourth and fifth raise arrive without squeezing the price.
     return (
         '<div class="block">'
         '<div class="onmain">'
         '<div class="onid">'
         f'<div class="onhead">{pill}<span class="who">{name}</span></div>'
         f'<div class="onsub">{sub}</div>'
+        f"{_early_week_strip(player)}"
         "</div>"
         '<div class="onmoney">'
         '<div class="onrow"><span class="figl">$PROJ</span>'
@@ -1300,8 +1356,7 @@ def render_nomination(
         f'<span class="{bid_cls}">{bid}</span></div>'
         "</div>"
         "</div>"
-        f"{_bidder_chips(state, seen, nom.offering_slot)}"
-        f"{_bid_trail(state, bid_events)}"
+        f"{_bid_timeline(state, bid_events, seen, nom.offering_slot)}"
         "</div>"
     )
 
@@ -1317,14 +1372,13 @@ def render_settled_lot(
 
     Same markup and classes as `render_nomination`'s live panel, on purpose:
     a checkpoint is a different moment of the same draft, not a different kind
-    of screen. The number is what it sold for rather than what it is at, and
-    the chip row is `DraftPoller._bid_history`'s record of that lot if the
-    poller was running to see it close -- the same chips the live panel showed
-    while it was open, the winner's figure forced to the settled price rather
-    than whatever was last polled. Without that record -- an older checkpoint
-    from before this process started, or a `--replay` rehearsal -- there is
-    only the one chip a settled pick can vouch for on its own: who won it, and
-    at what.
+    of screen. The number is what it sold for rather than what it is at, and the
+    timeline is `DraftPoller.bids`'s record of that lot if the poller was
+    running to see it close -- the same rungs the live panel showed while it was
+    open, closed off with the sale. Without that record -- an older checkpoint
+    from before this process started, or a `--replay` rehearsal -- there is only
+    the one rung a settled pick can vouch for on its own: who won it, and at
+    what.
     """
     if not state.picks:
         return (
@@ -1345,28 +1399,21 @@ def render_settled_lot(
     label = _seat_label(seat) if seat is not None else f"S{pick.slot}"
     facts.append(f'<span class="onfact nm">won by {label}</span>')
     sub = '<span class="onsep"></span>'.join(facts)
-    if bidders:
-        # The winner's figure is forced to the settled price -- the one
-        # number this pick can vouch for on its own -- rather than whatever
-        # `_bid_history` last saw them holding, which normally agree but need
-        # not (a poll can land between the winning offer and the pick itself).
-        seen = {**bidders, pick.slot: pick.price}
-        chips = _bidder_chips(state, seen, pick.slot)
-    else:
-        tag = _seat_tag(seat) if seat is not None else f"S{pick.slot}"
-        tip = _seat_tip(seat) if seat is not None else f"S{pick.slot}"
-        chips = (
-            '<div class="bidders">'
-            f'<span class="chip bid-high" title="{_esc(tip)} · won at ${pick.price}">'
-            f'<span class="cn">{tag}</span><span class="ca">${pick.price}</span>'
-            "</span></div>"
-        )
+    # The strip ends on the sale rather than on whatever the poller last saw the
+    # winner holding: the price is the one number this pick can vouch for on its
+    # own, and the two normally agree but need not (a poll can land between the
+    # winning offer and the pick itself). Without any record at all that closing
+    # rung is the whole strip, which is still the truth and not a blank.
+    timeline = _bid_timeline(
+        state, bid_events or (), bidders or {}, pick.slot, sold=(pick.slot, pick.price)
+    )
     return (
         '<div class="block">'
         '<div class="onmain">'
         '<div class="onid">'
         f'<div class="onhead">{pill}<span class="who">{name}</span></div>'
         f'<div class="onsub">{sub}</div>'
+        f"{_early_week_strip(player)}"
         "</div>"
         '<div class="onmoney">'
         '<div class="onrow"><span class="figl">$PROJ</span>'
@@ -1375,8 +1422,7 @@ def render_settled_lot(
         f'<span class="figv bidamt">${pick.price}</span></div>'
         "</div>"
         "</div>"
-        f"{chips}"
-        f"{_bid_trail(state, bid_events or ())}"
+        f"{timeline}"
         "</div>"
     )
 

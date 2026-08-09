@@ -328,6 +328,26 @@
     flex: none; }
   .onsub .nm { overflow: hidden; text-overflow: ellipsis; }
 
+  /* The division round, under the facts rather than among them: WK1-3 are three
+     figures that move together and are read as a shape, and dropped into the
+     `·`-separated line they would read as three more unrelated facts about the
+     lot. Each carries its own label because this panel has one player in it and
+     no header row to name columns from, unlike the pool.
+
+     Same green/red off season pace as `.prow .pwk`, and the same hues -- a week
+     that is called out in the pool has to still be called out once the player
+     hits the block, or the colour means one thing in one pane and another in
+     the next. */
+  .onwk { display: flex; align-items: baseline; gap: 8px; min-width: 0;
+    line-height: 1.25; margin-top: 1px; }
+  .onwkc { display: flex; align-items: baseline; gap: 3px; }
+  .onwkl { font-style: normal; font-size: calc(7.5px * var(--fs));
+    color: #949494; font-weight: 700; letter-spacing: 0.05em; }
+  .onwkv { font-style: normal; font-size: calc(10px * var(--fs));
+    font-variant-numeric: tabular-nums; color: #6b6b6b; font-weight: 700; }
+  .onwkv.g { color: #1a7f37; }
+  .onwkv.r { color: #c0392b; }
+
   /* The two figures you act on, and nothing else. Stacked and right-aligned in
      a fixed column so they line up digit for digit -- the gap between them is
      itself the read: how far under the crowd's price the bidding still is. */
@@ -354,50 +374,54 @@
   .onproj { font-size: calc(11px * var(--fs)); font-weight: 700; color: #777;
     line-height: 1.2; }
 
-  /* Everyone who has been in front on this lot, in the order they got there,
-     and the figure each got to. "Held the high bid at some point", precisely --
-     Sleeper publishes the offer on the clock and no history, so this is the
-     board's own memory and never a count of bids it did not see. Unlabelled:
-     the row is the one part of the panel that has to hold twelve seats, and a
-     word across the front of it cost a chip and a half of the axis that was
-     short. The qualification lives in the chips' tooltips instead. */
-  /* A strip of their own under the figures, rather than sharing the price's
-     line. Beside a 20.8px number the 11px chips had to baseline-align to it and
-     hung low, and a fourth bidder arriving squeezed the one figure on the panel
-     that must never be squeezed. Down here the room to grow is sideways.
-     Still clips rather than wrapping -- a twelfth bidder must not push the
-     panel taller than the band allows, and the seats that matter are the ones
-     that got there first. */
-  .bidders { display: flex; align-items: center; gap: 3px; min-width: 0;
-    overflow: hidden; border-top: 1px solid #dcdcdc; padding-top: 3px; }
+  /* Every raise on this lot, in the order it happened, oldest on the left.
+     "Held the high bid at some point", precisely -- Sleeper publishes the offer
+     on the clock and no history, so this is the board's own memory and never a
+     count of bids it did not see. Unlabelled: the strip is the one part of the
+     panel that has to hold a long lot, and a word across the front of it cost a
+     card and a half of the axis that was short. The qualification lives in the
+     rungs' tooltips instead.
+
+     This was two rows -- a chip per seat, and an arrow-joined trail under it --
+     and both were runs of text on the axis the panel has least of. Both gave up
+     at the moment the lot got interesting: the chips clipped the late arrivals,
+     the trail ellipsised the *recent* raises off its right end. One strip that
+     scrolls sideways has neither problem, and it buys back the second row's
+     height for cards tall enough to read down. The only scroller on this page
+     that runs horizontally, which is the point: everything else is a list, and
+     this is a sequence. */
+  .rungs { display: flex; align-items: stretch; gap: 4px; flex: none;
+    min-width: 0; overflow-x: auto; overflow-y: hidden;
+    border-top: 1px solid #dcdcdc; padding-top: 4px;
+    scrollbar-width: thin; scrollbar-color: #ccc transparent; }
   .blbl { font-size: calc(8px * var(--fs)); color: #949494; font-weight: 700;
     text-transform: uppercase; letter-spacing: 0.04em; margin-right: 2px;
-    flex: none; }
-  /* A chip carries a seat and the figure it got to, so it is a two-part thing
-     and inline-flex rather than a clipped run of text: the name may ellipsize,
-     the number never may -- a chip reading "S1 $4" when the seat led at $41 is
-     worse than no chip at all. Hence the cap on the name alone. */
-  .chip { font-size: calc(8.5px * var(--fs)); font-weight: 700; padding: 0 4px;
-    border-radius: 3px; border: 1px solid #c9a0e8; color: #9333ea;
-    background: #f3e8fb; white-space: nowrap; line-height: 1.5; flex: none;
-    display: inline-flex; align-items: baseline; gap: 4px; }
-  .chip .cn { max-width: calc(46px * var(--fs)); overflow: hidden;
-    text-overflow: ellipsis; }
-  .chip .ca { font-variant-numeric: tabular-nums; }
-  /* Whoever holds it now is filled rather than outlined: of the chips, one is a
+    flex: none; align-self: center; }
+  /* A card carries a seat over the figure it took the lot to. Read down rather
+     than across, because the strip is read as a sequence and a card taller than
+     it is wide is a beat in one: twelve of these look like a ladder where
+     twelve chips in a row looked like the same word repeated. The tag may
+     ellipsize, the number never may -- a card reading "$4" when the seat raised
+     to $41 is worse than no card at all. Hence the cap on the tag alone. */
+  .rung { flex: none; display: flex; flex-direction: column; align-items: center;
+    gap: 1px; padding: 2px 5px; border-radius: 4px; border: 1px solid #e6e6e6;
+    background: #fff; min-width: calc(30px * var(--fs)); line-height: 1.15; }
+  .rung .rn { font-size: calc(8px * var(--fs)); font-weight: 700; color: #777;
+    max-width: calc(40px * var(--fs)); overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; }
+  .rung .ra { font-size: calc(10px * var(--fs)); font-weight: 700;
+    color: #9333ea; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  /* The tip of the strip is filled rather than outlined: of the cards, one is a
      fact about this second and the rest are about the last thirty. */
-  .chip.bid-high { background: #9333ea; border-color: #9333ea; color: #fff; }
-  /* The seats that have been outbid keep the purple for the figure and give up
-     the tint: what they got to is still the point, but it is history, and a row
-     of eight filled chips is a row with no high bidder in it. */
-  .chip.bid-in { background: #fff; border-color: #e6e6e6; color: #777; }
-  .chip.bid-in .ca { color: #9333ea; }
-
-  /* The raise-by-raise trail under the chip row: the chips already answer
-     "who's in, at what ceiling" at a glance, so this is a second, quieter
-     line for "in what order" -- muted rather than competing with them. */
-  .trail { font-size: calc(8px * var(--fs)); color: #999; margin-top: 2px;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rung.now { background: #9333ea; border-color: #9333ea; }
+  .rung.now .rn { color: #e9d5ff; }
+  .rung.now .ra { color: #fff; }
+  /* A settled lot ends in money green -- the same green the price above it
+     takes -- so a checkpoint reads as finished from across the room rather than
+     as a live auction whose last raise happens to be the winning one. */
+  .rung.sold { background: #eaf6ec; border-color: #1a7f37; }
+  .rung.sold .rn { color: #1a7f37; }
+  .rung.sold .ra { color: #1a7f37; }
 
   /* Four across, three down: twelve seats, one screen, fixed positions so a
      card stays where you last saw it between refreshes. Wider than it is tall,
