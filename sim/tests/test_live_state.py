@@ -309,7 +309,7 @@ def test_nomination_strip_names_the_player_and_the_bid(midway):
     # yet" over a price and a seat printed one line above it: the two slots the
     # draft itself publishes are what it has, and it shows them.
     assert "no bids yet" not in html
-    assert html.count('class="chip') == 2
+    assert html.count('<span class="rung') == 2
 
 
 def test_the_two_figures_share_one_column(midway):
@@ -365,6 +365,52 @@ def test_a_bid_of_nothing_is_not_money_green(midway):
     assert ".bidamt.none { color: #949494" in render_page("123")
 
 
+def test_the_block_reads_the_division_round_off_season_pace(midway):
+    """The three early weeks are why you would pay up for a body you otherwise
+    rate the same as the next one, so they belong on the panel you bid from --
+    coloured by the same rule as the pool's columns, since a week called out
+    while you were scanning has to still be called out once he is on the block.
+
+    Star Guy paces 400/17 = 23.5: week 1 clears the 15% margin, week 2 sits
+    inside it, week 3 falls through the bottom of it.
+    """
+    star = Player(
+        id="star", name="Star Guy", pos="WR", team="KC", points=400.0,
+        proj_dollar=44, week1=30.0, week2=24.0, week3=15.0,
+    )
+    nom = Nomination(
+        player_id="star", nominating_slot=3, high_bid=17, offering_slot=8
+    )
+    strip = render_nomination(midway, nom, star).split('class="onwk"')[1]
+    strip = strip.split("</div>")[0]
+    assert 'class="onwkv g">30.0<' in strip
+    assert 'class="onwkv">24.0<' in strip
+    assert 'class="onwkv r">15.0<' in strip
+    # Each figure names itself: this panel holds one player and has no header
+    # row to take WK1/WK2/WK3 from, unlike the pool.
+    assert [n for n in ("WK1", "WK2", "WK3") if n in strip] == ["WK1", "WK2", "WK3"]
+
+
+def test_the_block_draws_no_week_strip_without_a_read(midway):
+    """A CSV predating the week columns leaves all three None. Three dashes
+    would take the height without answering anything, so the strip stays away
+    rather than standing in for a read nobody has."""
+    star = Player(
+        id="star", name="Star Guy", pos="WR", team="KC", points=400.0,
+        proj_dollar=44,
+    )
+    nom = Nomination(
+        player_id="star", nominating_slot=3, high_bid=17, offering_slot=8
+    )
+    assert 'class="onwk"' not in render_nomination(midway, nom, star)
+    # Nor for a lot that is not on the sheet at all -- there is no player to
+    # take weeks from, and the panel already says so.
+    off_sheet = Nomination(
+        player_id="99999", nominating_slot=1, high_bid=3, offering_slot=1
+    )
+    assert 'class="onwk"' not in render_nomination(midway, off_sheet, None)
+
+
 def test_nomination_strip_is_idle_between_lots(midway):
     nom = Nomination(
         player_id=None, nominating_slot=None, high_bid=None, offering_slot=None
@@ -388,10 +434,10 @@ def test_settled_lot_shows_the_pick_that_just_landed(midway):
     assert "TreVeyon Henderson" in html
     assert "won by S12" in html
     assert "$16" in html
-    assert html.count('class="chip bid-high"') == 1
-    # Unlike a live lot, there is exactly one chip: who else was in the
+    assert html.count('class="rung sold"') == 1
+    # Unlike a live lot, there is exactly one rung: who else was in the
     # bidding on a closed lot is memory only the live poller ever had.
-    assert html.count('class="chip') == 1
+    assert html.count('<span class="rung') == 1
     assert "no bids yet" not in html
 
 
@@ -446,8 +492,8 @@ def test_a_card_leads_with_money_and_reach(midway):
 
 
 def test_the_header_carries_no_points_or_slot_counts(midway):
-    # Both moved into the NEED pane, where there is room to label them. They
-    # were read occasionally and competed with the two numbers read constantly.
+    # Both were read occasionally and competed with the two numbers read
+    # constantly, so the header gave them up to the fold strip below it.
     for slot in midway.seats:
         header = _card(midway, slot).split("</header>")[0]
         assert "pts" not in header
@@ -468,7 +514,7 @@ def test_a_card_totals_what_its_starters_project(midway):
 
 def test_a_card_counts_the_starters_it_has_bought(midway):
     # How much of the lineup is bought, next to what it projects. Defenses and
-    # kickers are left out, the same ones the NEED pane leaves out: bought once,
+    # kickers are left out, the same ones `_NEED_SKIP` drops: bought once,
     # late, by everyone, so counting them only makes the same denominator mean
     # different things on different cards.
     wanted = [s for s in midway.config.starter_slots if s not in _NEED_SKIP]
@@ -636,8 +682,12 @@ def test_board_controls_sit_in_a_menu_bar_over_the_grid():
     assert bar < page.index('id="max"') < page.index('id="rosters"')
     assert bar < page.index('id="reorder"') < page.index('id="rosters"')
     # The grid takes what the bar leaves rather than a flat 100% of the column,
-    # which would have pushed the bottom row of cards off screen.
-    assert "#rosters { flex: 1; min-height: 0; }" in page
+    # which would have pushed the bottom row of cards off screen. Read as two
+    # declarations rather than one exact string: the rule has picked up padding
+    # since, and what this is pinning is the sizing, not the whole rule.
+    rosters = page.split("#rosters {")[1].split("}")[0]
+    assert "flex: 1" in rosters
+    assert "min-height: 0" in rosters
 
 
 def test_the_grid_is_four_across_three_down_in_both_sizes():
@@ -708,100 +758,29 @@ def _pane(state, slot, pane):
     return next(c for c in chunks if f'data-pane="{pane}"' in c)
 
 
-def test_every_card_carries_all_three_panes_and_the_control_between_them(midway):
+def test_every_card_carries_both_panes_and_the_control_between_them(midway):
     html = render_rosters(midway)
     teams = len(midway.seats)
-    for pane in ("lineup", "bench", "need"):
+    for pane in ("lineup", "bench"):
         # Once as the button that picks it, once as the pane itself.
         assert html.count(f'data-pane="{pane}"') == teams * 2
     assert html.count('class="seg"') == teams
 
 
 def test_the_panes_ship_together_so_switching_needs_no_fetch(midway):
-    # Three panes in one card is what makes switching free: no fetch, so two
-    # panes can never show different moments of the draft.
+    # Both panes in one card is what makes switching free: no fetch, so the two
+    # can never show different moments of the draft.
     seat = next(s for s in midway.seats.values() if s.roster)
     card = _card(midway, seat.slot)
     assert 'class="pane lineup"' in card
-    assert 'class="pane need"' in card
+    assert 'data-pane="bench"' in card
     for pick in seat.picks:
         assert pick.player.name.replace("'", "&#x27;") in card
-
-
-def _needed(state, seat):
-    """The rows a seat's NEED pane actually shows."""
-    return [
-        line
-        for line in position_summary(seat, state.config)
-        if line.pos not in _NEED_SKIP
-    ]
-
-
-def test_need_shows_each_positions_target_and_points(midway):
-    seat = next(s for s in midway.seats.values() if s.roster)
-    need = _pane(midway, seat.slot, "need")
-    for line in _needed(midway, seat):
-        want = f"{line.want:g}"  # 2.5 stays 2.5; 3.0 prints as 3
-        assert f">{line.have}<i>/{want}</i>" in need
-        if line.starter_points:
-            assert f">{line.starter_points:.0f}<" in need
-
-
-def test_need_flags_only_the_positions_still_short(midway):
-    for seat in midway.seats.values():
-        need = _pane(midway, seat.slot, "need")
-        short = [line for line in _needed(midway, seat) if line.need]
-        assert need.count('class="nrow short"') == len(short)
-
-
-def test_need_leaves_out_the_rows_that_are_never_a_decision(midway):
-    # One defense and one kicker, bought once and never decided at the podium:
-    # rows that cost space without changing a bid. The lineup pane still has them.
-    for seat in midway.seats.values():
-        need = _pane(midway, seat.slot, "need")
-        assert ">DEF</i>" not in need
-        assert ">K</i>" not in need
-        assert need.count('class="nrow') == len(_needed(midway, seat))
-
-
-def test_the_lineup_pane_still_shows_what_need_drops(finished):
-    # Dropping them from NEED must not lose them: a full roster's defense is
-    # still there in the pane that lists every slot.
+def test_the_lineup_pane_still_shows_what_the_summaries_drop(finished):
+    # `_NEED_SKIP` keeps defenses and kickers out of the fold strip and the
+    # starter count, and dropping them there must not lose them: a full
+    # roster's defense is still in the pane that lists every slot.
     assert ">DEF</i>" in _pane(finished, 1, "lineup")
-
-
-def test_pips_draw_the_target_at_its_true_length(midway):
-    # One pip per whole starter wanted, plus a half-width pip for a fractional
-    # target -- which is the thing a percentage bar could not say.
-    for seat in midway.seats.values():
-        need = _pane(midway, seat.slot, "need")
-        for line in _needed(midway, seat):
-            row = need.split(f'>{line.pos}</i>')[1].split("</div>")[0]
-            whole = int(line.want)
-            assert row.count('class="pip"') + row.count('class="pip on"') == whole
-            assert row.count("pip half") == (1 if line.want > whole else 0)
-
-
-def test_pips_fill_to_what_a_seat_owns_and_no_further(midway):
-    for seat in midway.seats.values():
-        need = _pane(midway, seat.slot, "need")
-        for line in _needed(midway, seat):
-            row = need.split(f'>{line.pos}</i>')[1].split("</div>")[0]
-            filled = row.count('class="pip on"') + row.count('class="pip half on"')
-            assert filled == min(line.have, math.ceil(line.want))
-
-
-def test_surplus_shows_as_extra_pips_outside_the_run(finished):
-    # A fourth running back is depth, not a fault. The old fill bar capped at
-    # 100% and drew it as "done"; here it sits past the target, outlined.
-    seat = finished.seats[1]
-    need = _pane(finished, 1, "need")
-    for line in _needed(finished, seat):
-        row = need.split(f'>{line.pos}</i>')[1].split("</div>")[0]
-        assert row.count("pip extra") == max(0, line.have - math.ceil(line.want))
-    assert "pip extra" in need  # a finished roster is deep somewhere
-
-
 def test_an_unfilled_pip_is_neutral_not_a_tint_of_the_position():
     # Tinted, a slot you do not own was still QB pink or WR blue, and the two
     # ends of a row differed by saturation -- which reads as "a bit filled", and
@@ -814,30 +793,11 @@ def test_an_unfilled_pip_is_neutral_not_a_tint_of_the_position():
     assert ".pip.on { background: var(--pos, #7c90a0); box-shadow: none; }" in page
     # Surplus is a slot you own, so it keeps the accent -- outlined, past the run.
     assert "var(--pos" in page.split("  .pip.extra {")[1].split("}")[0]
-
-
-def test_the_need_pane_ends_with_the_spending_pace(midway):
-    # $37 across three slots and $37 across twelve are different seats, and the
-    # balance alone does not say which one you are looking at.
-    for seat in midway.seats.values():
-        pace = _pane(midway, seat.slot, "need").split('class="pace"')[1]
-        assert f"<b>{seat.open_slots}</b> slots left" in pace
-        if seat.open_slots:
-            rate = round(seat.budget_left / seat.open_slots, 1)
-            assert f"<b>${rate:g}</b> / slot" in pace
-
-
-def test_a_full_seat_reports_no_pace_rather_than_dividing_by_zero(finished):
-    pace = _pane(finished, 1, "need").split('class="pace"')[1]
-    assert "<b>0</b> slots left" in pace
-    assert "$0" in pace
-
-
 def test_pane_state_is_client_side_and_survives_a_refresh():
     page = render_page("123")
     # Lineup is what the board loads on; a card with no stored choice shows it.
     assert ".card .pane.lineup { display: flex;" in page
-    assert '.card.view-need .pane.need' in page
+    assert '.card.view-bench .pane[data-pane="bench"]' in page
     # The cards are replaced every tick, so the choice must be re-applied after
     # each swap and the handler must be delegated, not per-button.
     assert "applyViews()" in page
@@ -928,9 +888,9 @@ def _pips(markup):
 
 
 def test_the_strip_says_what_is_filled_and_what_is_not(midway):
-    # The same positions the NEED pane covers, drawn with the same pips -- one
-    # `position_summary` call feeds both, so they cannot cover different
-    # positions. What they count against differs, on purpose; see below.
+    # Every position `position_summary` reports except the two `_NEED_SKIP`
+    # drops, drawn as pips. What the run counts against is a separate question,
+    # on purpose; see below.
     strip = _strip(midway, 1)
     for line in position_summary(midway.seats[1], midway.config):
         if line.pos in _NEED_SKIP:
@@ -944,7 +904,7 @@ def test_the_strips_run_is_the_slots_a_position_owns_outright(mock_config, pool)
     # Folded, a card is read off rather than shopped for: the question is what a
     # seat *has*, so the run is `owned_starters()` -- 2 QB / 2 RB / 3 WR / 1 TE,
     # the whole slots the lineup seats no matter what -- not the fractional
-    # DRAFT_TARGETS the NEED pane buys against.
+    # DRAFT_TARGETS a draft plan buys against.
     assert mock_config.owned_starters() == {
         "QB": 2, "RB": 2, "WR": 3, "TE": 1, "DEF": 1, "K": 0
     }

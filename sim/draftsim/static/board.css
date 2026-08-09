@@ -478,7 +478,7 @@
      grey: the number is what this card and Sleeper's own board have in common,
      and the board can be dragged out of seat order. A name is typed or comes
      from a league, so it can be long -- it gets the room the segment does not
-     need, and clips rather than pushing LINEUP/BN/NEED off the card. */
+     need, and clips rather than pushing LINEUP/BN off the card. */
   .card header .top.named { gap: 4px; }
   .card header .top.named .team, .teamf { min-width: 0; overflow: hidden;
     text-overflow: ellipsis; white-space: nowrap; color: #1a1a1a; }
@@ -504,7 +504,7 @@
 
   /* The header is money and nothing else. Balance in the biggest type on the
      card, the reach beside it, and a bar of both -- everything else a seat
-     could say moved into the NEED pane, where it can be labeled. */
+     could say moved down into the fold strip, where it can be labeled. */
   .big { font-size: calc(13px * var(--fs)); font-weight: 700; color: #1a7f37;
     line-height: 1.15; font-variant-numeric: tabular-nums; }
   .max { margin-left: auto; font-size: calc(8.5px * var(--fs)); color: #888;
@@ -542,8 +542,8 @@
   .proj .pts { margin-left: auto; }
   .proj b { font-size: calc(11px * var(--fs)); color: #1a1a1a;
     font-weight: 700; font-variant-numeric: tabular-nums; }
-  /* The target sits back from the count, the way the NEED pane's have/want
-     does -- what is bought is the figure, what is asked for is the scale. */
+  /* The target sits back from the count -- what is bought is the figure, what
+     is asked for is the scale. */
   .proj .fill i { font-style: normal; font-weight: 400; color: #949494;
     font-size: calc(9px * var(--fs)); }
   /* A lineup with a hole in it says so. Amber, not the out-of-market red: this
@@ -587,7 +587,7 @@
      Stacked, the first line of a track is always that position's own slots. */
   .foldsum .fstack { display: flex; flex-direction: column; gap: 1.5px;
     min-width: 0; }
-  /* Larger than the NEED pane's pips, not smaller. This strip is the whole of
+  /* Deliberately large pips. This strip is the whole of
      what a folded card says, and shrinking it to hold four positions on one row
      made it a texture rather than something you read. It takes the size it needs
      and the grid above drops to two tracks when a card is too narrow for four --
