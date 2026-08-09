@@ -13,8 +13,8 @@ the next one.
 
 import pytest
 
-from draftsim import bid_log as bid_log_mod
-from draftsim import seat_names as names_mod
+from liveboard import bid_log as bid_log_mod
+from liveboard import seat_names as names_mod
 
 
 @pytest.fixture(autouse=True)

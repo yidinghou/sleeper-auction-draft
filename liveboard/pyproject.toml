@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "liveboard"
+version = "0.1.0"
+description = "Live auction-draft board for a real Sleeper draft, valued by draftsim"
+requires-python = ">=3.9"
+# draftsim isn't on PyPI -- install it editable from ../draftsim first (see
+# liveboard/README.md), then this package into the same venv.
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["liveboard*"]
+
+# board.html/board.css/board.js. `render_page` reads them from beside the
+# module, so they have to travel with it into a non-editable install.
+[tool.setuptools.package-data]
+liveboard = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

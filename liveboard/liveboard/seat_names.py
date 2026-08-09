@@ -27,7 +27,7 @@ import tempfile
 from pathlib import Path
 from typing import Dict, Optional
 
-from .valuation import REPO_ROOT
+from draftsim.valuation import REPO_ROOT
 
 NAMES_DIR = REPO_ROOT / "data"
 

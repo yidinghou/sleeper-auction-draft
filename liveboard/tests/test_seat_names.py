@@ -15,11 +15,11 @@ from pathlib import Path
 
 import pytest
 
-from draftsim import live as live_mod
-from draftsim import seat_names as names_mod
-from draftsim.live import DraftPoller
-from draftsim.seat_names import MAX_NAME, SeatNames, clean_name
-from draftsim.sleeper import SleeperError, seat_names, slot_for_user_map
+from liveboard import live as live_mod
+from liveboard import seat_names as names_mod
+from liveboard.live import DraftPoller
+from liveboard.seat_names import MAX_NAME, SeatNames, clean_name
+from liveboard.sleeper import SleeperError, seat_names, slot_for_user_map
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

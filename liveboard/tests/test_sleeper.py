@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from draftsim.config import DEFAULT_ROSTER_SLOTS, BENCH
-from draftsim.sleeper import (
+from liveboard.sleeper import (
     SleeperError,
     config_from_draft,
     draft_pulse,

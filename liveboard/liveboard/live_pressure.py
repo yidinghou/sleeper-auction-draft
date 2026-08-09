@@ -27,7 +27,7 @@ from .live_state import (
     Seat,
     position_summary,
 )
-from .valuation import Player
+from draftsim.valuation import Player
 
 # Tier floors, highest first: a position's pool cut into price bands.
 #

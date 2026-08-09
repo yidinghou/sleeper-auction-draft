@@ -24,7 +24,7 @@ import html
 from pathlib import Path
 from typing import Dict, Mapping, Optional, Sequence, Tuple, Union
 
-from .config import BENCH
+from draftsim.config import BENCH
 from .live_pressure import PositionPressure, pressure
 from .live_state import (
     DRAFT_TARGETS,
@@ -34,16 +34,16 @@ from .live_state import (
     SeatPick,
     position_summary,
 )
-from .roster import display_slots, is_lineup_legal
+from draftsim.roster import display_slots, is_lineup_legal
 from .sleeper import Nomination
-from .theme import (
+from draftsim.theme import (
     BASE_CSS_LIGHT,
     POS_COLOR_LIGHT,
     POS_FALLBACK_LIGHT,
     SLOT_LABEL,
     badge,
 )
-from .valuation import Player, market_value
+from draftsim.valuation import Player, market_value
 
 # The shell, the stylesheet and the client. Beside the module rather than on a
 # search path: they are this board's, and nothing else ever loads them.

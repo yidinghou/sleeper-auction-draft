@@ -37,7 +37,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence
 
-from .config import BENCH, DraftConfig
+from draftsim.config import BENCH, DraftConfig
 
 API_BASE = "https://api.sleeper.app/v1"
 

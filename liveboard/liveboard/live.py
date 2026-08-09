@@ -1,6 +1,6 @@
 """Serve a live board for a real Sleeper draft.
 
-    python -m draftsim.live --draft-id 1387809050569240576
+    python -m liveboard.live --draft-id 1387809050569240576
 
 Opens a local page showing every seat's money, room and reach, refreshing as
 picks land. Point it at a mock first — the valuation is identical, so a mock is
@@ -49,7 +49,7 @@ from .sleeper import (
     seat_for_user,
     seat_names,
 )
-from .valuation import Player, by_sleeper_id, load_players
+from draftsim.valuation import Player, by_sleeper_id, load_players
 
 DEFAULT_PORT = 8765
 DEFAULT_INTERVAL = 3.0

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from draftsim.live_render import (
+from liveboard.live_render import (
     _POOL_PER_POS,
     _POOL_SHOWN,
     _esc,
@@ -15,8 +15,8 @@ from draftsim.live_render import (
     render_page,
     render_pool,
 )
-from draftsim.live_state import SeatPick, reconstruct
-from draftsim.sleeper import config_from_draft
+from liveboard.live_state import SeatPick, reconstruct
+from liveboard.sleeper import config_from_draft
 from draftsim.valuation import Player, load_players, market_value
 
 FIXTURES = Path(__file__).parent / "fixtures"

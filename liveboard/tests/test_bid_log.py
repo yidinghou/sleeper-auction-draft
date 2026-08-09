@@ -7,7 +7,7 @@ the one thing this module exists to protect.
 
 import json
 
-from draftsim.bid_log import BidLog
+from liveboard.bid_log import BidLog
 
 
 def test_a_closed_lot_survives_a_new_instance(tmp_path):

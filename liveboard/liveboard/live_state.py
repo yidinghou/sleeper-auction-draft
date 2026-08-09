@@ -21,16 +21,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence
 
-from .auction import max_bid
-from .config import CONCRETE_POSITIONS, DraftConfig
-from .roster import (
+from draftsim.auction import max_bid
+from draftsim.config import CONCRETE_POSITIONS, DraftConfig
+from draftsim.roster import (
     marginal_points,
     marginal_thresholds,
     open_slots,
     positional_need,
     starters,
 )
-from .valuation import Player, _make_id, by_sleeper_id, replacement_points
+from draftsim.valuation import Player, _make_id, by_sleeper_id, replacement_points
 
 
 @dataclass(frozen=True)

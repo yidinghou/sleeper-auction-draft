@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from draftsim.config import BENCH, DraftConfig
-from draftsim.live_render import (
+from liveboard.live_render import (
     _NEED_SKIP,
     _short_name,
     render_nomination,
@@ -16,7 +16,7 @@ from draftsim.live_render import (
     render_rosters,
     render_settled_lot,
 )
-from draftsim.live_state import (
+from liveboard.live_state import (
     DRAFT_TARGETS,
     contenders,
     position_summary,
@@ -25,7 +25,7 @@ from draftsim.live_state import (
     spend_by_position,
 )
 from draftsim.roster import display_slots, starters
-from draftsim.sleeper import Nomination, config_from_draft
+from liveboard.sleeper import Nomination, config_from_draft
 from draftsim.valuation import Player, load_players
 
 FIXTURES = Path(__file__).parent / "fixtures"
