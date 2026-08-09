@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from draftsim.live_render import (
+    _POOL_PER_POS,
     _POOL_SHOWN,
     _esc,
     _log_price,
@@ -70,18 +71,48 @@ def test_the_pool_never_shows_a_player_who_is_gone(midway):
     taken = {pick.player.id for pick in midway.picks}
     assert not [p for p in midway.available if p.id in taken]
 
-    expected = sorted(
-        midway.available, key=lambda p: (-market_value(p), -p.points, p.name)
-    )[:_POOL_SHOWN]
     # Escaped, because a full name can carry an apostrophe -- "D'Andre Swift"
     # ships as "D&#x27;Andre Swift", and the short name never had to.
     shown = re.findall(r"<b>(.*?)</b>", render_pool(midway))
-    assert shown == [_esc(p.name) for p in expected]
+    ranked = _ranked(midway)
+    # The pane is the overall cut plus a floor per position, so it is a superset
+    # of the top `_POOL_SHOWN` -- but whatever it holds, it holds in `$PROJ`
+    # order and holds nothing that is not still available.
+    assert set(shown) <= {_esc(p.name) for p in ranked}
+    assert {_esc(p.name) for p in ranked[:_POOL_SHOWN]} <= set(shown)
+    assert shown == [_esc(p.name) for p in ranked if _esc(p.name) in set(shown)]
+
+
+def _ranked(state):
+    """The available sheet in the order the pool draws it."""
+    return sorted(
+        state.available, key=lambda p: (-market_value(p), -p.points, p.name)
+    )
+
+
+def _pool_rows(html):
+    """Player rows, less the header row that shares their class."""
+    return html.count('class="prow"') - html.count('class="prow phdr"')
 
 
 def test_the_pool_is_a_shortlist_not_the_sheet(midway):
     assert len(midway.available) > _POOL_SHOWN
-    assert render_pool(midway).count('class="prow"') == _POOL_SHOWN
+    rows = _pool_rows(render_pool(midway))
+    # Not exactly `_POOL_SHOWN`: the per-position floor carries more from
+    # further down the same list. Still a shortlist, which is the point.
+    assert _POOL_SHOWN <= rows < len(midway.available)
+
+
+def test_every_position_is_carried_deep_enough_to_filter_on(midway):
+    # The overall cut is ordered by price, and three hundred names by price is
+    # not three hundred names *at a position* -- late on it can hold four tight
+    # ends, which makes the TE filter answer "almost nobody" when the truth is
+    # "nobody worth having". `_POOL_PER_POS` is the floor that prevents it.
+    html = render_pool(midway)
+    drawn = re.findall(r'class="prow" data-pos="([A-Z]+)"', html)
+    for pos in {p.pos for p in midway.available}:
+        have = len([p for p in midway.available if p.pos == pos])
+        assert drawn.count(pos) >= min(have, _POOL_PER_POS)
 
 
 def test_an_unpriced_player_still_gets_a_row():
@@ -123,13 +154,20 @@ def test_the_log_names_the_seat_that_bought(midway):
     assert f"${newest.price}" in top
 
 
-def test_the_log_says_what_position_went(midway):
-    # The same pill the pool uses: what the room has been paying for running
-    # backs is a question you answer by colour, not by reading fifteen names.
+def test_the_log_says_what_position_went_and_how_deep(midway):
+    # The same pill the pool uses -- what the room has been paying for running
+    # backs is a question you answer by colour, not by reading fifteen names --
+    # except the log writes the draft-order rank on it too. $54 for QB1 and $54
+    # for QB9 are not the same event, and the two are one fact, not two columns.
     newest = max(midway.picks, key=lambda p: p.pick_no)
     top = render_log(midway).split('class="lrow"')[1]
-    assert f'class="badge"' in top
-    assert f">{newest.player.pos}<" in top
+    assert 'class="badge"' in top
+    nth = sum(
+        1
+        for p in midway.picks
+        if p.player.pos == newest.player.pos and p.pick_no <= newest.pick_no
+    )
+    assert f">{newest.player.pos}{nth}</span>" in top
 
 
 @pytest.mark.parametrize(
@@ -229,10 +267,12 @@ def test_the_live_band_is_two_panels_across():
     page = render_page("123")
     assert 'class="bandbody live2"' in page
     assert ".band-live > .bandbody.live2 { flex-direction: row" in page
-    # The bid is the left two fifths, the chart the right three.
+    # An even split, bid on the left. The bid panel is the one that changes
+    # every few seconds and the chart is the one with the most to show, so
+    # neither is allowed to crowd the other out.
     assert page.index('id="block"') < page.index('id="ledger"')
-    assert ".bidpane { flex: 2 1 0; }" in page
-    assert ".moneypane { flex: 3 1 0; }" in page
+    assert ".bidpane { flex: 1 1 0; }" in page
+    assert ".moneypane { flex: 1 1 0; }" in page
     # Still the two swap targets, and still empty in the shell: the panel titles
     # are chrome and stay put, the fragments inside them are replaced.
     assert '<div id="block"></div>' in page
