@@ -48,18 +48,19 @@ next-env.d.ts
 /data/*.png
 
 # What the live board watched the room bid, per draft. Written by
-# draftsim.live as each lot closes; every rehearsal against a mock leaves one.
+# liveboard.live as each lot closes; every rehearsal against a mock leaves one.
 # Note this is the one file here that cannot be regenerated -- Sleeper serves
 # no bid history -- so a draft whose trail you want to keep needs an explicit
 # `git add -f data/bid-log-<draft_id>.json`.
 /data/bid-log-*.json
 
-# python (sim/ draft harness)
+# python (draftsim / liveboard packages)
 __pycache__/
 *.pyc
 .pytest_cache/
 .ruff_cache/
-sim/.venv/
-sim/*.egg-info/
-sim/draftsim.egg-info/
-sim/out/
+draftsim/.venv/
+draftsim/*.egg-info/
+draftsim/out/
+liveboard/.venv/
+liveboard/*.egg-info/

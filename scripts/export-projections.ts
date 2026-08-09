@@ -6,7 +6,7 @@
  * the first N weeks (default 3).
  *
  * player_id is the join key back to Sleeper — draft picks arrive keyed by it,
- * so the live board (sim/draftsim/live.py) needs it to match a pick to a
+ * so the live board (liveboard/liveboard/live.py) needs it to match a pick to a
  * projection. Team defenses use the team abbreviation as their id ("KC").
  *
  * Rank, bye, and the projected auction dollar come from the live auction draft
