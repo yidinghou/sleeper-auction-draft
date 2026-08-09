@@ -34,9 +34,16 @@ def test_free_agents_flag_returns_the_whole_sheet():
 
 
 def test_spot_check_josh_allen(players):
+    """One row read end to end, to catch a column shift in the join.
+
+    The figures track the scrape rather than being fixed forever -- `$PROJ`
+    moved 59 -> 58 in the 2026-08-08 refresh, and a spot check that could not
+    move with it would be a test of when the data was pulled. What it is
+    actually pinning is that each value lands in the field it belongs to.
+    """
     allen = next(p for p in players if p.name == "Josh Allen" and p.pos == "QB")
     assert allen.team == "BUF"
-    assert allen.proj_dollar == 59
+    assert allen.proj_dollar == 58
     assert allen.bye == 7
     assert allen.rank == 1
     assert allen.points == pytest.approx(361.5)
