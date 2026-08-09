@@ -451,29 +451,35 @@ class DraftPoller:
             )
         return self.names_note or self.bids_note
 
-    def _build(self, draft, state: LeagueState, nom, nominee: Optional[Player]):
-        config = state.config
-        status = draft.get("status") or "unknown"
-        if self.replay is not None:
-            # The feed's own status still reads "complete"; say what is
-            # actually on screen so a rehearsal is never mistaken for live.
-            status = f"REPLAY at pick {len(state.picks)}"
-        stale = self._warning(state)
-        seat = self.my_seat(draft)
+    def _snapshot_of(
+        self,
+        draft: Dict[str, Any],
+        state: LeagueState,
+        subtitle: str,
+        nomination_html: str,
+        nom_pos: str,
+        nav: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Everything a snapshot says that does not depend on which kind it is.
+
+        A live tick and a rewound checkpoint are the same board at different
+        moments, and thirteen of their fifteen keys were identical -- built
+        twice, so every new fragment had to be added in both and a checkpoint
+        that quietly lacked one was the failure mode. They differ in the
+        subtitle, the block panel, the position the pressure band lights, and
+        the nav; those arrive as arguments.
+        """
         # Which draft this actually is. A finished mock and tonight's league
         # draft render identically, so pointing the board at last week's id is
         # a mistake it used to keep to itself -- the name and the tail of the
         # id are cheap and make it a glance.
         name = (draft.get("metadata") or {}).get("name") or "draft"
+        seat = self.my_seat(draft)
         return {
-            "teams": config.teams,
-            # Connection state and nothing else. The league's constants never
-            # changed mid-draft and did not earn a line; the one live number in
-            # the old subtitle -- what the room has spent -- is now drawn.
-            "subtitle": status,
+            "teams": state.config.teams,
+            "subtitle": subtitle,
             "draft_label": f"{name} · …{str(self.draft_id)[-6:]}",
             "my_seat": seat,
-            "nominating_seat": nom.nominating_slot,
             # Not for drawing -- every fragment already carries its own names.
             # This is what the rename box is prefilled from, so editing a name
             # starts from the one on screen rather than from an empty field.
@@ -487,25 +493,43 @@ class DraftPoller:
             "ledger_html": render_ledger(
                 state, seat, self.seat_note, self.user or ""
             ),
-            "nomination_html": render_nomination(
-                state, nom, nominee, self._bidders, self._bid_events
-            ),
+            "nomination_html": nomination_html,
             "rosters_html": render_rosters(state, seat),
-            # Only the nominee's own card lights its bidders: the bidding is on
-            # one player at one position, and repeating it across all four said
-            # nothing about which run is actually on.
-            "pressure_html": render_pressure(
-                state, nominee.pos if nominee is not None else ""
-            ),
+            # Only the card for whatever is on the block lights its bidders:
+            # the bidding is on one player at one position, and repeating it
+            # across all four said nothing about which run is actually on.
+            "pressure_html": render_pressure(state, nom_pos),
             "pool_html": render_pool(state, seat),
             "log_html": render_log(state, seat),
             "polled_at": time.strftime("%H:%M:%S"),
-            "warning": stale,
+            "warning": self._warning(state),
+            "nav": nav,
+        }
+
+    def _build(self, draft, state: LeagueState, nom, nominee: Optional[Player]):
+        status = draft.get("status") or "unknown"
+        if self.replay is not None:
+            # The feed's own status still reads "complete"; say what is
+            # actually on screen so a rehearsal is never mistaken for live.
+            status = f"REPLAY at pick {len(state.picks)}"
+        snapshot = self._snapshot_of(
+            draft,
+            state,
+            # Connection state and nothing else. The league's constants never
+            # changed mid-draft and did not earn a line; the one live number in
+            # the old subtitle -- what the room has spent -- is now drawn.
+            status,
+            render_nomination(state, nom, nominee, self._bidders, self._bid_events),
+            nominee.pos if nominee is not None else "",
             # A live snapshot is always "caught up to itself" -- index and
             # total are the same number. `snapshot()` only ever substitutes a
             # checkpoint in place of this dict; it never edits this one.
-            "nav": {"index": len(state.picks), "total": len(state.picks), "live": True},
-        }
+            {"index": len(state.picks), "total": len(state.picks), "live": True},
+        )
+        # Live only: there is no lot in progress on a checkpoint to have a
+        # nominating seat.
+        snapshot["nominating_seat"] = nom.nominating_slot
+        return snapshot
 
     def _trace_for(
         self, player_id: Optional[str]
@@ -550,36 +574,18 @@ class DraftPoller:
         for slot, seat in state.seats.items():
             seat.name = self.names.label(slot)
             seat.bidding = "high" if winner is not None and slot == winner.slot else ""
-        seat = self.my_seat(draft)
-        name = (draft.get("metadata") or {}).get("name") or "draft"
-        stale = self._warning(state)
         bidders, events = self._trace_for(
             winner.player.sleeper_id if winner is not None else None
         )
         total = len(picks)
-        return {
-            "teams": config.teams,
-            "subtitle": f"Pick {index} of {total} — rewound",
-            "draft_label": f"{name} · …{str(self.draft_id)[-6:]}",
-            "my_seat": seat,
-            "seat_names": {
-                str(slot): seat_.name for slot, seat_ in state.seats.items()
-            },
-            "spend_html": render_spend(state),
-            "ledger_html": render_ledger(
-                state, seat, self.seat_note, self.user or ""
-            ),
-            "nomination_html": render_settled_lot(state, bidders, events),
-            "rosters_html": render_rosters(state, seat),
-            "pressure_html": render_pressure(
-                state, winner.player.pos if winner is not None else ""
-            ),
-            "pool_html": render_pool(state, seat),
-            "log_html": render_log(state, seat),
-            "polled_at": time.strftime("%H:%M:%S"),
-            "warning": stale,
-            "nav": {"index": index, "total": total, "live": False},
-        }
+        return self._snapshot_of(
+            draft,
+            state,
+            f"Pick {index} of {total} — rewound",
+            render_settled_lot(state, bidders, events),
+            winner.player.pos if winner is not None else "",
+            {"index": index, "total": total, "live": False},
+        )
 
     def wait_for(self) -> float:
         """How long to sleep before looking again.

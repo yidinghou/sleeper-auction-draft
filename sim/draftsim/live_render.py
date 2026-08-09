@@ -21,7 +21,6 @@ stylesheet and its client -- lives in `static/` and is assembled by
 from __future__ import annotations
 
 import html
-import math
 from pathlib import Path
 from typing import Dict, Mapping, Optional, Sequence, Tuple, Union
 
@@ -213,20 +212,20 @@ def _column_header() -> str:
     )
 
 
-def _pips(have: int, want: float, color: str, cap: bool = False) -> str:
+def _pips(have: int, want: float, color: str) -> str:
     """The target drawn at its true length: one pip per whole starter it asks
     for, the fractional remainder drawn as a half-width pip.
 
     This replaced a percentage-fill bar, which lied at the top end -- a ratio
     pins at 100% the moment you reach the target, so 4/2.5 and 2.5/2.5 drew
-    identically when they mean opposite things. Here surplus bodies show as
-    narrow outlined pips *past* the run, so depth reads as depth.
+    identically when they mean opposite things.
 
-    `cap` stops at the target and draws no surplus. Depth is a roster question,
-    not a run-pressure one: inside a pressure tile a fourth quarterback only made
-    one of twelve tiles wider than its neighbours, and what the run pane wants
-    from that seat is the single fact that it has stopped buying -- which the
-    dimming says. The roster's fold strips still draw it in full.
+    The run stops at the target and never draws surplus. Depth is a roster
+    question, not a run-pressure one: inside a pressure tile a fourth
+    quarterback only made one of twelve tiles wider than its neighbours, and
+    what the run pane wants from that seat is the single fact that it has
+    stopped buying -- which the dimming says. Where depth *is* the question,
+    `_fold_cell` draws it as a line of its own beneath the run.
     """
     whole = int(want)
     pips = "".join(
@@ -235,8 +234,6 @@ def _pips(have: int, want: float, color: str, cap: bool = False) -> str:
     )
     if want > whole:
         pips += f'<span class="pip half{" on" if have > whole else ""}"></span>'
-    if not cap:
-        pips += '<span class="pip extra"></span>' * max(0, have - math.ceil(want))
     return f'<span class="pips" style="--pos:{color}">{pips}</span>'
 
 
@@ -258,7 +255,7 @@ def _fold_cell(line: PositionLine, owned: int) -> str:
     depth is a line under whichever position has it.
     """
     color = POS_COLOR_LIGHT.get(line.pos, POS_FALLBACK_LIGHT)
-    stack = _pips(line.have, owned, color, cap=True)
+    stack = _pips(line.have, owned, color)
     # Depth wraps at twice the slots owned, so a position carrying everything it
     # could plausibly carry is still two lines: four spare running backs under
     # two RB slots, not two rows of two. The line is wider than the run above it
@@ -666,7 +663,7 @@ def _seat_tile(
     body = (
         '<span class="tfull">✓</span>'
         if not line.need
-        else _pips(line.have, line.want, color, cap=True)
+        else _pips(line.have, line.want, color)
     )
     tip = (
         f"{_seat_tip(seat)} — {line.have}/{_num(line.want)} {line.pos} · "
@@ -1259,6 +1256,75 @@ def _bid_timeline(
     return f'<div class="rungs">{"".join(rungs)}</div>'
 
 
+def _idle_block(state: LeagueState) -> str:
+    return (
+        '<div class="block idle">Nothing nominated — '
+        f"{len(state.picks)} picks in.</div>"
+    )
+
+
+def _block_panel(
+    player: Optional[Player],
+    name: str,
+    who: str,
+    money_label: str,
+    money: str,
+    money_cls: str,
+    timeline: str,
+) -> str:
+    """The block panel, live or settled.
+
+    Both states are the same screen at different moments of the same draft, so
+    they are the same markup: identity on the left, and on the right the only
+    two figures you act on, stacked in a fixed column so `$PROJ` and the figure
+    beneath it line up digit for digit.
+
+    What differs is four strings. `who` is the seat fact under the name --
+    who nominated it while it is open, who won it once it is not. `money_label`
+    and `money` are the second figure, "Bid" against "Sold". `name` is passed
+    in rather than read off `player` because an unknown nomination has an id
+    and no player at all.
+    """
+    if player is None:
+        pill = ""
+        proj_txt = "—"
+        facts = ['<span class="onfact">not in projections</span>']
+    else:
+        pill = badge(player.pos, light=True)
+        proj = market_value(player)
+        proj_txt = f"${proj:.0f}" if proj else "—"
+        # Free agents carry no team, and an empty span between two separators
+        # draws a dot with nothing on one side of it. Absent facts leave, and
+        # take their separator with them.
+        facts = []
+        if player.team:
+            facts.append(f'<span class="onfact">{_esc(player.team)}</span>')
+        facts.append(f'<span class="onfact">{player.points:.0f} pts</span>')
+    # Empty when the draft names a nominating seat the board has never heard
+    # of; an empty span here would draw a separator dot with nothing beside it.
+    if who:
+        facts.append(f'<span class="onfact nm">{who}</span>')
+    sub = '<span class="onsep"></span>'.join(facts)
+    return (
+        '<div class="block">'
+        '<div class="onmain">'
+        '<div class="onid">'
+        f'<div class="onhead">{pill}<span class="who">{name}</span></div>'
+        f'<div class="onsub">{sub}</div>'
+        f"{_early_week_strip(player)}"
+        "</div>"
+        '<div class="onmoney">'
+        '<div class="onrow"><span class="figl">$PROJ</span>'
+        f'<span class="figv onproj">{proj_txt}</span></div>'
+        f'<div class="onrow"><span class="figl">{money_label}</span>'
+        f'<span class="{money_cls}">{money}</span></div>'
+        "</div>"
+        "</div>"
+        f"{timeline}"
+        "</div>"
+    )
+
+
 def render_nomination(
     state: LeagueState,
     nom: Nomination,
@@ -1283,30 +1349,7 @@ def render_nomination(
     is it at, who is still in -- but the first two are read down, not across.
     """
     if not nom.is_live:
-        return (
-            '<div class="block idle">Nothing nominated — '
-            f"{len(state.picks)} picks in.</div>"
-        )
-    # The identity half. `facts` are the quiet second line under the name; the
-    # pill sits beside the name itself, where it reads as part of who this is
-    # rather than as the first item in a list.
-    if player is None:
-        name = f"player {_esc(nom.player_id)}"
-        pill = ""
-        proj_txt = "—"
-        facts = ['<span class="onfact">not in projections</span>']
-    else:
-        name = _esc(player.name)
-        pill = badge(player.pos, light=True)
-        proj = market_value(player)
-        proj_txt = f"${proj:.0f}" if proj else "—"
-        # Free agents carry no team, and an empty span between two separators
-        # draws a dot with nothing on one side of it. Absent facts leave, and
-        # take their separator with them.
-        facts = []
-        if player.team:
-            facts.append(f'<span class="onfact">{_esc(player.team)}</span>')
-        facts.append(f'<span class="onfact">{player.points:.0f} pts</span>')
+        return _idle_block(state)
     # A bid of nothing is not a small green amount of money: at this size the
     # dash in money green reads as a filled bar, so the placeholder greys out.
     bid = f"${nom.high_bid}" if nom.high_bid is not None else "—"
@@ -1316,9 +1359,7 @@ def render_nomination(
     # again, and up in the figures it was a third thing competing with two
     # that move. The strip below carries who is *bidding*.
     nominator = state.seats.get(nom.nominating_slot or 0)
-    if nominator is not None:
-        facts.append(f'<span class="onfact nm">nom. {_seat_label(nominator)}</span>')
-    sub = '<span class="onsep"></span>'.join(facts)
+    who = f"nom. {_seat_label(nominator)}" if nominator is not None else ""
     # The poller's memory is the fuller answer and normally arrives. Without it,
     # the two slots the draft itself publishes are everything there is to know
     # -- and a panel reading "$17 · S8" above "no bids yet" would be lying about
@@ -1335,29 +1376,14 @@ def render_nomination(
                 seen.setdefault(slot, None)
         if nom.offering_slot is not None and nom.high_bid is not None:
             seen[nom.offering_slot] = nom.high_bid
-    # Split by what the fact is *for*, not by how much room it needs. Left is
-    # identity -- who is on the block, and the three things about him that do
-    # not move. Right is the only two numbers you act on, stacked so the gap
-    # between them is itself the read: how far under the crowd's price the
-    # bidding still is. The timeline takes a strip of its own underneath, which
-    # is what lets a fourth and fifth raise arrive without squeezing the price.
-    return (
-        '<div class="block">'
-        '<div class="onmain">'
-        '<div class="onid">'
-        f'<div class="onhead">{pill}<span class="who">{name}</span></div>'
-        f'<div class="onsub">{sub}</div>'
-        f"{_early_week_strip(player)}"
-        "</div>"
-        '<div class="onmoney">'
-        '<div class="onrow"><span class="figl">$PROJ</span>'
-        f'<span class="figv onproj">{proj_txt}</span></div>'
-        '<div class="onrow"><span class="figl">Bid</span>'
-        f'<span class="{bid_cls}">{bid}</span></div>'
-        "</div>"
-        "</div>"
-        f"{_bid_timeline(state, bid_events, seen, nom.offering_slot)}"
-        "</div>"
+    return _block_panel(
+        player,
+        _esc(player.name) if player else f"player {_esc(nom.player_id)}",
+        who,
+        "Bid",
+        bid,
+        bid_cls,
+        _bid_timeline(state, bid_events, seen, nom.offering_slot),
     )
 
 
@@ -1381,24 +1407,10 @@ def render_settled_lot(
     what.
     """
     if not state.picks:
-        return (
-            '<div class="block idle">Nothing nominated — '
-            f"{len(state.picks)} picks in.</div>"
-        )
+        return _idle_block(state)
     pick = max(state.picks, key=lambda p: p.pick_no)
-    player = pick.player
-    name = _esc(player.name)
-    pill = badge(player.pos, light=True)
-    proj = market_value(player)
-    proj_txt = f"${proj:.0f}" if proj else "—"
-    facts = []
-    if player.team:
-        facts.append(f'<span class="onfact">{_esc(player.team)}</span>')
-    facts.append(f'<span class="onfact">{player.points:.0f} pts</span>')
     seat = state.seats.get(pick.slot)
     label = _seat_label(seat) if seat is not None else f"S{pick.slot}"
-    facts.append(f'<span class="onfact nm">won by {label}</span>')
-    sub = '<span class="onsep"></span>'.join(facts)
     # The strip ends on the sale rather than on whatever the poller last saw the
     # winner holding: the price is the one number this pick can vouch for on its
     # own, and the two normally agree but need not (a poll can land between the
@@ -1407,23 +1419,14 @@ def render_settled_lot(
     timeline = _bid_timeline(
         state, bid_events or (), bidders or {}, pick.slot, sold=(pick.slot, pick.price)
     )
-    return (
-        '<div class="block">'
-        '<div class="onmain">'
-        '<div class="onid">'
-        f'<div class="onhead">{pill}<span class="who">{name}</span></div>'
-        f'<div class="onsub">{sub}</div>'
-        f"{_early_week_strip(player)}"
-        "</div>"
-        '<div class="onmoney">'
-        '<div class="onrow"><span class="figl">$PROJ</span>'
-        f'<span class="figv onproj">{proj_txt}</span></div>'
-        '<div class="onrow"><span class="figl">Sold</span>'
-        f'<span class="figv bidamt">${pick.price}</span></div>'
-        "</div>"
-        "</div>"
-        f"{timeline}"
-        "</div>"
+    return _block_panel(
+        pick.player,
+        _esc(pick.player.name),
+        f"won by {label}",
+        "Sold",
+        f"${pick.price}",
+        "figv bidamt",
+        timeline,
     )
 
 
