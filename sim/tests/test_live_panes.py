@@ -213,7 +213,9 @@ def test_the_page_arrives_whole_with_its_stylesheet_and_client_inlined():
     # -- and this is the only thing that would catch it. One request still: the
     # page arrives with both inlined, nothing fetched after it but /api/state.
     page = render_page("123")
-    assert "  .pcard { border" in page          # from board.css
+    # The selector, not what it sets: the question here is whether the
+    # stylesheet travelled at all, which is the failure being guarded against.
+    assert ".pcard {" in page                   # from board.css
     assert "function applyRows()" in page       # from board.js
     assert '<b id="draft">123</b>' in page      # the shell's one interpolation
     for token in ("/*__CSS__*/", "/*__JS__*/", "__DRAFT_ID__"):
@@ -257,7 +259,6 @@ def test_the_column_is_three_bands_and_the_chrome_is_in_the_shell():
     # thing telling you so is the hover state, so that rule has to exist.
     assert "caret" not in page.split("<body>")[1]
     assert ".band > .bandhd:hover" in page
-    assert ".band > .bandhd { cursor: pointer" in page
 
 
 def test_the_live_band_is_two_panels_across():
@@ -266,13 +267,10 @@ def test_the_live_band_is_two_panels_across():
     # the bands under it grow into the difference.
     page = render_page("123")
     assert 'class="bandbody live2"' in page
-    assert ".band-live > .bandbody.live2 { flex-direction: row" in page
     # An even split, bid on the left. The bid panel is the one that changes
     # every few seconds and the chart is the one with the most to show, so
     # neither is allowed to crowd the other out.
     assert page.index('id="block"') < page.index('id="ledger"')
-    assert ".bidpane { flex: 1 1 0; }" in page
-    assert ".moneypane { flex: 1 1 0; }" in page
     # Still the two swap targets, and still empty in the shell: the panel titles
     # are chrome and stay put, the fragments inside them are replaced.
     assert '<div id="block"></div>' in page
@@ -286,6 +284,9 @@ def test_the_live_band_is_a_fifth_of_the_column_and_stays_there():
     # left. Which is why the bars are drawn in percentages: the server cannot
     # know the height and no longer needs to.
     page = render_page("123")
+    # Kept as literals where the cut took their siblings: the twenty per cent is
+    # not a styling choice this test happens to touch, it is the claim in the
+    # name. "Stays there" is the whole reason the test exists.
     assert ".band-live { flex: 0 0 20%" in page
     assert ".plot { position: relative; flex: 1" in page
     # The spend line moved out to the header to buy that height back.

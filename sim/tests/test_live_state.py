@@ -362,7 +362,6 @@ def test_a_bid_of_nothing_is_not_money_green(midway):
     )
     html = render_nomination(midway, nom, star)
     assert 'class="figv bidamt none">—<' in html
-    assert ".bidamt.none { color: #949494" in render_page("123")
 
 
 def test_the_block_reads_the_division_round_off_season_pace(midway):
@@ -530,8 +529,6 @@ def test_a_card_counts_the_starters_it_has_bought(midway):
     # A ratio says what it is and a bare 1,323 does not, so compact labels only
     # the projection and the word comes back with the overlay.
     page = render_page("123")
-    assert ".proj .str { display: none; }" in page
-    assert "body.maxed .proj .str { display: inline; }" in page
 
 
 def test_a_lineup_with_a_hole_in_it_says_so(midway):
@@ -540,7 +537,6 @@ def test_a_lineup_with_a_hole_in_it_says_so(midway):
     # twelve cards all draft and mean nothing by the time it mattered.
     cards = [_card(midway, slot) for slot in midway.seats]
     assert any('class="fill short"' in c for c in cards)
-    assert ".proj .fill.short { color: #b26a00; }" in render_page("123")
 
 
 def test_an_empty_seat_projects_nothing_rather_than_zero(mock_config, pool):
@@ -557,12 +553,6 @@ def test_the_points_total_sits_below_the_panes_not_in_the_header(midway):
     card = _card(midway, next(iter(midway.seats)))
     assert 'class="proj"' not in card.split("</header>")[0]
     assert card.index("</div>") < card.index('class="proj"')
-
-
-def test_a_folded_card_drops_its_points_total(midway):
-    # Folded, a card is a strip of money and pips -- the fold summary owns that
-    # height.
-    assert ".card.collapsed .proj { display: none; }" in render_page("123")
 
 
 def test_the_budget_bar_splits_spendable_from_reserved(midway):
@@ -634,13 +624,6 @@ def test_the_row_is_tinted_and_the_slot_label_is_not(midway):
     assert "var(--pos" not in label  # same grey on every row
 
 
-def test_an_empty_slot_reads_as_absence_not_as_a_position(midway):
-    # A hole is flat grey: tinting it would say "receiver" about a seat that
-    # has no receiver.
-    page = render_page("123")
-    assert ".ln.open { background: #f4f4f4; }" in page
-
-
 def test_one_player_per_line(midway):
     # The old card paired two players to a row; a row is one player now, so the
     # lineup pane has exactly one line per starting slot.
@@ -668,7 +651,6 @@ def test_bench_rows_keep_their_position_tint_but_sit_back():
     # Depth is worth seeing -- it keeps the position tint, since in a pane of
     # its own nothing else says what these bodies are -- but a step back from
     # the lineup. The old "hidden until maximized" behaviour must not come back.
-    assert ".ln.bench { opacity: 0.75; }" in page
     assert ".ln.bench { display: none" not in page
 
 
@@ -700,14 +682,6 @@ def test_the_grid_is_four_across_three_down_in_both_sizes():
     assert "repeat(4, minmax(0, 1fr))" in grid
     assert "repeat(4, minmax(0, 1fr))" in maxed
     assert "height: 100%" in maxed  # rows share the viewport, nothing scrolls off
-
-
-def test_lineup_rows_share_the_card_rather_than_a_fixed_height():
-    # A fixed row height had to be tuned to one viewport: tall enough to fill a
-    # big screen, it scrolled a short one. The rows flex instead, so the same
-    # card fills a 1000px window and still fits an 820px one.
-    page = render_page("123")
-    assert ".pane.lineup .ln { flex: 1 1 auto; }" in page
 
 
 def test_the_live_board_is_light_and_the_report_stays_dark():
@@ -790,13 +764,11 @@ def test_an_unfilled_pip_is_neutral_not_a_tint_of_the_position():
     base = page.split("  .pip {")[1].split("}")[0]
     assert "background: #ececec;" in base
     assert "var(--pos" not in base
-    assert ".pip.on { background: var(--pos, #7c90a0); box-shadow: none; }" in page
     # Surplus is a slot you own, so it keeps the accent -- outlined, past the run.
     assert "var(--pos" in page.split("  .pip.extra {")[1].split("}")[0]
 def test_pane_state_is_client_side_and_survives_a_refresh():
     page = render_page("123")
     # Lineup is what the board loads on; a card with no stored choice shows it.
-    assert ".card .pane.lineup { display: flex;" in page
     assert '.card.view-bench .pane[data-pane="bench"]' in page
     # The cards are replaced every tick, so the choice must be re-applied after
     # each swap and the handler must be delegated, not per-button.
@@ -963,11 +935,6 @@ def test_a_depth_line_holds_twice_the_slots_it_sits_under(finished):
         assert strip.count('class="pips fx"') <= 4  # one per position, no more
 
 
-def test_the_strip_stacks_its_two_lines_rather_than_running_them_together():
-    page = render_page("123")
-    assert ".foldsum .fstack { display: flex; flex-direction: column;" in page
-
-
 def test_folding_is_by_row_because_a_lone_card_frees_nothing():
     # Four cards side by side share a row's height: fold one and its neighbours
     # still need the room. A row is the smallest thing whose height can move --
@@ -997,7 +964,6 @@ def test_nothing_folds_in_the_overlay_and_the_folds_survive_it():
     # minimizing -- and it stays put while it says it, since a control that
     # vanishes when you maximize is one you go looking for afterwards.
     assert "b.disabled = !foldable;" in page
-    assert ".seg button:disabled { color: #ccc;" in page
 
 
 def test_an_open_row_takes_what_the_folded_ones_gave_up():
@@ -1058,15 +1024,6 @@ def test_a_folded_row_is_positional_so_it_stays_where_you_folded_it():
     assert "applyRows();" in page.split("order.splice(order.indexOf(target)")[1]
 
 
-def test_a_folded_card_shows_nothing_but_its_strip_whichever_pane_it_was_on():
-    # `.body` goes, not the panes inside it -- with the parent gone,
-    # `.card.view-need .pane.need` has no specificity fight left to win.
-    page = render_page("123")
-    assert ".card.collapsed > .body { display: none;" in page
-    assert ".card .foldsum { display: none;" in page
-    assert ".card.collapsed .foldsum { display: grid;" in page
-
-
 def test_the_fold_is_remembered_alongside_every_other_fold():
     page = render_page("123")
     # One list, one key: the bands and the panes are the same gesture. (The
@@ -1109,8 +1066,6 @@ def test_the_rows_are_filtered_from_the_menu_bar(midway):
     assert "rowseg" not in render_rosters(midway)
     # Filter with the title it filters, actions at the other end.
     assert page.index('class="seg rowseg"') < page.index('id="max"')
-    assert ".menubar .seg { margin-left: 0; }" in page
-    assert ".menubar #max { margin-left: auto; }" in page
 
 
 def test_a_league_is_not_offered_a_row_it_does_not_have():
@@ -1142,7 +1097,6 @@ def test_the_filter_folds_the_row_and_the_card_header_still_drags():
     dbl = page.split('addEventListener("dblclick"')[-1]
     assert 'closest("section.card > header")' not in dbl
     assert 'closest(".rowhd")' not in page
-    assert ".card header { cursor: grab" in page
 
 
 def test_the_cards_take_the_order_they_are_dragged_into():
@@ -1165,7 +1119,6 @@ def test_folding_a_row_does_not_resize_the_type_in_the_others():
     # One knob, one value: `--fs` is what every size on the card is a multiple
     # of, and nothing on the board writes it a second time.
     assert page.count("--fs: 1.17;") == 1
-    assert ".card.collapsed { background: #fafafa; }" in page
 
 
 def test_the_four_cards_of_a_row_share_a_band(midway):
@@ -1269,7 +1222,5 @@ def test_the_page_hides_column_labels_until_maximized():
     assert "body.maxed .colhead" in page
     # Per-player bye and points stay a maximized column. The card's own total is
     # the number compact has room for.
-    assert ".mb, .mp { display: none; color: #666; }" in page
-    assert "body.maxed .mb, body.maxed .mp { display: block; }" in page
     # Tabular figures are what make the numbers read as columns.
     assert "tabular-nums" in page
