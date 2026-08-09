@@ -113,30 +113,19 @@ class DraftPoller:
         # with no figure attached -- the nominator, before anyone raised.
         self._lot: Optional[str] = None
         self._bidders: Dict[int, Optional[int]] = {}
-        # Every lot's `_bidders`, kept past the lot's own close under its
-        # player_id -- so a checkpoint on the pick it became can still show who
-        # was in on it, not just who won. Same memory, longer leash.
-        self._bid_history: Dict[str, Dict[int, Optional[int]]] = {}
         # `_bidders` answers "who's in, at what ceiling" -- this answers "in
         # what order did the raises happen". A list rather than a dict because
         # the same seat can appear twice (raise, get outbid, raise again), and
-        # each entry is worth its own place in the trail. Same lot-boundary
-        # archiving as `_bid_history`, under the same key.
+        # each entry is worth its own place in the trail.
         self._bid_events: List[Tuple[int, Optional[int]]] = []
-        self._bid_log: Dict[str, List[Tuple[int, Optional[int]]]] = {}
-        # And the same two archives on disk, so the leash outlives the process.
-        # What the room bid is the one thing on this board that cannot be
-        # refetched -- Sleeper publishes the offer on the clock and no history,
-        # and the pick feed remembers only the price it closed at. Rewinding a
-        # finished draft in a fresh run used to show every lot as a single sold
-        # rung for exactly that reason. Seeded here and appended to as lots
-        # close; see `bid_log.BidLog`.
+        # Once a lot closes, its `_bidders`/`_bid_events` live only in `bids`
+        # (`BidLog`) -- on disk, and already loaded into `bids.lots` in memory,
+        # so there is nothing to seed here. What the room bid is the one thing
+        # on this board that cannot be refetched -- Sleeper publishes the offer
+        # on the clock and no history, and the pick feed remembers only the
+        # price it closed at -- so a checkpoint on a past pick reads its lot
+        # from here; see `_trace_for` and `bid_log.BidLog`.
         self.bids = BidLog(draft_id)
-        for player_id, (bidders, events) in self.bids.lots.items():
-            if bidders:
-                self._bid_history[player_id] = bidders
-            if events:
-                self._bid_log[player_id] = events
         # A disk that stops taking writes mid-auction is worth a line on the
         # board, not the poll thread. Set by `_archive_lot`, drawn with the
         # other warnings.
@@ -246,7 +235,7 @@ class DraftPoller:
                 self._pulse = None
 
     def _archive_lot(self) -> None:
-        """Put the lot on the block into the archives and onto disk.
+        """Put the lot on the block into `bids`, on disk.
 
         Idempotent, and a no-op for a lot nothing was seen on: `BidLog.put`
         ignores an empty witness rather than writing one over a fuller one an
@@ -254,16 +243,13 @@ class DraftPoller:
         watching an empty room, costs nothing.
 
         A failing disk is worth a line on the board and not the poll thread.
-        The archives are still correct in memory, the session still works, and
-        the only thing lost is the next restart's inheritance -- which is not
-        worth interrupting an auction over.
+        `bids.lots` is still correct in memory (`BidLog.put` updates it before
+        it writes), the session still works, and the only thing lost is the
+        next restart's inheritance -- which is not worth interrupting an
+        auction over.
         """
         if self._lot is None:
             return
-        if self._bidders:
-            self._bid_history[self._lot] = dict(self._bidders)
-        if self._bid_events:
-            self._bid_log[self._lot] = list(self._bid_events)
         try:
             self.bids.put(self._lot, self._bidders, self._bid_events)
         except OSError as exc:
@@ -307,14 +293,10 @@ class DraftPoller:
         player, the offer and the offering seat, so bidding cannot move without
         the snapshot being rebuilt.
 
-        The outgoing lot's bidders are archived into `_bid_history` under its
-        player_id before being cleared -- that is the one moment they are
-        still known, and a checkpoint that later rewinds to the pick this lot
-        became needs them to still be there. `_bid_events` is archived into
-        `_bid_log` the same way, alongside it: `_bidders` says who's in at what
-        ceiling, `_bid_events` says in what order the raises happened -- the
-        same seat can appear in it twice if it took the lead, lost it, and
-        took it back. Both go to disk in the same breath; see `_archive_lot`.
+        The outgoing lot's `_bidders`/`_bid_events` are archived into `bids`
+        under its player_id before being cleared -- that is the one moment
+        they are still known, and a checkpoint that later rewinds to the pick
+        this lot became needs them to still be there; see `_archive_lot`.
         """
         if nom.player_id != self._lot:
             # A new player on the block, or the lot closing. Either way this
@@ -527,30 +509,25 @@ class DraftPoller:
 
     def _trace_for(
         self, player_id: Optional[str]
-    ) -> Tuple[
-        Optional[Dict[int, Optional[int]]], Optional[List[Tuple[int, Optional[int]]]]
-    ]:
-        """How this lot got to its price, or `(None, None)` if nobody saw.
+    ) -> Tuple[Dict[int, Optional[int]], List[Tuple[int, Optional[int]]]]:
+        """How this lot got to its price, or two empties if nobody saw.
 
         Two sources in one order. The lot still on the block is the live
         `_bidders`/`_bid_events`, which have not been archived yet and would
         otherwise be missed by exactly the checkpoint most likely to be asked
         for -- the one on the pick that just landed, tapped the moment it did.
-        Everything before it comes from the archives, which a previous run may
-        have filled via `BidLog`.
+        Everything before it comes from `bids`, which a previous run may have
+        filled via `BidLog`.
 
         Takes the lock: this runs on a request thread while the poll thread is
         mutating the in-flight pair.
         """
         if player_id is None:
-            return None, None
+            return {}, []
         with self._lock:
             if player_id == self._lot and (self._bidders or self._bid_events):
                 return dict(self._bidders), list(self._bid_events)
-            return (
-                self._bid_history.get(player_id),
-                self._bid_log.get(player_id),
-            )
+            return self.bids.get(player_id)
 
     def _build_checkpoint(
         self,

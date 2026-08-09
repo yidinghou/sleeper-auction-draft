@@ -181,7 +181,7 @@ def test_goto_rewinds_the_board_to_a_pick_boundary(poller):
     # $28) takes its place rather than the panel going blank.
     assert "Bo Nix" in snap["nomination_html"]
     assert "won by S6" in snap["nomination_html"]
-    assert 'class="chip bid-high"' in snap["nomination_html"]
+    assert 'class="rung sold"' in snap["nomination_html"]
     assert "$28" in snap["nomination_html"]
     # The winning seat lights up the same amber a live leader would, in every
     # place that colour already lives: the chart bar and the tag under it.
@@ -202,8 +202,8 @@ def test_a_checkpoint_at_pick_zero_has_nothing_to_show(poller):
 def test_a_checkpoint_shows_the_full_bidding_trail_when_the_poller_saw_it(poller):
     # Unlike `test_goto_rewinds_the_board_to_a_pick_boundary`, which rewinds a
     # poller that only ever saw the finished feed and so falls back to a
-    # single winner chip, this one watches pick #30 (Bo Nix, S6, $28) close in
-    # real time first -- so the checkpoint should show everyone who bid on it.
+    # single winner rung, this one watches pick #30 (Bo Nix, S6, $28) close in
+    # real time first -- so the checkpoint should show every raise on it.
     poller.replay = 29
     poller.refresh()
     _bid(poller, player="11563", nominating=6, offering=6, amount="20")
@@ -215,14 +215,19 @@ def test_a_checkpoint_shows_the_full_bidding_trail_when_the_poller_saw_it(poller
     poller.replay = 30
     _bid(poller, player="", nominating=None, offering=None)
     poller.refresh()                                    # the lot closes
-    assert poller._bid_history["11563"] == {6: 28, 9: 25}
+    assert poller.bids.lots["11563"][0] == {6: 28, 9: 25}
     poller.view_goto(30)
     snap = poller.snapshot()
-    assert "Bo Nix" in snap["nomination_html"]
-    assert snap["nomination_html"].count('class="chip') == 2
-    assert 'class="chip bid-high"' in snap["nomination_html"]
-    assert "$28" in snap["nomination_html"]
-    assert "$25" in snap["nomination_html"]
+    html = snap["nomination_html"]
+    assert "Bo Nix" in html
+    # The nomination, then every raise, then the sale -- and the sale is the
+    # last raise wearing its result rather than a duplicate beside it, since
+    # S6's $28 is both.
+    assert html.count('<span class="rung') == 4
+    assert html.count('class="rung sold"') == 1
+    assert 'class="rung now"' not in html  # a settled lot has no live tip
+    assert "$28" in html
+    assert "$25" in html
 
 
 def test_live_returns_to_the_pulse_driven_snapshot(poller):
@@ -484,7 +489,7 @@ def test_the_nominator_is_in_the_bidding_from_the_start(poller):
     # the nominator is still the only bidder is a common and worth-seeing state.
     poller.refresh()
     assert poller._bidders == {12: 1}
-    assert 'class="chip bid-high"' in poller.snapshot()["nomination_html"]
+    assert 'class="rung now"' in poller.snapshot()["nomination_html"]
 
 
 def test_a_seat_that_is_outbid_stays_in_the_bidding(poller):
@@ -495,15 +500,19 @@ def test_a_seat_that_is_outbid_stays_in_the_bidding(poller):
     poller.refresh()
     assert poller._bidders == {12: 1, 4: 9}
     html = poller.snapshot()["nomination_html"]
-    assert html.count('class="chip') == 2
-    assert html.count('class="chip bid-high"') == 1  # only one holds it now
+    # The nomination, S12's dollar, S4's nine -- the strip counts raises, not
+    # seats, so the opening and the opener's own first figure are two rungs.
+    assert html.count('<span class="rung') == 3
+    assert html.count('class="rung now"') == 1  # only the tip is live
 
 
 def test_each_seat_keeps_the_highest_figure_it_was_seen_holding(poller):
-    """Sleeper reports one seat at one figure, so the amount on a chip is the
-    furthest that seat was *watched* getting -- a floor on what they would pay,
-    not a bid anybody published. A seat that leads, loses it and leads again
-    keeps the later figure and its original place in the row."""
+    """Sleeper reports one seat at one figure, so the amount the board shows is
+    the furthest that seat was *watched* getting -- a floor on what they would
+    pay, not a bid anybody published. A seat that leads, loses it and leads
+    again keeps the later figure in `_bidders` and gets a second rung on the
+    strip: that repetition is the whole reason the timeline replaced the row of
+    one-chip-per-seat, which collapsed it away."""
     poller.refresh()                                    # S12 opens at $1
     _bid(poller, offering=4, amount="9")
     poller.refresh()                                    # S4 takes it at $9
@@ -514,13 +523,13 @@ def test_each_seat_keeps_the_highest_figure_it_was_seen_holding(poller):
     assert poller._bidders == {12: 14, 4: 20}
     assert list(poller._bidders) == [12, 4]  # entry order, not bid order
     html = poller.snapshot()["nomination_html"]
-    chips = re.search(r'<div class="bidders">.*?</div>', html).group()
-    assert "$14" in chips and "$20" in chips
-    assert "$9" not in chips  # superseded by the same seat's later figure
-    # The trail is the one place $9 is expected to survive: it is a real raise
-    # that happened, even though the chip above it moved on.
-    trail = re.search(r'<div class="trail">.*?</div>', html).group()
-    assert "$9" in trail and "$14" in trail and "$20" in trail
+    strip = re.search(r'<div class="rungs">.*</div>', html).group()
+    # Every raise, in order, including the $9 the old chip row dropped when the
+    # same seat moved past it -- it is a real raise that happened.
+    assert re.findall(r'class="ra">\$?([\d—]+)<', strip) == [
+        "—", "1", "9", "14", "20",
+    ]
+    assert strip.count('class="rung now"') == 1  # the $20 on the clock
 
 
 def test_a_new_player_on_the_block_empties_the_list(poller):
@@ -541,7 +550,7 @@ def test_a_closing_lot_is_archived_into_bid_history(poller):
     poller.refresh()               # S4 takes it at $9
     _bid(poller, player="4034", nominating=7, offering=7)
     poller.refresh()               # a new lot opens; KC's is done
-    assert poller._bid_history == {"KC": {12: 1, 4: 9}}
+    assert poller.bids.lots["KC"][0] == {12: 1, 4: 9}
     assert poller._bidders == {7: 1}
 
 
@@ -555,7 +564,7 @@ def test_a_lot_closing_empties_the_list(poller):
     # Nothing on the block is a lot closing too, and its bidders are worth
     # keeping the same as any other -- the KC lot from the fixture's default
     # nomination, archived under the player rather than under "nothing".
-    assert poller._bid_history == {"KC": {12: 1}}
+    assert poller.bids.lots["KC"][0] == {12: 1}
 
 
 # -- and what outlives the process --------------------------------------------
@@ -565,7 +574,7 @@ def _watch_bo_nix_close(poller):
     """Watch pick #30 (Bo Nix, 11563, S6, $28) get bid up and close.
 
     Three raises and a close, which is the shape every test down here needs:
-    `_bid_history` ends up `{6: 28, 9: 25}` and the trail ends up four rungs
+    `bids.lots["11563"]` ends up `{6: 28, 9: 25}` and the trail ends up four rungs
     deep. `replay` walks 29 -> 30 so the pick lands as the lot closes, the way
     it would live.
     """
@@ -594,7 +603,7 @@ def test_a_watched_lot_still_has_its_trail_in_the_next_process(poller):
     poller.refresh()                                    # the lot closes
 
     later = DraftPoller("mock-id", None, interval=0.01)
-    assert later._bid_history["11563"] == {6: 28, 9: 25}
+    assert later.bids.lots["11563"][0] == {6: 28, 9: 25}
     later.refresh()
     later.view_goto(30)
     html = later.snapshot()["nomination_html"]
@@ -619,19 +628,19 @@ def test_the_last_lot_of_a_session_is_not_dropped_on_exit(poller):
     Ctrl-C on -- the likeliest one there is -- was watched all the way through
     and then thrown away."""
     _watch_bo_nix_close(poller)
-    assert "11563" not in poller._bid_history      # not archived yet
+    assert "11563" not in poller.bids.lots          # not archived yet
     poller.stop()
 
     later = DraftPoller("mock-id", None, interval=0.01)
-    assert later._bid_history["11563"] == {6: 28, 9: 25}
-    assert later._bid_log["11563"][-1] == (6, 28)
+    assert later.bids.lots["11563"][0] == {6: 28, 9: 25}
+    assert later.bids.lots["11563"][1][-1] == (6, 28)
 
 
 def test_flushing_twice_is_harmless(poller):
     _watch_bo_nix_close(poller)
     poller.flush_lot()
     poller.flush_lot()
-    assert DraftPoller("mock-id", None, interval=0.01)._bid_history["11563"] == {
+    assert DraftPoller("mock-id", None, interval=0.01).bids.lots["11563"][0] == {
         6: 28,
         9: 25,
     }
@@ -648,7 +657,7 @@ def test_a_poorer_witness_does_not_overwrite_a_fuller_one(poller):
     later.refresh()                     # joins with only S6's $28 in front
     assert later._bidders == {6: 28}
     later.stop()
-    assert DraftPoller("mock-id", None, interval=0.01)._bid_history["11563"] == {
+    assert DraftPoller("mock-id", None, interval=0.01).bids.lots["11563"][0] == {
         6: 28,
         9: 25,
     }
@@ -660,7 +669,7 @@ def test_a_checkpoint_on_the_pick_that_just_landed_reads_the_live_lot(poller):
     to read the lot still on the block rather than an archive that is one lot
     change behind."""
     _watch_bo_nix_close(poller)
-    assert "11563" not in poller._bid_history      # its lot is still open
+    assert "11563" not in poller.bids.lots         # its lot is still open
     poller.view_goto(30)
     html = poller.snapshot()["nomination_html"]
     assert html.count('<span class="rung') == 4
@@ -670,17 +679,22 @@ def test_a_checkpoint_on_the_pick_that_just_landed_reads_the_live_lot(poller):
 def test_a_disk_that_will_not_take_the_write_costs_a_line_not_the_board(
     poller, monkeypatch
 ):
+    # `_save`, not `put`: `BidLog.put` updates `bids.lots` in memory before it
+    # ever writes to disk, so a failure that happens on the disk write alone
+    # is the realistic case for "the archive is right, only the file isn't".
     monkeypatch.setattr(
         poller.bids,
-        "put",
+        "_save",
         lambda *a, **k: (_ for _ in ()).throw(OSError("read-only")),
     )
     _watch_bo_nix_close(poller)
     poller.flush_lot()
-    # The session is untouched -- the archives are right, the trail still draws.
-    assert poller._bid_history["11563"] == {6: 28, 9: 25}
+    # The session is untouched -- the archive is right, the trail still draws.
+    assert poller.bids.lots["11563"][0] == {6: 28, 9: 25}
     assert "bid history not saved" in poller.bids_note
-    _bid(poller, player="", nominating=None, offering=None)
+    # Same lot, still open -- a poll landing here must not call `_archive_lot`
+    # again (that only happens on a lot change), so the note has to come from
+    # `bids_note` alone surfacing into the live snapshot's warning.
     poller.refresh()
     assert "bid history not saved" in poller.snapshot()["warning"]
 
