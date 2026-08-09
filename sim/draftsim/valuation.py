@@ -61,7 +61,7 @@ def by_sleeper_id(players: List[Player]) -> Dict[str, Player]:
 
 def _int_or_none(raw: str) -> Optional[int]:
     raw = (raw or "").strip()
-    if raw == "":
+    if raw == "" or raw == "-":
         return None
     return int(float(raw))
 
