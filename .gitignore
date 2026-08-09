@@ -47,6 +47,13 @@ next-env.d.ts
 /.playwright-mcp/
 /data/*.png
 
+# What the live board watched the room bid, per draft. Written by
+# draftsim.live as each lot closes; every rehearsal against a mock leaves one.
+# Note this is the one file here that cannot be regenerated -- Sleeper serves
+# no bid history -- so a draft whose trail you want to keep needs an explicit
+# `git add -f data/bid-log-<draft_id>.json`.
+/data/bid-log-*.json
+
 # python (sim/ draft harness)
 __pycache__/
 *.pyc
