@@ -976,13 +976,14 @@ def _early_week_cell(week: Optional[float], pace: float) -> str:
 
 def _early_week_strip(player: Optional[Player]) -> str:
     """The block panel's own read of the division round: three labelled figures
-    under the name, coloured off season pace exactly as the pool's columns are.
+    in their own side column, coloured off season pace exactly as the pool's
+    columns are.
 
     The pool can lean on a header row for its column names; this panel has one
     player in it and no header to hang WK1/WK2/WK3 off, so each figure carries
     its own label. Nothing is drawn at all for a lot with no early-week read --
     a CSV that predates the columns, or a nomination that is not in projections
-    -- since three dashes would take the height without answering anything.
+    -- since three dashes would take the width without answering anything.
     """
     if player is None:
         return ""
@@ -1311,8 +1312,8 @@ def _block_panel(
         '<div class="onid">'
         f'<div class="onhead">{pill}<span class="who">{name}</span></div>'
         f'<div class="onsub">{sub}</div>'
-        f"{_early_week_strip(player)}"
         "</div>"
+        f"{_early_week_strip(player)}"
         '<div class="onmoney">'
         '<div class="onrow"><span class="figl">$PROJ</span>'
         f'<span class="figv onproj">{proj_txt}</span></div>'

@@ -328,19 +328,22 @@
     flex: none; }
   .onsub .nm { overflow: hidden; text-overflow: ellipsis; }
 
-  /* The division round, under the facts rather than among them: WK1-3 are three
-     figures that move together and are read as a shape, and dropped into the
-     `·`-separated line they would read as three more unrelated facts about the
-     lot. Each carries its own label because this panel has one player in it and
-     no header row to name columns from, unlike the pool.
+  /* The division round, in its own side column rather than under the name:
+     WK1-3 are three figures that move together and are read as a shape, and
+     dropped into the `·`-separated line they would read as three more
+     unrelated facts about the lot. Each carries its own label because this
+     panel has one player in it and no header row to name columns from, unlike
+     the pool. A border-left echoes `.onmoney`'s, so identity / weeks / money
+     read as three columns rather than a row that happens to have a gap in it.
 
      Same green/red off season pace as `.prow .pwk`, and the same hues -- a week
      that is called out in the pool has to still be called out once the player
      hits the block, or the colour means one thing in one pane and another in
      the next. */
-  .onwk { display: flex; align-items: baseline; gap: 8px; min-width: 0;
-    line-height: 1.25; margin-top: 1px; }
-  .onwkc { display: flex; align-items: baseline; gap: 3px; }
+  .onwk { flex: none; display: flex; flex-direction: column;
+    align-items: flex-end; gap: 2px; border-left: 1px solid #dcdcdc;
+    padding-left: 10px; }
+  .onwkc { display: flex; align-items: baseline; gap: 4px; }
   .onwkl { font-style: normal; font-size: calc(7.5px * var(--fs));
     color: #949494; font-weight: 700; letter-spacing: 0.05em; }
   .onwkv { font-style: normal; font-size: calc(10px * var(--fs));
