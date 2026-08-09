@@ -652,6 +652,21 @@ def test_a_poorer_witness_does_not_overwrite_a_fuller_one(poller):
         6: 28,
         9: 25,
     }
+
+
+def test_a_checkpoint_on_the_pick_that_just_landed_reads_the_live_lot(poller):
+    """The checkpoint most likely to be asked for is the one tapped the instant
+    a pick lands -- before the next lot opens and the archive is written. It has
+    to read the lot still on the block rather than an archive that is one lot
+    change behind."""
+    _watch_bo_nix_close(poller)
+    assert "11563" not in poller._bid_history      # its lot is still open
+    poller.view_goto(30)
+    html = poller.snapshot()["nomination_html"]
+    assert html.count('<span class="rung') == 4
+    assert "$25" in html
+
+
 def test_a_disk_that_will_not_take_the_write_costs_a_line_not_the_board(
     poller, monkeypatch
 ):

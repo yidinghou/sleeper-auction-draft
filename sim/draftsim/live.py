@@ -426,7 +426,12 @@ class DraftPoller:
                 picks = picks[: self.replay]
             state = reconstruct(picks, config, self.pool, catalog=self.catalog)
             nom = parse_nomination(draft)
-            self.watch_bidding(nom)
+            # Under the lock because a checkpoint built on the request thread
+            # now reads the in-flight lot directly, and must never catch it
+            # half-archived. The one disk write in here happens once per lot
+            # close, not once per poll.
+            with self._lock:
+                self.watch_bidding(nom)
             for slot, seat in state.seats.items():
                 seat.name = self.names.label(slot)
                 seat.bidding = (
@@ -520,6 +525,33 @@ class DraftPoller:
             "nav": {"index": len(state.picks), "total": len(state.picks), "live": True},
         }
 
+    def _trace_for(
+        self, player_id: Optional[str]
+    ) -> Tuple[
+        Optional[Dict[int, Optional[int]]], Optional[List[Tuple[int, Optional[int]]]]
+    ]:
+        """How this lot got to its price, or `(None, None)` if nobody saw.
+
+        Two sources in one order. The lot still on the block is the live
+        `_bidders`/`_bid_events`, which have not been archived yet and would
+        otherwise be missed by exactly the checkpoint most likely to be asked
+        for -- the one on the pick that just landed, tapped the moment it did.
+        Everything before it comes from the archives, which a previous run may
+        have filled via `BidLog`.
+
+        Takes the lock: this runs on a request thread while the poll thread is
+        mutating the in-flight pair.
+        """
+        if player_id is None:
+            return None, None
+        with self._lock:
+            if player_id == self._lot and (self._bidders or self._bid_events):
+                return dict(self._bidders), list(self._bid_events)
+            return (
+                self._bid_history.get(player_id),
+                self._bid_log.get(player_id),
+            )
+
     def _build_checkpoint(
         self,
         index: int,
@@ -543,11 +575,9 @@ class DraftPoller:
             seat.bidding = "high" if winner is not None and slot == winner.slot else ""
         seat = self.my_seat(draft)
         name = (draft.get("metadata") or {}).get("name") or "draft"
-        stale = (
-            f"{len(state.unknown_player_ids)} picks not in the projections CSV — "
-            "re-run npm run export:projections"
-            if state.unknown_player_ids
-            else self.names_note
+        stale = self._warning(state)
+        bidders, events = self._trace_for(
+            winner.player.sleeper_id if winner is not None else None
         )
         total = len(picks)
         return {
@@ -562,15 +592,7 @@ class DraftPoller:
             "ledger_html": render_ledger(
                 state, seat, self.seat_note, self.user or ""
             ),
-            "nomination_html": render_settled_lot(
-                state,
-                self._bid_history.get(winner.player.sleeper_id)
-                if winner is not None
-                else None,
-                self._bid_log.get(winner.player.sleeper_id)
-                if winner is not None
-                else None,
-            ),
+            "nomination_html": render_settled_lot(state, bidders, events),
             "rosters_html": render_rosters(state, seat),
             "pressure_html": render_pressure(
                 state, winner.player.pos if winner is not None else ""
