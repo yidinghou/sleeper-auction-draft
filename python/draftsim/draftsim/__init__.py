@@ -2,6 +2,20 @@
 
 A draft is a ledger of sales, a cache built from that ledger, and an auction that
 appends to it. Everything else is computed.
+
+    from draftsim import Draft, DraftRules, Team, load_players, load_projections
+
+    players = {p.id: p for p in load_players()}
+    draft = Draft(
+        rules=DraftRules(),
+        players=players,
+        teams=[Team(f"t{i}", f"Team {i}") for i in range(12)],
+        proj=load_projections(),
+    )
+    draft.record_pick(draft.nominator().id, "ja'marr-chase|wr|cin", 61, 0.0)
+
+Layering, top to bottom: `rules` -> `player`/`team`/`ledger` -> `lineup` ->
+`state` -> `draft` -> `evaluation`. Only `Draft` writes.
 """
 
 from .draft import Draft
