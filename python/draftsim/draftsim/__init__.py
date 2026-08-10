@@ -5,6 +5,7 @@ appends to it. Everything else is computed.
 """
 
 from .ledger import Bid, InvalidPick, Lot, Pick
+from .lineup import Lineup, best_lineup, display_slots, is_legal
 from .player import (
     MarketData,
     Player,
@@ -23,13 +24,17 @@ __all__ = [
     "Bid",
     "DraftRules",
     "InvalidPick",
+    "Lineup",
     "Lot",
     "MarketData",
     "Pick",
     "Player",
     "Position",
     "Team",
+    "best_lineup",
     "by_sleeper_id",
+    "display_slots",
+    "is_legal",
     "load_players",
     "load_projections",
     "make_id",
