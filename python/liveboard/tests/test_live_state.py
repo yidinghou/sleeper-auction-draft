@@ -603,7 +603,7 @@ def test_a_seat_with_no_bench_says_so_rather_than_showing_a_blank_pane(
 
 
 def test_rows_carry_position_colour_and_price(midway):
-    from draftsim.theme import POS_COLOR_LIGHT
+    from liveboard.theme import POS_COLOR_LIGHT
 
     seat = next(s for s in midway.seats.values() if s.roster)
     card = _card(midway, seat.slot)
@@ -684,11 +684,12 @@ def test_the_grid_is_four_across_three_down_in_both_sizes():
     assert "height: 100%" in maxed  # rows share the viewport, nothing scrolls off
 
 
-def test_the_live_board_is_light_and_the_report_stays_dark():
+def test_the_live_board_is_light_and_never_leaks_the_dark_palette():
     # The board sits open beside Sleeper's dark app for three hours; looking
-    # unlike it is the point. The report is a different surface and keeps the
-    # dark palette, so the two must not silently re-converge on one theme.
-    from draftsim import theme
+    # unlike it is the point. The dark set is dead weight now that the report
+    # page is gone, so a dark value reaching the page means something picked the
+    # wrong constant rather than that two surfaces converged.
+    from liveboard import theme
 
     page = render_page("123")
     assert theme.BASE_CSS_LIGHT in page

@@ -36,7 +36,7 @@ from .live_state import (
 )
 from draftsim.roster import display_slots, is_lineup_legal
 from .sleeper import Nomination
-from draftsim.theme import (
+from .theme import (
     BASE_CSS_LIGHT,
     POS_COLOR_LIGHT,
     POS_FALLBACK_LIGHT,
