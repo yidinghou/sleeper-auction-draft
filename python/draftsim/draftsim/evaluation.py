@@ -6,24 +6,16 @@ team with none. Paired with `TeamState.max_bid`, this gives the two numbers a
 bidder actually needs -- what he's worth, and what you can legally spend.
 
 Marginal *to what*, though, is the question this module turns on. The baseline is
-explicit and it moves:
+the freely-available body you would otherwise start -- never an empty slot, which
+scores zero and would make a player worth his whole projection. That baseline is
+also the only one that squares with `dollars_per_point`: the rate is dollars per
+point *above replacement*, so the points figure has to be above replacement too.
+Measuring from an empty slot instead priced this league's 192 drafted players at
+five times the money that exists.
 
-    an empty slot   ->   scores zero, so a player is worth his whole projection.
-                         Answers "how much better is my lineup with him", which
-                         is a real question, but not a price -- you were never
-                         going to field an empty slot.
-
-    a replacement   ->   the freely-available body you would otherwise start.
-    body                 What you are actually paying for, and the only baseline
-                         that squares with `dollars_per_point`.
-
-    scarcity        ->   that body, given who is left and who still needs one.
-    adjusted             `Market.of(state)` reads it off the ledger, so it falls
-                         out of the same call after every pick.
-
-`marginal_points` defaults to the first and `max_sensible_bid` always passes the
-third. Mixing the first with a rate built on the second is what made this league's
-192 drafted players price at five times the money that exists.
+The bar moves. `Market.of(state)` reads it off the ledger, so replacement level
+and the exchange rate both reflect who is left and who still needs one, and a
+fresh call after each pick is the whole of that behaviour.
 """
 
 from __future__ import annotations
@@ -45,19 +37,14 @@ def marginal_points(
     state: DraftState,
     team_id: str,
     player: Player,
-    replacement: Optional[Mapping[Position, float]] = None,
+    replacement: Mapping[Position, float],
 ) -> float:
-    """What this player would add to `team_id`'s STARTING lineup, over a baseline.
+    """What this player adds to `team_id`'s STARTING lineup over a replacement body.
 
-    Not his projection: a re-solve of the lineup with him on the roster, against
-    what that lineup scores without him.
-
-    The baseline is the whole argument. With none, it is an empty slot scoring
-    zero -- which answers "how much better is my lineup with him", the number a
-    roster screen wants, but is not what he is worth, because you were never
-    going to field an empty slot. Pass `replacement` and the comparison becomes
-    the freely-available body you would otherwise start, which is what a price
-    should be measured from. `max_sensible_bid` always passes one.
+    Not his projection, and not the improvement over an empty slot either: a
+    re-solve of the lineup with him on the roster, against the same lineup with a
+    freely-available body at his position. You are never going to field an empty
+    slot, so an empty slot is not the thing he has to beat -- the $1 guy is.
 
     Both arms go through the lineup solver rather than subtracting a replacement
     figure from the gain, so the awkward cases answer themselves: a player who
@@ -66,8 +53,7 @@ def marginal_points(
     actually displaces.
 
     Never negative -- a player below the bar is worth nothing, not less than
-    nothing. Two matchings over pre-sorted buckets when a baseline is given, one
-    without, and both are microseconds.
+    nothing. Two matchings over pre-sorted buckets, both microseconds.
     """
     ts = state.teams[team_id]
 
@@ -75,10 +61,6 @@ def marginal_points(
         buckets = dict(ts.by_position)
         buckets[p.position] = insort(buckets.get(p.position, ()), p, proj)
         return best_lineup(buckets, state.rules, proj).points
-
-    with_him = lineup_with(player, state.proj)
-    if replacement is None:
-        return max(0.0, with_him - ts.lineup.points)  # cached baseline
 
     bar = replacement.get(player.position, 0.0)
     if bar == float("inf"):
@@ -90,7 +72,7 @@ def marginal_points(
     # ChainMap rather than a merged dict: this runs once per candidate across the
     # whole pool, and copying every projection each time would dwarf the solve.
     with_a_body = lineup_with(filler, ChainMap({_REPLACEMENT_ID: bar}, state.proj))
-    return max(0.0, with_him - with_a_body)
+    return max(0.0, lineup_with(player, state.proj) - with_a_body)
 
 
 def remaining_starter_shares(state: DraftState) -> Dict[Position, float]:

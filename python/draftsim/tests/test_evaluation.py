@@ -15,10 +15,29 @@ from draftsim.evaluation import (
 )
 
 
-def test_a_player_is_worth_what_he_adds_to_an_empty_lineup():
+def _replacement(draft):
+    return replacement_points(draft.state)
+
+
+def test_with_nobody_behind_him_a_player_is_worth_his_whole_score():
+    # The only pool where an empty slot and a replacement body agree: there is no
+    # replacement to be had, so the bar sits at zero and he is worth everything.
     players, proj = make_pool(("Chase", "WR", 300.0))
     draft = make_draft(players, proj, teams=2)
-    assert marginal_points(draft.state, "t0", players["Chase|WR"]) == 300.0
+    assert _replacement(draft)["WR"] == 0.0
+    assert marginal_points(draft.state, "t0", players["Chase|WR"], _replacement(draft)) == 300.0
+
+
+def test_a_player_is_worth_what_he_beats_the_replacement_body_by():
+    players, proj = deep_pool(per_position=60)
+    draft = make_draft(players, proj)
+    replacement = _replacement(draft)
+    rb = players["RB00|RB"]
+    # An empty roster, so he walks straight into a starting slot -- but the thing
+    # he displaces is the $1 body, not nothing.
+    assert marginal_points(draft.state, "t0", rb, replacement) == (
+        proj[rb.id] - replacement["RB"]
+    )
 
 
 def test_an_extra_elite_tight_end_is_worth_nothing_to_you_and_a_lot_to_them():
@@ -36,8 +55,9 @@ def test_an_extra_elite_tight_end_is_worth_nothing_to_you_and_a_lot_to_them():
         draft.record_pick("t0", f"{name}|TE", 20, float(i))
 
     te5 = players["TE5|TE"]
-    assert marginal_points(draft.state, "t0", te5) == 0.0
-    assert marginal_points(draft.state, "t1", te5) == 210.0
+    replacement = _replacement(draft)
+    assert marginal_points(draft.state, "t0", te5, replacement) == 0.0
+    assert marginal_points(draft.state, "t1", te5, replacement) == 210.0
 
 
 def test_a_player_who_cannot_crack_the_lineup_is_worth_zero():
@@ -45,17 +65,17 @@ def test_a_player_who_cannot_crack_the_lineup_is_worth_zero():
     draft = make_draft(players, proj, teams=2)
     draft.record_pick("t0", "D1|DEF", 5, 0.0)
     # One DEF slot, no flex accepts a DEF: the second one can never start.
-    assert marginal_points(draft.state, "t0", players["D2|DEF"]) == 0.0
+    assert marginal_points(draft.state, "t0", players["D2|DEF"], _replacement(draft)) == 0.0
 
 
 def test_marginal_value_falls_as_you_fill_a_position():
     players, proj = deep_pool()
     draft = make_draft(players, proj)
     wr = players["WR10|WR"]
-    before = marginal_points(draft.state, "t0", wr)
+    before = marginal_points(draft.state, "t0", wr, _replacement(draft))
     for i in range(5):
         draft.record_pick("t0", f"WR0{i}|WR", 10, float(i))
-    after = marginal_points(draft.state, "t0", wr)
+    after = marginal_points(draft.state, "t0", wr, _replacement(draft))
     assert after < before
 
 
@@ -210,20 +230,6 @@ def test_an_early_spending_spree_makes_the_back_half_cheap():
     # The money is gone but the players are not: everyone left bids into a
     # cheaper market. This is the whole point of recomputing.
     assert Market.of(draft.state).dollars_per_point < opening * 0.9
-
-
-def test_a_baseline_is_what_separates_worth_from_improvement():
-    players, proj = deep_pool()
-    draft = make_draft(players, proj)
-    replacement = replacement_points(draft.state)
-    rb = players["RB00|RB"]
-
-    improvement = marginal_points(draft.state, "t0", rb)
-    worth = marginal_points(draft.state, "t0", rb, replacement)
-
-    assert improvement == proj[rb.id]  # against an empty slot, his whole score
-    assert worth == improvement - replacement["RB"]
-    assert 0 < worth < improvement
 
 
 def test_a_player_below_the_bar_costs_the_minimum():

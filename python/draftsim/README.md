@@ -41,8 +41,8 @@ ts.remaining(rules)                        # 139
 ts.max_bid(rules)                          # 125 -- $1 reserved per unfilled slot
 
 market = Market.of(draft.state)             # rebuild after each pick; prices move
-marginal_points(draft.state, "t0", some_player)            # adds to YOUR lineup
-max_sensible_bid(draft.state, "t0", some_player, market)   # and what that's worth
+marginal_points(draft.state, "t0", some_player, market.replacement)   # his worth
+max_sensible_bid(draft.state, "t0", some_player, market)              # his price
 
 draft.undo()                               # pop the last sale, rebuild the cache
 ```
@@ -99,9 +99,8 @@ freely-available body you would otherwise start, which is also the only baseline
 that squares with `dollars_per_point`: that rate is dollars per point *above
 replacement*, so the points figure has to be too. Feeding it absolute lineup
 improvement priced this league's 192 drafted players at $13,472 against $2,400 of
-real money. `marginal_points` takes the baseline as an argument and defaults to
-zero, because "how much better is my lineup with him" is still worth asking on a
-roster screen — it just isn't a price.
+real money. `marginal_points` requires the baseline rather than defaulting to
+one — there is no honest default, and the zero it used to assume was the bug.
 
 **Prices move, because supply and demand do.** `Market.of(state)` recomputes
 replacement level and the exchange rate from the ledger, so both track the draft:
