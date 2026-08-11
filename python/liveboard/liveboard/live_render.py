@@ -1303,6 +1303,7 @@ def _block_panel(
     money: str,
     money_cls: str,
     timeline: str,
+    points: float = 0.0,
 ) -> str:
     """The block panel, live or settled.
 
@@ -1324,7 +1325,7 @@ def _block_panel(
     else:
         pill = badge(player.position, light=True)
         dollar = market_value(player)
-        proj_txt = f"${proj:.0f}" if proj else "—"
+        proj_txt = f"${dollar:.0f}" if dollar else "—"
         # Free agents carry no team, and an empty span between two separators
         # draws a dot with nothing on one side of it. Absent facts leave, and
         # take their separator with them.
@@ -1416,6 +1417,7 @@ def render_nomination(
         bid,
         bid_cls,
         _bid_timeline(state, bid_events, seen, nom.offering_slot),
+        state.points(player),
     )
 
 
@@ -1459,6 +1461,7 @@ def render_settled_lot(
         f"${pick.price}",
         "figv bidamt",
         timeline,
+        state.points(pick.player),
     )
 
 
