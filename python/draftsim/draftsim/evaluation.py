@@ -8,6 +8,7 @@ bidder actually needs -- what he's worth, and what you can legally spend.
 
 from __future__ import annotations
 
+from collections import ChainMap
 from dataclasses import dataclass
 from typing import Dict, Mapping, Optional
 
@@ -17,23 +18,59 @@ from .rules import CONCRETE_POSITIONS, Position, slot_shares
 from .state import DraftState
 
 
-def marginal_points(state: DraftState, team_id: str, player: Player) -> float:
-    """What this player would add to `team_id`'s STARTING lineup.
+_REPLACEMENT_ID = "__replacement__"
 
-    Not his projection: a re-solve of the lineup with him on the roster, minus
-    the cached baseline. One matching over pre-sorted buckets, which is cheap
-    enough to run across the whole remaining pool inside a single bid.
 
-    Never negative -- a player who cannot crack the lineup adds zero, he does not
-    subtract.
+def marginal_points(
+    state: DraftState,
+    team_id: str,
+    player: Player,
+    replacement: Optional[Mapping[Position, float]] = None,
+) -> float:
+    """What this player would add to `team_id`'s STARTING lineup, over a baseline.
+
+    Not his projection: a re-solve of the lineup with him on the roster, against
+    what that lineup scores without him.
+
+    The baseline is the whole argument. With none, it is an empty slot scoring
+    zero -- which answers "how much better is my lineup with him", the number a
+    roster screen wants, but is not what he is worth, because you were never
+    going to field an empty slot. Pass `replacement` and the comparison becomes
+    the freely-available body you would otherwise start, which is what a price
+    should be measured from. `max_sensible_bid` always passes one.
+
+    Both arms go through the lineup solver rather than subtracting a replacement
+    figure from the gain, so the awkward cases answer themselves: a player who
+    cannot crack the lineup scores the same either way and comes out at zero, and
+    a player at a position you have already filled is measured against whoever he
+    actually displaces.
+
+    Never negative -- a player below the bar is worth nothing, not less than
+    nothing. Two matchings over pre-sorted buckets when a baseline is given, one
+    without, and both are microseconds.
     """
     ts = state.teams[team_id]
-    hypothetical = dict(ts.by_position)
-    hypothetical[player.position] = insort(
-        ts.by_position.get(player.position, ()), player, state.proj
+
+    def lineup_with(p: Player, proj: Mapping[str, float]) -> float:
+        buckets = dict(ts.by_position)
+        buckets[p.position] = insort(buckets.get(p.position, ()), p, proj)
+        return best_lineup(buckets, state.rules, proj).points
+
+    with_him = lineup_with(player, state.proj)
+    if replacement is None:
+        return max(0.0, with_him - ts.lineup.points)  # cached baseline
+
+    bar = replacement.get(player.position, 0.0)
+    if bar == float("inf"):
+        return 0.0  # a position the lineup can never start -- no arithmetic needed
+
+    filler = Player(
+        id=_REPLACEMENT_ID, name="replacement", position=player.position, team=""
     )
-    improved = best_lineup(hypothetical, state.rules, state.proj)
-    return max(0.0, improved.points - ts.lineup.points)  # cached baseline
+    # ChainMap rather than a merged dict: this runs once per candidate across the
+    # whole pool, and copying every projection each time would dwarf the solve.
+    with_a_body = lineup_with(filler, ChainMap({_REPLACEMENT_ID: bar}, state.proj))
+    return max(0.0, with_him - with_a_body)
 
 
 def remaining_starter_shares(state: DraftState) -> Dict[Position, float]:
@@ -170,20 +207,25 @@ def max_sensible_bid(
     state: DraftState,
     team_id: str,
     player: Player,
-    dollars_per_point_: float,
+    market: Market,
 ) -> int:
     """The most it makes sense to pay -- capped by what is legal.
 
         max_bid  = remaining - (open_slots - 1) * min_bid
-        sensible = min(max_bid, min_bid + marginal_points * dollars_per_point)
+        sensible = min(max_bid, min_bid + value_over_replacement * dollars_per_point)
+
+    Both halves of that product are measured from the same bar. The rate is
+    dollars per point *above replacement*, so the points figure has to be above
+    replacement too -- feeding it absolute lineup improvement instead prices the
+    league's 192 drafted players at five times the money that exists.
 
     A player worth nothing to this roster is still worth the $1 minimum, because
     a body in an empty slot beats an empty slot.
     """
     ts = state.teams[team_id]
-    worth = state.rules.min_bid + marginal_points(state, team_id, player) * (
-        dollars_per_point_
-    )
+    worth = state.rules.min_bid + marginal_points(
+        state, team_id, player, market.replacement
+    ) * market.dollars_per_point
     return max(0, min(ts.max_bid(state.rules), int(worth)))
 
 

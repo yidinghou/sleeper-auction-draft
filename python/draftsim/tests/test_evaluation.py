@@ -5,6 +5,7 @@ from conftest import deep_pool, make_draft, make_pool
 
 from draftsim import DraftRules
 from draftsim.evaluation import (
+    Market,
     dollars_per_point,
     marginal_points,
     max_sensible_bid,
@@ -143,9 +144,9 @@ def test_dollars_per_point_prices_the_leagues_discretionary_money():
 def test_max_sensible_bid_never_exceeds_what_is_legal():
     players, proj = deep_pool()
     draft = make_draft(players, proj)
-    rate = dollars_per_point(draft.state)
+    market = Market.of(draft.state)
     for player in list(players.values())[:40]:
-        bid = max_sensible_bid(draft.state, "t0", player, rate)
+        bid = max_sensible_bid(draft.state, "t0", player, market)
         assert 0 <= bid <= draft.team_state("t0").max_bid(draft.rules)
 
 
@@ -153,7 +154,85 @@ def test_a_worthless_player_is_still_worth_the_minimum():
     players, proj = make_pool(("D1", "DEF", 120.0), ("D2", "DEF", 110.0))
     draft = make_draft(players, proj, teams=2)
     draft.record_pick("t0", "D1|DEF", 5, 0.0)
-    assert max_sensible_bid(draft.state, "t0", players["D2|DEF"], 1.0) == 1
+    market = Market.of(draft.state)
+    assert max_sensible_bid(draft.state, "t0", players["D2|DEF"], market) == 1
+
+
+def _by_projection(draft):
+    return sorted(draft.players.values(), key=lambda p: -draft.proj[p.id])
+
+
+def _sell(draft, players, overpay=1.0):
+    """Sell each player to a seat in turn at (a multiple of) the sensible price."""
+    for i, player in enumerate(players):
+        seat = f"t{i % draft.rules.teams}"
+        price = int(max_sensible_bid(draft.state, seat, player, Market.of(draft.state)))
+        price = min(max(1, int(price * overpay)), draft.team_state(seat).max_bid(draft.rules))
+        draft.record_pick(seat, player.id, price, float(i))
+
+
+def test_the_books_balance():
+    # THE assertion. Both halves of the bid formula are measured over replacement,
+    # so pricing every player the league will buy has to come out near the money
+    # the league actually has. Feeding absolute lineup improvement to a
+    # per-surplus rate -- the bug this replaced -- lands 5.6x over instead.
+    players, proj = deep_pool(per_position=60)
+    draft = make_draft(players, proj)
+    market = Market.of(draft.state)
+    rules = draft.rules
+
+    drafted = _by_projection(draft)[: rules.teams * rules.roster_size]
+    total = sum(max_sensible_bid(draft.state, "t0", p, market) for p in drafted)
+
+    assert total == pytest.approx(rules.teams * rules.budget, rel=0.05)
+
+
+def test_the_books_stay_balanced_once_the_draft_is_running():
+    # If the league pays exactly what the model says, recomputing mid-draft has
+    # to reproduce the same rate -- otherwise the "prices move" machinery is
+    # drifting rather than measuring.
+    players, proj = deep_pool(per_position=60)
+    draft = make_draft(players, proj)
+    opening = Market.of(draft.state).dollars_per_point
+
+    _sell(draft, _by_projection(draft)[:40])
+
+    assert Market.of(draft.state).dollars_per_point == pytest.approx(opening, rel=0.05)
+
+
+def test_an_early_spending_spree_makes_the_back_half_cheap():
+    players, proj = deep_pool(per_position=60)
+    draft = make_draft(players, proj)
+    opening = Market.of(draft.state).dollars_per_point
+
+    _sell(draft, _by_projection(draft)[:40], overpay=1.6)
+
+    # The money is gone but the players are not: everyone left bids into a
+    # cheaper market. This is the whole point of recomputing.
+    assert Market.of(draft.state).dollars_per_point < opening * 0.9
+
+
+def test_a_baseline_is_what_separates_worth_from_improvement():
+    players, proj = deep_pool()
+    draft = make_draft(players, proj)
+    replacement = replacement_points(draft.state)
+    rb = players["RB00|RB"]
+
+    improvement = marginal_points(draft.state, "t0", rb)
+    worth = marginal_points(draft.state, "t0", rb, replacement)
+
+    assert improvement == proj[rb.id]  # against an empty slot, his whole score
+    assert worth == improvement - replacement["RB"]
+    assert 0 < worth < improvement
+
+
+def test_a_player_below_the_bar_costs_the_minimum():
+    players, proj = deep_pool(per_position=60)
+    draft = make_draft(players, proj)
+    market = Market.of(draft.state)
+    # RB #50 of 60 is far below a replacement bar set at RB #33.
+    assert proj["RB50|RB"] < market.replacement["RB"]
+    assert max_sensible_bid(draft.state, "t0", players["RB50|RB"], market) == 1
 
 
 def test_positional_need_counts_down_as_a_roster_fills():
