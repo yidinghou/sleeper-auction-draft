@@ -154,3 +154,16 @@ class DraftRules:
         running backs. Reads 2 QB / 3 RB / 3 WR / 1 TE / 1 DEF on the default
         lineup, which fills exactly the ten starter slots."""
         return {pos: round(share) for pos, share in self.starter_shares().items()}
+
+    def owned_starters(self) -> Dict[Position, int]:
+        """`starter_shares()` floored -- the spots a position owns *outright*.
+
+        The default lineup reads 2 QB / 2 RB / 3 WR / 1 TE, because the FLEX is
+        genuinely contested and neither the backs nor the receivers own it. The
+        sibling of `starter_counts()`, which rounds because it answers "how many
+        should I buy"; this floors because it answers the other question -- how
+        many bodies does the lineup seat this position no matter what else is on
+        the roster. A body past this count may well start; what it is not is a
+        slot the roster was owed.
+        """
+        return {pos: int(share) for pos, share in self.starter_shares().items()}
