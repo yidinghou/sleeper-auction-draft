@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from draftsim import BENCH, DraftRules
+from draftsim.rules import slot_shares
 
 
 def test_default_rules_are_the_real_league():
@@ -48,6 +49,26 @@ def test_startable_slots_counts_the_flexes_a_position_can_reach():
     assert rules.startable_slots("QB") == 2
     assert rules.startable_slots("DEF") == 1
     assert rules.startable_slots("K") == 0  # the default lineup never starts one
+
+
+def test_slot_shares_splits_one_slot_across_the_positions_that_want_it():
+    assert slot_shares("QB") == {"QB": 1.0}  # a concrete slot is one whole player
+    assert slot_shares("FLEX") == {"RB": 0.77, "WR": 0.23}
+    assert slot_shares("SUPER_FLEX") == {"QB": 1.0}  # measured, not eligibility
+    assert sum(slot_shares("FLEX").values()) == pytest.approx(1.0)
+
+
+def test_slot_shares_is_what_starter_shares_is_built_from():
+    # Not an implementation detail -- replacement level counts the slots still
+    # open the same way the template counts all of them, so they must agree.
+    rules = DraftRules()
+    summed: dict = {}
+    for slot in rules.slots:
+        for pos, share in slot_shares(slot).items():
+            summed[pos] = summed.get(pos, 0.0) + share
+    shares = rules.starter_shares()
+    for pos, share in summed.items():
+        assert shares[pos] == pytest.approx(share)
 
 
 def test_starter_shares_sum_to_the_starting_lineup():

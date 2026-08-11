@@ -71,6 +71,18 @@ FLEX_SHARES: Dict[str, Dict[Position, float]] = {
 CONCRETE_POSITIONS: Tuple[Position, ...] = ("QB", "RB", "WR", "TE", "K", "DEF")
 
 
+def slot_shares(slot: str) -> Dict[Position, float]:
+    """How one slot's startable spot divides across the positions competing for it.
+
+    A concrete slot is worth a whole player at its own position; a flex slot splits
+    by `FLEX_SHARES`. The unit of replacement-level accounting, so that counting the
+    whole template and counting only the slots still open use one implementation.
+    """
+    if slot in CONCRETE_POSITIONS:
+        return {slot: 1.0}
+    return dict(FLEX_SHARES.get(slot, {}))
+
+
 @dataclass(frozen=True)
 class DraftRules:
     """Budget ($200), roster size (16 slots), and the minimum bid ($1)."""
@@ -133,11 +145,8 @@ class DraftRules:
         """
         shares: Dict[Position, float] = {p: 0.0 for p in CONCRETE_POSITIONS}
         for slot in self.slots:
-            if slot in CONCRETE_POSITIONS:
-                shares[slot] += 1.0
-            else:
-                for pos, share in FLEX_SHARES.get(slot, {}).items():
-                    shares[pos] = shares.get(pos, 0.0) + share
+            for pos, share in slot_shares(slot).items():
+                shares[pos] = shares.get(pos, 0.0) + share
         return shares
 
     def starter_counts(self) -> Dict[Position, int]:
