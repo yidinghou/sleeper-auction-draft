@@ -20,7 +20,7 @@ python -m pytest
 
 ```python
 from draftsim import Draft, DraftRules, Team, load_players, load_projections
-from draftsim.evaluation import dollars_per_point, marginal_points, max_sensible_bid
+from draftsim.evaluation import Market, marginal_points, max_sensible_bid
 
 players = {p.id: p for p in load_players()}
 proj = load_projections()
@@ -40,9 +40,9 @@ ts = draft.team_state("t0")
 ts.remaining(rules)                        # 139
 ts.max_bid(rules)                          # 125 -- $1 reserved per unfilled slot
 
-rate = dollars_per_point(players.values(), rules, proj)
-marginal_points(draft.state, "t0", some_player)          # what he adds to YOUR lineup
-max_sensible_bid(draft.state, "t0", some_player, rate)   # and what that's worth
+market = Market.of(draft.state)             # rebuild after each pick; prices move
+marginal_points(draft.state, "t0", some_player)            # adds to YOUR lineup
+max_sensible_bid(draft.state, "t0", some_player, market)   # and what that's worth
 
 draft.undo()                               # pop the last sale, rebuild the cache
 ```
@@ -89,8 +89,30 @@ Combined with `max_bid()`, that gives a bidder the two numbers they need:
 
 ```
 max_bid  = remaining - (open_slots - 1) * min_bid
-sensible = min(max_bid, min_bid + marginal_points * dollars_per_point)
+sensible = min(max_bid, min_bid + value_over_replacement * dollars_per_point)
 ```
+
+**Marginal to a replacement body, not to an empty slot.** You are never going to
+field an empty slot, so comparing a player to one overstates him — against an
+empty roster it makes him worth his entire projection. The baseline is the
+freely-available body you would otherwise start, which is also the only baseline
+that squares with `dollars_per_point`: that rate is dollars per point *above
+replacement*, so the points figure has to be too. Feeding it absolute lineup
+improvement priced this league's 192 drafted players at $13,472 against $2,400 of
+real money. `marginal_points` takes the baseline as an argument and defaults to
+zero, because "how much better is my lineup with him" is still worth asking on a
+roster screen — it just isn't a price.
+
+**Prices move, because supply and demand do.** `Market.of(state)` recomputes
+replacement level and the exchange rate from the ledger, so both track the draft:
+only available players are ranked, and the bar sits at the starting need *still
+unfilled* league-wide. Once nine of twelve teams have their tight end, the bar
+drops to the third-best one left — which is exactly why a mediocre tight end is
+worth something to the three teams still short. A league that blows its budget
+early leaves everyone bidding into a cheaper market; a disciplined early market
+makes the back half dear. Remaining need is counted from unfilled *slots* rather
+than by subtracting starters from shares, because a team that started four
+running backs has spent the superflex its quarterback share was counting on.
 
 **One lot at a time.** Money is either uncommitted or spent, never in between,
 which is what keeps `max_bid()` a one-liner. Parallel lots would mean a team
@@ -105,7 +127,7 @@ orders, and a greedy fill would make them disagree by construction.
 ## Tests
 
 ```bash
-python -m pytest -q      # 110 tests
+python -m pytest -q      # 123 tests
 ```
 
 The centrepiece is `tests/test_state.py`: apply a random legal sequence of picks

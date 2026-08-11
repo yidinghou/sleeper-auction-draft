@@ -4,6 +4,26 @@ Value here is marginal, not absolute: a player is worth what he adds to your
 starting lineup. A third elite tight end scores zero for you and a lot for the
 team with none. Paired with `TeamState.max_bid`, this gives the two numbers a
 bidder actually needs -- what he's worth, and what you can legally spend.
+
+Marginal *to what*, though, is the question this module turns on. The baseline is
+explicit and it moves:
+
+    an empty slot   ->   scores zero, so a player is worth his whole projection.
+                         Answers "how much better is my lineup with him", which
+                         is a real question, but not a price -- you were never
+                         going to field an empty slot.
+
+    a replacement   ->   the freely-available body you would otherwise start.
+    body                 What you are actually paying for, and the only baseline
+                         that squares with `dollars_per_point`.
+
+    scarcity        ->   that body, given who is left and who still needs one.
+    adjusted             `Market.of(state)` reads it off the ledger, so it falls
+                         out of the same call after every pick.
+
+`marginal_points` defaults to the first and `max_sensible_bid` always passes the
+third. Mixing the first with a rate built on the second is what made this league's
+192 drafted players price at five times the money that exists.
 """
 
 from __future__ import annotations
