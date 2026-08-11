@@ -103,6 +103,47 @@ def _match(
     return player_of_slot
 
 
+def _sort_lineup(
+    assigned: List[Optional[int]],
+    players: Sequence[Player],
+    rules: DraftRules,
+    proj: Mapping[str, float],
+) -> List[Optional[int]]:
+    """Reorder players across slots so the lineup reads best-first.
+
+    `_match` maximises points but not slot labels: an RB is worth the same in RB2
+    as in FLEX, so which one he lands in falls out of the augmenting-path order.
+    That order inverts what a reader expects -- each new player takes the first
+    eligible slot and pushes the incumbent further down the template, leaving the
+    best RB in FLEX and the worst in RB1.
+
+    A sort, but only between slots that can legally trade players: swap any pair
+    where the earlier slot holds the worse player, until none are left. Points are
+    untouched -- same players, same count, only the labels move. Template order
+    puts concrete slots ahead of flex ones, so the result reads best-first down
+    the page and the overflow spills into the flex slots.
+    """
+    slots = rules.slots
+
+    def rank(pi: Optional[int]) -> Tuple[float, str]:
+        # Empty slots sort worst, so a filled slot always wins a move up.
+        return (float("inf"), "") if pi is None else sort_key(players[pi], proj)
+
+    def fits(si: int, pi: Optional[int]) -> bool:
+        return pi is None or rules.accepts(slots[si], players[pi].position)
+
+    swapped = True
+    while swapped:  # tiny (10 slots); settles in a couple of passes
+        swapped = False
+        for i in range(len(slots)):
+            for j in range(i + 1, len(slots)):
+                a, b = assigned[i], assigned[j]
+                if rank(b) < rank(a) and fits(i, b) and fits(j, a):
+                    assigned[i], assigned[j] = b, a
+                    swapped = True
+    return assigned
+
+
 def _flatten(by_position: ByPosition, proj: Mapping[str, float]) -> List[Player]:
     """All players from every bucket, in one deterministic best-first order."""
     everyone = [p for bucket in by_position.values() for p in bucket]
@@ -116,7 +157,7 @@ def best_lineup(
     """The highest-scoring legal starting lineup these players can field."""
     players = _flatten(by_position, proj)
     weights = [proj.get(p.id, 0.0) for p in players]
-    assigned = _match(players, rules, weights)
+    assigned = _sort_lineup(_match(players, rules, weights), players, rules, proj)
     slots = tuple(players[pi] if pi is not None else None for pi in assigned)
     return Lineup(
         points=sum(proj.get(p.id, 0.0) for p in slots if p is not None),

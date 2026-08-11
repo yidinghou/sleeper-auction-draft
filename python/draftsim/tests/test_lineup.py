@@ -60,6 +60,73 @@ def test_the_lineup_is_optimal_not_first_fit():
     assert lineup.points == 300 + 280 + 200 + 190 + 180 + 170
 
 
+def test_the_best_player_at_a_position_gets_the_concrete_slot():
+    # Points don't care whether an RB starts in RB2 or FLEX, so the matching is
+    # free to label it either way -- and left alone it inverts, pushing the best
+    # RB out to FLEX. A roster is read by a human, so the concrete slots take the
+    # best players and the overflow spills into the flex slots.
+    players, proj = make_pool(
+        ("QB1", "QB", 300.0),
+        ("RB1", "RB", 250.0),
+        ("RB2", "RB", 200.0),
+        ("RB3", "RB", 150.0),
+        ("WR1", "WR", 240.0),
+        ("WR2", "WR", 230.0),
+        ("TE1", "TE", 100.0),
+        ("D1", "DEF", 120.0),
+    )
+    lineup = _lineup(list(players.values()), proj)
+    by_slot = dict(zip(DraftRules().slots, lineup.slots))
+    assert [p.name for p in lineup.slots if p is not None and p.position == "RB"] == [
+        "RB1",
+        "RB2",
+        "RB3",
+    ]
+    assert by_slot["FLEX"].name == "RB3"
+
+
+def test_an_elite_te_starts_at_te_not_in_the_flex():
+    # The inverted case that reads worst: a 260-point TE in the FLEX row while a
+    # 90-point TE holds the TE slot. Same points, nonsense to look at.
+    players, proj = make_pool(
+        ("QB1", "QB", 300.0),
+        ("RB1", "RB", 250.0),
+        ("RB2", "RB", 200.0),
+        ("WR1", "WR", 240.0),
+        ("WR2", "WR", 230.0),
+        ("WR3", "WR", 225.0),
+        ("TE1", "TE", 260.0),
+        ("TE2", "TE", 90.0),
+    )
+    lineup = _lineup(list(players.values()), proj)
+    by_slot = dict(zip(DraftRules().slots, lineup.slots))
+    assert by_slot["TE"].name == "TE1"
+    assert by_slot["FLEX"].name == "WR3"
+
+
+def test_sorting_the_lineup_never_costs_points():
+    # The swaps are label-only: whatever the matching scored, the sorted lineup
+    # scores too. Shuffled inputs, so it isn't testing one lucky ordering.
+    players, proj = make_pool(
+        ("QB1", "QB", 300.0),
+        ("QB2", "QB", 280.0),
+        ("RB1", "RB", 250.0),
+        ("RB2", "RB", 200.0),
+        ("RB3", "RB", 150.0),
+        ("WR1", "WR", 240.0),
+        ("WR2", "WR", 230.0),
+        ("TE1", "TE", 260.0),
+        ("D1", "DEF", 120.0),
+    )
+    roster = list(players.values())
+    rng = random.Random(11)
+    for _ in range(25):
+        rng.shuffle(roster)
+        lineup = _lineup(roster, proj)
+        assert lineup.points == sum(proj[p.id] for p in lineup.slots if p is not None)
+        assert lineup.points == 300 + 280 + 250 + 200 + 150 + 240 + 230 + 260 + 120
+
+
 def test_a_second_defense_adds_nothing():
     players, proj = make_pool(("D1", "DEF", 120.0), ("D2", "DEF", 110.0))
     roster = list(players.values())
