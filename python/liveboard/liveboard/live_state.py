@@ -11,26 +11,29 @@ The third is the one that actually settles an auction. A seat with $80 and one
 open slot can outbid you; a seat with $80 and eight open slots tops out at $73
 and is not the threat it looks like.
 
-Valuation is reused wholesale from the simulator (`roster`, `auction`,
-`valuation`) so the live board and the sim agree on what a roster is worth.
-Nothing here re-implements a value model.
+All three come from `draftsim`, which models exactly this: a ledger of settled
+sales and a cache derived from it. This module used to fold the feed itself and
+do its own budget arithmetic; now it records the picks into a `Draft` and reads
+the answers back. `seat_from` is the one place the two models meet -- draftsim's
+`TeamState` in, the board's `Seat` out -- so when the library moves again there
+is a single function to follow rather than a diffuse fold.
+
+Nothing here re-implements a value model, and now nothing here re-implements
+roster arithmetic either.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Sequence
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from draftsim.auction import max_bid
-from draftsim.config import CONCRETE_POSITIONS, DraftConfig
-from draftsim.roster import (
-    marginal_points,
-    marginal_thresholds,
-    open_slots,
-    positional_need,
-    starters,
-)
-from draftsim.valuation import Player, _make_id, by_sleeper_id, replacement_points
+from draftsim.draft import Draft
+from draftsim.evaluation import Market, marginal_points, positional_need
+from draftsim.lineup import Lineup, empty_lineup
+from draftsim.player import MarketData, Player, by_sleeper_id, make_id
+from draftsim.rules import CONCRETE_POSITIONS, DraftRules, Position
+from draftsim.state import DraftState, TeamState
+from draftsim.team import Team
 
 
 @dataclass(frozen=True)
@@ -70,16 +73,51 @@ class Seat:
     One field rather than two flags -- the three states are exclusive, and each
     maps to exactly one class on the mark that draws it."""
 
+    lineup: Lineup = field(default_factory=lambda: Lineup(0.0, ()))
+    """The seat's best legal starting lineup, solved by draftsim. Replaces the
+    board's old `starters()` call, and is slot-aligned to `rules.slots`."""
+    by_position: Mapping[Position, Tuple[Player, ...]] = field(default_factory=dict)
+    """Each position's players, best first -- what `is_legal` wants."""
+
     @property
     def filled(self) -> int:
         return len(self.roster)
+
+
+def seat_from(state: DraftState, slot: int) -> Seat:
+    """Project draftsim's `TeamState` into the board's view of a seat.
+
+    The one place the two models meet. Everything on the left of this function
+    is a fact the ledger implies; everything the board adds afterwards -- who is
+    sitting here, whether they are in the bidding -- is decorated by the poller,
+    because neither is derivable from settled picks.
+
+    A flat snapshot rather than a live wrapper, so `seat.max_bid` stays an
+    attribute and the renderer reads the same as it always did. Duplicating
+    derived state is safe for the same reason draftsim's own cache is: it is
+    rebuilt from the ledger every poll and is never a source of truth.
+    """
+    ts: TeamState = state.teams[str(slot)]
+    rules = state.rules
+    return Seat(
+        slot=slot,
+        roster=list(ts.roster),
+        picks=[],  # filled by `reconstruct`, which alone knows the pick numbers
+        spent=ts.spent,
+        budget_left=ts.remaining(rules),
+        open_slots=ts.open_slots(rules),
+        needs=positional_need(state, str(slot)),
+        max_bid=ts.max_bid(rules),
+        lineup=ts.lineup,
+        by_position=ts.by_position,
+    )
 
 
 @dataclass
 class LeagueState:
     """Every seat plus the pool that's left, as of the last pick seen."""
 
-    config: DraftConfig
+    rules: DraftRules
     seats: Dict[int, Seat]
     available: List[Player]
     replacement: Dict[str, float]
@@ -88,6 +126,19 @@ class LeagueState:
     """Picks whose player_id wasn't anywhere in the projections CSV. Their
     money and roster slot still count; they just carry no points. A non-empty
     list means the sheet is stale -- re-run `npm run export:projections`."""
+    proj: Mapping[str, float] = field(default_factory=dict)
+    """Season points by player id. Projections live outside `Player` in the
+    rebuilt library, so anything drawing a points figure reads it from here."""
+    ledger: Optional[DraftState] = None
+    """draftsim's cache, for the valuation calls that need a whole draft rather
+    than one roster. Named for what it is so nothing ends up as `state.state`."""
+    market: Optional[Market] = None
+    """Replacement level and the exchange rate, as of this poll."""
+
+    def points(self, player: Optional[Player]) -> float:
+        """This player's projection, or zero -- an unprojected body scores
+        nothing, which is the right answer and not an error."""
+        return self.proj.get(player.id, 0.0) if player is not None else 0.0
 
 
 def _player_from_pick(pick: Dict[str, Any]) -> Player:
@@ -105,12 +156,11 @@ def _player_from_pick(pick: Dict[str, Any]) -> Player:
     pos = (meta.get("position") or "").strip()
     team = (meta.get("team") or "").strip()
     return Player(
-        id=_make_id(name or str(pick.get("player_id")), pos, team),
+        id=make_id(name or str(pick.get("player_id")), pos, team),
         name=name or f"player {pick.get('player_id')}",
-        pos=pos,
+        position=pos,
         team=team,
-        points=0.0,
-        sleeper_id=str(pick.get("player_id") or "") or None,
+        market=MarketData(sleeper_id=str(pick.get("player_id") or "") or None),
     )
 
 
@@ -125,8 +175,9 @@ def _price(pick: Dict[str, Any]) -> int:
 
 def reconstruct(
     picks: Sequence[Dict[str, Any]],
-    config: DraftConfig,
+    rules: DraftRules,
     players: Sequence[Player],
+    proj: Mapping[str, float],
     catalog: Optional[Sequence[Player]] = None,
 ) -> LeagueState:
     """Fold the raw pick feed into per-seat standings and a remaining pool.
@@ -139,7 +190,11 @@ def reconstruct(
     `load_players` drops unsigned free agents, but a $1 dart at an unsigned
     receiver is a real pick that really spent a dollar. Resolving against the
     full sheet keeps that player's name and projection instead of reducing
-    them to an anonymous 0-point body.
+    them to an anonymous 0-point body. On a real 192-pick auction that is worth
+    two picks, so pass `load_players(free_agents=True)` and mean it.
+
+    The fold itself is draftsim's: every pick is recorded into a `Draft`, and
+    money, room and reach are read back off the cache rather than counted here.
     """
     lookup = list(catalog) if catalog is not None else list(players)
     index = by_sleeper_id(lookup)
@@ -148,32 +203,24 @@ def reconstruct(
     # every pick reading as unknown.
     by_key = {p.id: p for p in lookup}
 
-    seats: Dict[int, Seat] = {
-        slot: Seat(
-            slot=slot,
-            roster=[],
-            picks=[],
-            spent=0,
-            budget_left=config.budget,
-            open_slots=config.roster_size,
-            needs={},
-            max_bid=0,
-        )
-        for slot in range(1, config.teams + 1)
-    }
+    # draftsim keys teams by string; the board thinks in Sleeper's 1..N draft
+    # slots. `str(slot)` is the whole of the translation, both ways.
+    teams = [Team(id=str(n), name=f"Seat {n}") for n in range(1, rules.teams + 1)]
+    known: Dict[str, Player] = {p.id: p for p in lookup}
+    scores: Dict[str, float] = dict(proj)
 
-    taken: set = set()
     all_picks: List[SeatPick] = []
     unknown: List[str] = []
+    resolved: List[Tuple[int, SeatPick]] = []
 
     for pick in sorted(picks, key=lambda p: int(p.get("pick_no") or 0)):
         slot = int(pick.get("draft_slot") or 0)
-        if slot not in seats:
-            # A pick from a seat outside 1..teams means the config and the feed
+        if not 1 <= slot <= rules.teams:
+            # A pick from a seat outside 1..teams means the rules and the feed
             # disagree; skipping it would hide that, so surface it loudly.
             raise ValueError(
                 f"pick {pick.get('pick_no')} has draft_slot {slot}, "
-                f"outside 1..{config.teams}"
+                f"outside 1..{rules.teams}"
             )
         pid = str(pick.get("player_id") or "")
         player = index.get(pid)
@@ -183,6 +230,11 @@ def reconstruct(
             if player is None:
                 player = fallback
                 unknown.append(pid)
+        # An invented body has to exist for draftsim to record a pick against
+        # it, and scores nothing -- points live outside `Player` now, so absence
+        # from `scores` is how "no projection" is spelled.
+        known.setdefault(player.id, player)
+        scores.setdefault(player.id, 0.0)
 
         entry = SeatPick(
             pick_no=int(pick.get("pick_no") or 0),
@@ -191,48 +243,52 @@ def reconstruct(
             price=_price(pick),
         )
         all_picks.append(entry)
-        seat = seats[slot]
-        seat.roster.append(player)
-        seat.picks.append(entry)
-        seat.spent += entry.price
-        taken.add(player.id)
+        resolved.append((slot, entry))
 
-    available = [p for p in players if p.id not in taken]
-    # Replacement level is measured against who is actually left, so it rises
-    # as the room drains -- the same reason a late-draft WR2 is worth less than
-    # the identical player was in round one.
-    replacement = replacement_points(available, config)
+    draft = Draft(rules=rules, players=known, teams=teams, proj=scores)
+    for slot, entry in resolved:
+        draft.record_pick(str(slot), entry.player.id, entry.price, float(entry.pick_no))
 
-    for seat in seats.values():
-        seat.budget_left = config.budget - seat.spent
-        seat.open_slots = open_slots(seat.filled, config)
-        seat.needs = positional_need(seat.roster, config)
-        seat.max_bid = max_bid(seat.budget_left, seat.open_slots)
+    state = draft.state
+    market = Market.of(state)
+    available = [p for p in players if p.id not in state.owner]
+
+    seats: Dict[int, Seat] = {}
+    for n in range(1, rules.teams + 1):
+        seat = seat_from(state, n)
+        seat.picks = [e for s, e in resolved if s == n]
+        seats[n] = seat
 
     return LeagueState(
-        config=config,
+        rules=rules,
         seats=seats,
         available=available,
-        replacement=replacement,
+        replacement=dict(market.replacement),
         picks=all_picks,
         unknown_player_ids=unknown,
+        proj=scores,
+        ledger=state,
+        market=market,
     )
 
 
 def seat_value_of(
     state: LeagueState, seat: Seat, player: Optional[Player]
 ) -> float:
-    """Points `player` would add to this seat's starting lineup.
+    """Points `player` would add to this seat's starting lineup, over a $1 body.
 
-    Zero means the seat cannot use them -- a full lineup at that position, or a
-    position it can never start (a second defense). That, crossed with the
-    seat's max bid, is what separates a rival who *will* push the price from
-    one who merely *could*.
+    Zero now means two things, and both are reasons not to fear this seat: it
+    cannot use them at all -- a full lineup at that position, or one it can
+    never start, like a second defense -- or it can, but gains nothing a
+    freely-available body would not also give it. The board wants the second
+    reading as much as the first, because a seat that would not improve is a
+    seat that will not push the price.
     """
-    if player is None:
+    if player is None or state.ledger is None or state.market is None:
         return 0.0
-    thresholds = marginal_thresholds(seat.roster, state.config, state.replacement)
-    return marginal_points(player, thresholds)
+    return marginal_points(
+        state.ledger, str(seat.slot), player, state.market.replacement
+    )
 
 
 def contenders(state: LeagueState, player: Optional[Player]) -> List[Seat]:
@@ -250,7 +306,7 @@ def contenders(state: LeagueState, player: Optional[Player]) -> List[Seat]:
 
 # How many bodies a seat wants at each position, as starter-equivalents.
 #
-# Deliberately *not* `config.starter_shares()` (QB 2.00, RB 2.77, WR 3.23,
+# Deliberately *not* `rules.starter_shares()` (QB 2.00, RB 2.77, WR 3.23,
 # TE 1.00). Those are structural -- how the lineup template divides, and the
 # right input to replacement level. These are a draft plan: the extra QB is
 # insurance in a superflex league where the position empties early, and the
@@ -282,7 +338,9 @@ class PositionLine:
         return max(0.0, self.want - self.have)
 
 
-def position_summary(seat: Seat, config: DraftConfig) -> List[PositionLine]:
+def position_summary(
+    seat: Seat, rules: DraftRules, proj: Mapping[str, float]
+) -> List[PositionLine]:
     """A seat at a glance: how full each position is and what it's scoring.
 
     The coarse read the roster card can't give you -- *does seat 7 still need a
@@ -292,21 +350,23 @@ def position_summary(seat: Seat, config: DraftConfig) -> List[PositionLine]:
     deliberately differs from `seat.needs`: the seat's structural need says what
     makes a legal lineup, this says what makes a good one.
 
-    `starter_points` is grouped off the same `starters()` matching the simulator
-    scores on, so the summary and the roster behind it cannot disagree. A
+    `starter_points` is grouped off the seat's own solved lineup, the same one
+    draftsim scores, so the summary and the roster behind it cannot disagree. A
     position nobody starts and nobody owns is dropped, so K stays out of a
     league that doesn't play one but appears the moment someone drafts a kicker.
     """
-    want: Dict[str, float] = dict(config.starter_counts())
+    want: Dict[str, float] = dict(rules.starter_counts())
     want.update(DRAFT_TARGETS)
     have: Dict[str, int] = {}
     for player in seat.roster:
-        have[player.pos] = have.get(player.pos, 0) + 1
+        have[player.position] = have.get(player.position, 0) + 1
 
     points: Dict[str, float] = {}
-    for player in starters(seat.roster, config):
+    for player in seat.lineup.slots:
         if player is not None:
-            points[player.pos] = points.get(player.pos, 0.0) + player.points
+            points[player.position] = (
+                points.get(player.position, 0.0) + proj.get(player.id, 0.0)
+            )
 
     positions = list(CONCRETE_POSITIONS)
     # Anything the roster holds that the position list doesn't know about (an
@@ -329,6 +389,6 @@ def spend_by_position(state: LeagueState) -> Dict[str, int]:
     """League-wide dollars sunk into each position so far."""
     totals = {pos: 0 for pos in CONCRETE_POSITIONS}
     for pick in state.picks:
-        if pick.player.pos in totals:
-            totals[pick.player.pos] += pick.price
+        if pick.player.position in totals:
+            totals[pick.player.position] += pick.price
     return totals
