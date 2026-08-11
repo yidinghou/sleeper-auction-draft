@@ -8,11 +8,12 @@ bidder actually needs -- what he's worth, and what you can legally spend.
 
 from __future__ import annotations
 
-from typing import Dict, Iterable, Mapping, Optional
+from dataclasses import dataclass
+from typing import Dict, Mapping, Optional
 
 from .lineup import best_lineup, insort
 from .player import Player
-from .rules import DraftRules, Position
+from .rules import CONCRETE_POSITIONS, Position, slot_shares
 from .state import DraftState
 
 
@@ -35,67 +36,134 @@ def marginal_points(state: DraftState, team_id: str, player: Player) -> float:
     return max(0.0, improved.points - ts.lineup.points)  # cached baseline
 
 
-def replacement_points(
-    players: Iterable[Player], rules: DraftRules, proj: Mapping[str, float]
-) -> Dict[Position, float]:
-    """The points a freely-available player at each position scores.
+def remaining_starter_shares(state: DraftState) -> Dict[Position, float]:
+    """Starting spots still unfilled across the whole league, by position.
 
-    The bar is the first player *past* what the league starts: with 12 teams
-    starting 2.77 running backs each, RB #33 is roughly what you can have for a
-    dollar, so anything above his points is what you are actually paying for.
+    Counted from the slots themselves rather than by subtracting each team's
+    starters from its share. Subtracting double-counts: a team that started four
+    running backs has consumed the superflex its quarterback share was counting
+    on, and walking unfilled slots handles that for free -- the slot is simply
+    gone.
 
-    Uses fractional `starter_shares` rather than whole counts -- at 12 teams a
-    fifth of a slot is more than two players' worth of movement in the ranking.
-    Positions the lineup cannot start at all (K, on the default template) get
-    `inf`: no score at that position is worth anything.
+    Self-consistent by construction. At the open every slot is unfilled, so this
+    returns exactly `starter_shares() * teams`; it drifts from there only as real
+    slots get filled. Reads `lineup.slots`, which `_sort_lineup` makes a stable
+    fact rather than one arbitrary labelling of the same matching.
     """
+    shares: Dict[Position, float] = {p: 0.0 for p in CONCRETE_POSITIONS}
+    for ts in state.teams.values():
+        for slot, filled in zip(state.rules.slots, ts.lineup.slots):
+            if filled is None:
+                for position, share in slot_shares(slot).items():
+                    shares[position] = shares.get(position, 0.0) + share
+    return shares
+
+
+def replacement_points(state: DraftState) -> Dict[Position, float]:
+    """The points a freely-available player at each position scores, right now.
+
+    The bar is the first player *past* what the league still starts: with 12 teams
+    needing 2.77 running backs each, RB #33 is roughly what you can have for a
+    dollar at the open, so anything above his points is what you are paying for.
+
+    Both halves move as the draft runs. Supply shrinks because only available
+    players are ranked, and demand shrinks because the index is the *remaining*
+    league-wide need -- once nine of twelve teams have their tight end, the bar
+    falls to the third-best one left, which is what makes a mediocre tight end
+    genuinely worth something to the three teams still short.
+
+    Fractional shares, not whole counts: at 12 teams a fifth of a slot is more
+    than two players' worth of movement in the ranking. Positions the lineup can
+    never start (K, on the default template) get `inf` -- no score there is worth
+    anything, and that is structural, so it does not move.
+    """
+    need = remaining_starter_shares(state)
+
     buckets: Dict[Position, list] = {}
-    for p in players:
-        buckets.setdefault(p.position, []).append(p)
+    for player in state.players.values():
+        if player.id not in state.owner:
+            buckets.setdefault(player.position, []).append(player)
 
     out: Dict[Position, float] = {}
-    for position, per_team in rules.starter_shares().items():
-        if per_team <= 0 or rules.startable_slots(position) == 0:
+    for position in set(need) | set(buckets):
+        if state.rules.startable_slots(position) == 0:
             out[position] = float("inf")
             continue
         ranked = sorted(
-            buckets.get(position, ()), key=lambda p: -proj.get(p.id, 0.0)
+            buckets.get(position, ()), key=lambda p: -state.proj.get(p.id, 0.0)
         )
-        n = round(per_team * rules.teams)
-        out[position] = proj.get(ranked[n].id, 0.0) if n < len(ranked) else 0.0
+        # No remaining need rounds n to 0, making the best player left the bar --
+        # nobody has a slot for him, so nobody is paying above a dollar for him.
+        n = round(need.get(position, 0.0))
+        out[position] = state.proj.get(ranked[n].id, 0.0) if n < len(ranked) else 0.0
     return out
 
 
 def dollars_per_point(
-    players: Iterable[Player],
-    rules: DraftRules,
-    proj: Mapping[str, float],
+    state: DraftState,
     replacement: Optional[Mapping[Position, float]] = None,
 ) -> float:
-    """The league's exchange rate: discretionary dollars per point above
-    replacement.
+    """The league's exchange rate right now: money left per point of value left.
 
-    Every team must reserve `min_bid` for each roster slot, so only the surplus
-    is genuinely biddable; that surplus buys the total value-over-replacement of
-    the players who will actually be drafted. The result is what turns a marginal
-    points figure into a price.
+    Every team must reserve `min_bid` for each slot it has yet to fill, so only
+    the surplus is genuinely biddable; that surplus buys the total
+    value-over-replacement of the players who will actually still be bought. The
+    result is what turns a points figure into a price.
+
+    Recomputed from the ledger's cache, so it is an inflation index as much as an
+    exchange rate. A league that blows its budget early leaves everyone bidding
+    into a cheaper market; a disciplined early market makes the back half dear.
+    At the open it equals the static form -- `teams * (budget - roster_size)` over
+    the surplus of the players who go -- because nothing has been spent yet.
     """
-    players = list(players)
+    rules = state.rules
     if replacement is None:
-        replacement = replacement_points(players, rules, proj)
+        replacement = replacement_points(state)
 
-    biddable = rules.teams * (rules.budget - rules.roster_size * rules.min_bid)
+    open_slots = sum(ts.open_slots(rules) for ts in state.teams.values())
+    if open_slots == 0:
+        return 0.0
+    money_left = sum(ts.remaining(rules) for ts in state.teams.values())
+    biddable = max(0, money_left - open_slots * rules.min_bid)
+
     surplus = sorted(
         (
-            max(0.0, proj.get(p.id, 0.0) - replacement.get(p.position, float("inf")))
-            for p in players
+            max(
+                0.0,
+                state.proj.get(p.id, 0.0)
+                - replacement.get(p.position, float("inf")),
+            )
+            for p in state.players.values()
+            if p.id not in state.owner
         ),
         reverse=True,
-    )[: rules.teams * rules.roster_size]
+    )[:open_slots]
     total = sum(surplus)
     if total <= 0:
         return 0.0
     return biddable / total
+
+
+@dataclass(frozen=True)
+class Market:
+    """What the league is paying, as of one moment in the ledger.
+
+    The two numbers are coupled -- the rate's denominator is the surplus measured
+    over *this* replacement bar -- so they travel together rather than as two
+    arguments a caller has to remember to derive from the same moment.
+
+    Rebuild it after a pick; it is cheap and it is the whole of the "prices move"
+    behaviour. Lives here rather than on `DraftState` because state sits below
+    evaluation in the layering and must not know how anything is valued.
+    """
+
+    replacement: Mapping[Position, float]
+    dollars_per_point: float
+
+    @classmethod
+    def of(cls, state: DraftState) -> "Market":
+        replacement = replacement_points(state)
+        return cls(replacement, dollars_per_point(state, replacement))
 
 
 def max_sensible_bid(
