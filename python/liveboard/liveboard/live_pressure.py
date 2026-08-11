@@ -18,7 +18,7 @@ seats `live_state` already reconstructed.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Mapping, Sequence, Tuple
 
 from .live_state import (
     DRAFT_TARGETS,
@@ -27,7 +27,7 @@ from .live_state import (
     Seat,
     position_summary,
 )
-from draftsim.valuation import Player
+from draftsim.player import Player
 
 # Tier floors, highest first: a position's pool cut into price bands.
 #
@@ -99,7 +99,9 @@ class PositionPressure:
         return "tight" if self.ratio > _TIGHT else "safe"
 
 
-def split_tier(pos: str, available: Sequence[Player]) -> Tuple[List[Player], List[Player], int]:
+def split_tier(
+    pos: str, available: Sequence[Player], proj: Mapping[str, float]
+) -> Tuple[List[Player], List[Player], int]:
     """Cut a position's pool at the highest tier floor anyone still clears.
 
     Returns the current tier, the one beneath it, and the points between them.
@@ -107,9 +109,10 @@ def split_tier(pos: str, available: Sequence[Player]) -> Tuple[List[Player], Lis
     panel keeps describing what is actually on the block rather than a band that
     emptied ten picks ago.
     """
+    points = lambda p: proj.get(p.id, 0.0)  # noqa: E731 -- read four ways below
     pool = sorted(
-        (p for p in available if p.pos == pos),
-        key=lambda p: p.points,
+        (p for p in available if p.position == pos),
+        key=points,
         reverse=True,
     )
     if not pool:
@@ -118,13 +121,13 @@ def split_tier(pos: str, available: Sequence[Player]) -> Tuple[List[Player], Lis
     floors = TIERS.get(pos, ())
     # The first floor with anyone above it. Past the last floor every remaining
     # player is in one undifferentiated bin, which is the truth down there.
-    cut = next((f for f in floors if pool[0].points >= f), None)
+    cut = next((f for f in floors if points(pool[0]) >= f), None)
     if cut is None:
         return pool, [], 0
 
-    current = [p for p in pool if p.points >= cut]
-    beneath = [p for p in pool if p.points < cut]
-    drop = round(current[-1].points - beneath[0].points) if beneath else 0
+    current = [p for p in pool if points(p) >= cut]
+    beneath = [p for p in pool if points(p) < cut]
+    drop = round(points(current[-1]) - points(beneath[0])) if beneath else 0
     return current, beneath, drop
 
 
@@ -139,17 +142,17 @@ def pressure(state: LeagueState) -> List[PositionPressure]:
     # One summary per seat, reused across all four positions rather than rebuilt
     # per card -- it walks the whole roster to compute starter points.
     summaries = {
-        seat.slot: {line.pos: line for line in position_summary(seat, state.config)}
+        seat.slot: {line.pos: line for line in position_summary(seat, state.rules, state.proj)}
         for seat in seats
     }
 
     drafted: Dict[str, int] = {}
     for pick in state.picks:
-        drafted[pick.player.pos] = drafted.get(pick.player.pos, 0) + 1
+        drafted[pick.player.position] = drafted.get(pick.player.position, 0) + 1
 
     out = []
     for pos in TIERS:
-        avail, next_tier, drop = split_tier(pos, state.available)
+        avail, next_tier, drop = split_tier(pos, state.available, state.proj)
         wanted = 0.0
         need_seats = []
         lines: Dict[int, PositionLine] = {}

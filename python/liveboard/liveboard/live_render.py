@@ -24,7 +24,7 @@ import html
 from pathlib import Path
 from typing import Dict, Mapping, Optional, Sequence, Tuple, Union
 
-from draftsim.config import BENCH
+from draftsim.rules import BENCH
 from .live_pressure import PositionPressure, pressure
 from .live_state import (
     DRAFT_TARGETS,
@@ -34,7 +34,7 @@ from .live_state import (
     SeatPick,
     position_summary,
 )
-from draftsim.roster import display_slots, is_lineup_legal
+from draftsim.lineup import display_slots, is_legal
 from .sleeper import Nomination
 from .theme import (
     BASE_CSS_LIGHT,
@@ -43,7 +43,18 @@ from .theme import (
     SLOT_LABEL,
     badge,
 )
-from draftsim.valuation import Player, market_value
+from draftsim.player import Player
+
+def market_value(player: Player) -> float:
+    """Sleeper's projected auction dollar; a player with none prices at 0.
+
+    Lived in draftsim until the rebuild, which correctly declined to keep a
+    "what the crowd thinks" model in a domain library. It is one field read, and
+    the board is the only thing that wanted it.
+    """
+    dollar = player.market.proj_dollar
+    return float(dollar) if dollar is not None else 0.0
+
 
 # The shell, the stylesheet and the client. Beside the module rather than on a
 # search path: they are this board's, and nothing else ever loads them.
@@ -125,7 +136,7 @@ def _short_name(player: Player) -> str:
     parts = player.name.split()
     if len(parts) < 2:
         return player.name
-    if player.pos == "DEF":
+    if player.position == "DEF":
         return parts[-1]
     return f"{parts[0][0]}. {' '.join(parts[1:])}"
 
@@ -137,7 +148,7 @@ LATE_BYE_FROM = 12
 
 
 def _is_late_bye(player: Player) -> bool:
-    return player.bye is not None and player.bye >= LATE_BYE_FROM
+    return player.market.bye is not None and player.market.bye >= LATE_BYE_FROM
 
 
 def _late_bye_active(state: LeagueState, my_seat: Optional[int]) -> bool:
@@ -153,11 +164,16 @@ def _late_bye_active(state: LeagueState, my_seat: Optional[int]) -> bool:
     seat = state.seats.get(my_seat)
     if seat is None:
         return True
-    return not is_lineup_legal(seat.roster, state.config)
+    return not is_legal(seat.by_position, state.rules)
 
 
 def _player_row(
-    label: str, player: Player, price: int, bench: bool = False, late_bye: bool = False
+    label: str,
+    player: Player,
+    price: int,
+    points: float,
+    bench: bool = False,
+    late_bye: bool = False,
 ) -> str:
     """One player, one line: slot chip, name, then the numeric columns.
 
@@ -171,22 +187,22 @@ def _player_row(
     pane is read for. CSS outlines that chip instead of filling it, so depth
     still reads differently from the lineup.
     """
-    color = POS_COLOR_LIGHT.get(player.pos, POS_FALLBACK_LIGHT)
+    color = POS_COLOR_LIGHT.get(player.position, POS_FALLBACK_LIGHT)
     flag = late_bye and _is_late_bye(player)
-    tip = f"{player.name} · {player.pos} · {player.team or 'FA'}"
+    tip = f"{player.name} · {player.position} · {player.team or 'FA'}"
     if flag:
         tip += " · LATE BYE"
-    elif player.bye:
-        tip += f" · BYE {player.bye}"
-    tip += f" · {player.points:.0f} pts · ${price}"
+    elif player.market.bye:
+        tip += f" · BYE {player.market.bye}"
+    tip += f" · {points:.0f} pts · ${price}"
     return (
         f'<div class="ln{" bench" if bench else ""}" style="--pos:{color}"'
         f' title="{_esc(tip)}">'
         f'<i class="ms">{_esc(label)}</i>'
         f'<b class="mn">{_esc(_short_name(player))}</b>'
         f'<b class="mnf">{_esc(player.name)}</b>'
-        f'<i class="mb{" late" if flag else ""}">{player.bye or "—"}</i>'
-        f'<i class="mp">{player.points:.0f}</i>'
+        f'<i class="mb{" late" if flag else ""}">{player.market.bye or "—"}</i>'
+        f'<i class="mp">{points:.0f}</i>'
         f'<i class="mc">${price}</i></div>'
     )
 
@@ -293,10 +309,10 @@ def _fold_summary(state: LeagueState, seat: Seat) -> str:
     It ships in every card and CSS shows it only when folded, the same bargain
     the LINEUP/BN panes make.
     """
-    owned = state.config.owned_starters()
+    owned = state.rules.owned_starters()
     cells = "".join(
         _fold_cell(line, owned.get(line.pos, 0))
-        for line in position_summary(seat, state.config)
+        for line in position_summary(seat, state.rules, state.proj)
         if line.pos not in _NEED_SKIP
     )
     return f'<div class="foldsum">{cells}</div>'
@@ -310,7 +326,7 @@ def _card_header(state: LeagueState, seat: Seat) -> str:
     slot still to fill is in the account but not available, and a seat with $80
     and eight holes is not the threat its balance says it is.
     """
-    budget = state.config.budget
+    budget = state.rules.budget
     held = max(0, seat.open_slots - 1)
     spendable = max(0, seat.budget_left - held)
     # The name leads and the slot stays beside it, small. Dropping the number
@@ -350,7 +366,9 @@ def _card_header(state: LeagueState, seat: Seat) -> str:
     )
 
 
-def _card_footer(layout: Sequence[Tuple[str, Optional[Player]]]) -> str:
+def _card_footer(
+    layout: Sequence[Tuple[str, Optional[Player]]], proj: Mapping[str, float]
+) -> str:
     """How much of the lineup is bought, and what it projects.
 
     The two card-level numbers. They sit below the panes rather than in the
@@ -369,7 +387,7 @@ def _card_footer(layout: Sequence[Tuple[str, Optional[Player]]]) -> str:
     starters = [(slot, p) for slot, p in layout if slot != BENCH]
     counted = [(slot, p) for slot, p in starters if slot not in _NEED_SKIP]
     filled = sum(1 for _, player in counted if player)
-    total = sum(player.points for _, player in starters if player)
+    total = sum(proj.get(player.id, 0.0) for _, player in starters if player)
     figure = f"{total:,.0f}" if total else "—"
     short = "" if filled == len(counted) else " short"
     return (
@@ -395,14 +413,14 @@ def _roster_card(state: LeagueState, seat: Seat, row: int, late_bye: bool = Fals
     after a drag the row a card is in is a question only the client can answer.
     """
     price_of = {pick.player.id: pick.price for pick in seat.picks}
-    layout = display_slots(seat.roster, state.config)
+    layout = display_slots(seat.lineup, seat.roster, state.rules)
 
     lineup = _column_header() + "".join(
         _open_row(slot)
         if player is None
         else _player_row(
             SLOT_LABEL.get(slot, slot), player, price_of.get(player.id, 0),
-            late_bye=late_bye,
+            state.points(player), late_bye=late_bye,
         )
         for slot, player in layout
         if slot != BENCH
@@ -410,7 +428,8 @@ def _roster_card(state: LeagueState, seat: Seat, row: int, late_bye: bool = Fals
     bench_players = [p for slot, p in layout if slot == BENCH and p]
     bench = "".join(
         _player_row(
-            p.pos or BENCH, p, price_of.get(p.id, 0), bench=True, late_bye=late_bye
+            p.position or BENCH, p, price_of.get(p.id, 0), state.points(p),
+            bench=True, late_bye=late_bye,
         )
         for p in bench_players
     )
@@ -426,7 +445,7 @@ def _roster_card(state: LeagueState, seat: Seat, row: int, late_bye: bool = Fals
         f'<div class="pane lineup" data-pane="lineup">{lineup}</div>'
         f'<div class="pane" data-pane="bench">{bench}</div>'
         "</div>"
-        f"{_card_footer(layout)}"
+        f"{_card_footer(layout, state.proj)}"
         "</section>"
     )
 
@@ -481,7 +500,7 @@ def render_ledger(
     the budget was arbitrary and the field's average answers a question nobody
     asks mid-auction.
     """
-    config = state.config
+    rules = state.rules
     seats = sorted(state.seats.values(), key=lambda s: (-s.max_bid, s.slot))
     scale = _LEDGER_H - _LEDGER_HEAD
     # Before the first pick every seat holds the same $200 and the ranking is
@@ -513,7 +532,7 @@ def render_ledger(
         # height rounds to nothing, and nothing is not what $3 means. The floor
         # is `min-height` in the stylesheet rather than a number here: it is two
         # pixels, and pixels are the one unit this function no longer speaks.
-        height = scale * seat.max_bid / config.budget
+        height = scale * seat.max_bid / rules.budget
         figure = (
             f'<span class="amt">${seat.max_bid}</span>' if seat.slot in top3 else ""
         )
@@ -558,7 +577,7 @@ def render_ledger(
         )
         gridline = (
             f'<span class="gl" style="top:'
-            f'{_LEDGER_H - scale * mine.max_bid / config.budget:.1f}%"></span>'
+            f'{_LEDGER_H - scale * mine.max_bid / rules.budget:.1f}%"></span>'
         )
         legend = "dashed = your ${}".format(mine.max_bid)
     else:
@@ -573,7 +592,7 @@ def render_ledger(
         # heading over it would be a second row saying less, and in a band held
         # to a fifth of the column every row is taken off the plot.
         f'<div class="chhd"><span>Buying power · max bid as % of '
-        f"${config.budget} · {legend}</span></div>"
+        f"${rules.budget} · {legend}</span></div>"
         f'<div class="plot">{gridline}{"".join(cols)}</div>'
         f'<div class="chft">{"".join(tags)}</div>'
         # Under the chart rather than beside the legend: in three fifths of the
@@ -592,16 +611,16 @@ def render_spend(state: LeagueState) -> str:
     is now a fixed share of the column. The rail rides along: it is the same
     fact drawn, and three pixels of it fit on a header row.
     """
-    config = state.config
+    rules = state.rules
     spent = sum(seat.spent for seat in state.seats.values())
-    pool = config.budget * config.teams
+    pool = rules.budget * rules.teams
     pct = 100 * spent / pool if pool else 0
     return (
         f'<span class="ledbig">${spent:,}</span>'
         f'<span class="ledof">of ${pool:,}</span>'
         f'<span class="rail"><i style="width:{pct:.1f}%"></i></span>'
         f'<span class="ledpct">pick <b>{len(state.picks)}</b> of '
-        f"{config.teams * config.roster_size} · <b>{pct:.0f}%</b> gone</span>"
+        f"{rules.teams * rules.roster_size} · <b>{pct:.0f}%</b> gone</span>"
     )
 
 
@@ -723,7 +742,7 @@ def _pressure_card(
     its bidders -- see `_seat_tile`.
     """
     color = POS_COLOR_LIGHT.get(pr.pos, POS_FALLBACK_LIGHT)
-    total = round(DRAFT_TARGETS.get(pr.pos, 0.0) * state.config.teams)
+    total = round(DRAFT_TARGETS.get(pr.pos, 0.0) * state.rules.teams)
 
     lit = bool(nom_pos) and pr.pos == nom_pos
     tiles = "".join(
@@ -737,7 +756,7 @@ def _pressure_card(
     # nothing to leave empty either. Compact `_tier_row`s so the two panes can
     # never disagree about who is available -- one renderer, two densities.
     board_rows = "".join(
-        _tier_row(p, i + 1, compact=True)
+        _tier_row(p, i + 1, state.proj.get(p.id, 0.0), compact=True)
         for i, p in enumerate(pr.avail[:_BOARD_SHOWN])
     )
     if not board_rows:
@@ -790,7 +809,7 @@ def _pressure_card(
         # side by side and the header and the health bar must still run the full
         # width above them. Without it the card cannot be split, because a flex
         # row would take the header into the row with them.
-        f'<div class="pbody">{runs}{_pressure_detail(pr)}</div></section>'
+        f'<div class="pbody">{runs}{_pressure_detail(pr, state.proj)}</div></section>'
     )
 
 
@@ -801,7 +820,11 @@ _TIER_SHOWN = 10
 
 
 def _tier_row(
-    player: Player, rank: int, below: bool = False, compact: bool = False
+    player: Player,
+    rank: int,
+    points: float,
+    below: bool = False,
+    compact: bool = False,
 ) -> str:
     """One available player: rank, name, team, points, $PROJ.
 
@@ -818,7 +841,7 @@ def _tier_row(
     TIER pane's full list, rather than the two keeping separate markup for
     what is the same fact at two densities.
     """
-    proj = market_value(player)
+    dollar = market_value(player)
     cls = "trow"
     if below:
         cls += " below"
@@ -827,15 +850,15 @@ def _tier_row(
     body = [f'<i class="tr">{rank}</i>', f'<b>{_esc(_short_name(player))}</b>']
     if not compact:
         body.append(f'<i class="ttm">{_esc(player.team or "FA")}</i>')
-        body.append(f'<i class="tpt">{player.points:.0f}</i>')
-    body.append(f'<i class="tpr">{f"${proj:.0f}" if proj else "—"}</i>')
+        body.append(f'<i class="tpt">{points:.0f}</i>')
+    body.append(f'<i class="tpr">{f"${dollar:.0f}" if dollar else "—"}</i>')
     return (
-        f'<div class="{cls}" title="{_esc(_meta_tip(player))}">'
+        f'<div class="{cls}" title="{_esc(_meta_tip(player, points))}">'
         f'{"".join(body)}</div>'
     )
 
 
-def _pressure_detail(pr: PositionPressure) -> str:
+def _pressure_detail(pr: PositionPressure, proj: Mapping[str, float]) -> str:
     """One position's tier and the tier under it, with the cliff between.
 
     The question the card provokes and cannot answer: *which quarterbacks, and
@@ -843,7 +866,8 @@ def _pressure_detail(pr: PositionPressure) -> str:
     the divider is what makes waiting a decision rather than a shrug.
     """
     rows = "".join(
-        _tier_row(p, i + 1) for i, p in enumerate(pr.avail[:_TIER_SHOWN])
+        _tier_row(p, i + 1, proj.get(p.id, 0.0))
+        for i, p in enumerate(pr.avail[:_TIER_SHOWN])
     ) or '<div class="trow gone">nobody left in this tier</div>'
 
     if pr.next_tier:
@@ -851,7 +875,7 @@ def _pressure_detail(pr: PositionPressure) -> str:
             f'<div class="tcliff">▾ −{pr.cliff_drop} pts to the next tier</div>'
         )
         below = "".join(
-            _tier_row(p, len(pr.avail) + i + 1, below=True)
+            _tier_row(p, len(pr.avail) + i + 1, proj.get(p.id, 0.0), below=True)
             for i, p in enumerate(pr.next_tier[:_TIER_SHOWN])
         )
     else:
@@ -922,7 +946,7 @@ _POOL_SHOWN = 300
 _POOL_PER_POS = 40
 
 
-def _meta_tip(player: Player, late_bye: bool = False) -> str:
+def _meta_tip(player: Player, points: float, late_bye: bool = False) -> str:
     """The row's small columns, spelled out for the hover.
 
     Team, bye and points are two or three characters each in the list, which is
@@ -931,10 +955,10 @@ def _meta_tip(player: Player, late_bye: bool = False) -> str:
     if late_bye and _is_late_bye(player):
         bye = "LATE BYE"
     else:
-        bye = f"BYE {player.bye}" if player.bye else "no bye listed"
+        bye = f"BYE {player.market.bye}" if player.market.bye else "no bye listed"
     return (
-        f"{player.name} · {player.pos} · {player.team or 'FA'} · {bye}"
-        f" · {player.points:.0f} pts"
+        f"{player.name} · {player.position} · {player.team or 'FA'} · {bye}"
+        f" · {points:.0f} pts"
     )
 
 
@@ -943,6 +967,11 @@ def _meta_tip(player: Player, late_bye: bool = False) -> str:
 # most weeks a few percent either side of pace; coloring those would make the
 # green/red read as decoration rather than a signal worth nominating around.
 _EARLY_WEEK_MARGIN = 0.15
+
+
+def _wk(player: Player, n: int) -> Optional[float]:
+    """One early-week projection, or None when the sheet predates the columns."""
+    return getattr(player.week, f"week{n}", None) if player.week else None
 
 
 def _early_week_tag(week: Optional[float], pace: float) -> str:
@@ -974,7 +1003,7 @@ def _early_week_cell(week: Optional[float], pace: float) -> str:
     return f'<i class="pwk{_early_week_tag(week, pace)}">{week:.1f}</i>'
 
 
-def _early_week_strip(player: Optional[Player]) -> str:
+def _early_week_strip(player: Optional[Player], points: float) -> str:
     """The block panel's own read of the division round: three labelled figures
     in their own side column, coloured off season pace exactly as the pool's
     columns are.
@@ -987,10 +1016,11 @@ def _early_week_strip(player: Optional[Player]) -> str:
     """
     if player is None:
         return ""
-    weeks = (player.week1, player.week2, player.week3)
+    wk = player.week
+    weeks = (wk.week1, wk.week2, wk.week3) if wk else (None, None, None)
     if all(week is None for week in weeks):
         return ""
-    pace = player.points / 17
+    pace = points / 17
     cells = "".join(
         f'<span class="onwkc"><i class="onwkl">WK{n}</i>'
         f'<i class="onwkv{_early_week_tag(week, pace)}">'
@@ -1032,7 +1062,7 @@ def render_pool(state: LeagueState, my_seat: Optional[int] = None) -> str:
     part of that decision rather than something to go and look up.
     """
     ranked = sorted(
-        state.available, key=lambda p: (-market_value(p), -p.points, p.name)
+        state.available, key=lambda p: (-market_value(p), -state.points(p), p.name)
     )
     # The overall cut, plus a floor per position so the filters have something to
     # show. Both are taken from the one sorted list and re-read from it, so the
@@ -1040,25 +1070,25 @@ def render_pool(state: LeagueState, my_seat: Optional[int] = None) -> str:
     keep = {p.id for p in ranked[:_POOL_SHOWN]}
     per_pos: Dict[str, int] = {}
     for player in ranked:
-        seen = per_pos.get(player.pos, 0)
+        seen = per_pos.get(player.position, 0)
         if seen < _POOL_PER_POS:
-            per_pos[player.pos] = seen + 1
+            per_pos[player.position] = seen + 1
             keep.add(player.id)
     shown = [p for p in ranked if p.id in keep]
     late_bye = _late_bye_active(state, my_seat)
 
     rows = "".join(
-        f'<div class="prow" data-pos="{_esc(player.pos)}"'
-        f' title="{_esc(_meta_tip(player, late_bye))}">'
-        f"{badge(player.pos, light=True)}"
+        f'<div class="prow" data-pos="{_esc(player.position)}"'
+        f' title="{_esc(_meta_tip(player, state.points(player), late_bye))}">'
+        f"{badge(player.position, light=True)}"
         f'<b>{_esc(player.name)}</b>'
         f'<i class="ptm">{_esc(player.team or "FA")}</i>'
         f'<i class="pby{" late" if late_bye and _is_late_bye(player) else ""}">'
-        f'{player.bye or "—"}</i>'
-        f'<i class="ppt">{player.points:.0f}</i>'
-        f'{_early_week_cell(player.week1, player.points / 17)}'
-        f'{_early_week_cell(player.week2, player.points / 17)}'
-        f'{_early_week_cell(player.week3, player.points / 17)}'
+        f'{player.market.bye or "—"}</i>'
+        f'<i class="ppt">{state.points(player):.0f}</i>'
+        f'{_early_week_cell(_wk(player, 1), state.points(player) / 17)}'
+        f'{_early_week_cell(_wk(player, 2), state.points(player) / 17)}'
+        f'{_early_week_cell(_wk(player, 3), state.points(player) / 17)}'
         f'<i class="ppr">{f"${market_value(player):.0f}" if market_value(player) else "—"}</i>'
         "</div>"
         for player in shown
@@ -1075,13 +1105,13 @@ def _log_price(pick: SeatPick) -> str:
     or the board is falling. Most of the sheet carries no `$PROJ`, and those show
     the price alone rather than a delta against a number that isn't there.
     """
-    proj = pick.player.proj_dollar
-    if proj is None or proj <= 0:
+    dollar = pick.player.market.proj_dollar
+    if dollar is None or dollar <= 0:
         return (
             f'<i class="lpr">${pick.price}</i>'
             '<i class="ldl muted">—</i>'
         )
-    diff = (pick.price - proj) / proj
+    diff = (pick.price - dollar) / dollar
     direction = "over" if diff > 0 else "under" if diff < 0 else "even"
     return (
         f'<i class="lpr">${pick.price}</i>'
@@ -1099,7 +1129,7 @@ def _pos_ranks(state: LeagueState) -> Dict[int, str]:
     ranks: Dict[int, str] = {}
     seen: Dict[str, int] = {}
     for pick in sorted(state.picks, key=lambda p: p.pick_no):
-        pos = pick.player.pos
+        pos = pick.player.position
         seen[pos] = seen.get(pos, 0) + 1
         ranks[pick.pick_no] = f"{pos}{seen[pos]}"
     return ranks
@@ -1137,16 +1167,17 @@ def render_log(state: LeagueState, my_seat: Optional[int] = None) -> str:
         )
 
     rows = "".join(
-        f'<div class="lrow" data-pos="{_esc(pick.player.pos)}"'
-        f' title="{_esc(_meta_tip(pick.player, late_bye))} · ${pick.price}">'
+        f'<div class="lrow" data-pos="{_esc(pick.player.position)}"'
+        f' title="{_esc(_meta_tip(pick.player, state.points(pick.player), late_bye))}'
+        f' · ${pick.price}">'
         f'<i class="lno">#{pick.pick_no}</i>'
         f"{buyer(pick)}"
-        f"{badge(pick.player.pos, light=True, label=ranks.get(pick.pick_no))}"
+        f"{badge(pick.player.position, light=True, label=ranks.get(pick.pick_no))}"
         f'<b>{_esc(pick.player.name)}</b>'
         f'<i class="ltm">{_esc(pick.player.team or "FA")}</i>'
         f'<i class="lby{" late" if late_bye and _is_late_bye(pick.player) else ""}">'
-        f'{pick.player.bye or "—"}</i>'
-        f'<i class="lpt">{pick.player.points:.0f}</i>'
+        f'{pick.player.market.bye or "—"}</i>'
+        f'<i class="lpt">{state.points(pick.player):.0f}</i>'
         f"{_log_price(pick)}</div>"
         for pick in sorted(state.picks, key=lambda p: -p.pick_no)
     )
@@ -1291,8 +1322,8 @@ def _block_panel(
         proj_txt = "—"
         facts = ['<span class="onfact">not in projections</span>']
     else:
-        pill = badge(player.pos, light=True)
-        proj = market_value(player)
+        pill = badge(player.position, light=True)
+        dollar = market_value(player)
         proj_txt = f"${proj:.0f}" if proj else "—"
         # Free agents carry no team, and an empty span between two separators
         # draws a dot with nothing on one side of it. Absent facts leave, and
@@ -1300,7 +1331,7 @@ def _block_panel(
         facts = []
         if player.team:
             facts.append(f'<span class="onfact">{_esc(player.team)}</span>')
-        facts.append(f'<span class="onfact">{player.points:.0f} pts</span>')
+        facts.append(f'<span class="onfact">{points:.0f} pts</span>')
     # Empty when the draft names a nominating seat the board has never heard
     # of; an empty span here would draw a separator dot with nothing beside it.
     if who:
@@ -1313,7 +1344,7 @@ def _block_panel(
         f'<div class="onhead">{pill}<span class="who">{name}</span></div>'
         f'<div class="onsub">{sub}</div>'
         "</div>"
-        f"{_early_week_strip(player)}"
+        f"{_early_week_strip(player, points)}"
         '<div class="onmoney">'
         '<div class="onrow"><span class="figl">$PROJ</span>'
         f'<span class="figv onproj">{proj_txt}</span></div>'
