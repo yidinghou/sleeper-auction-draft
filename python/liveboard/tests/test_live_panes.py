@@ -11,13 +11,14 @@ from liveboard.live_render import (
     _POOL_SHOWN,
     _esc,
     _log_price,
+    market_value,
     render_log,
     render_page,
     render_pool,
 )
 from liveboard.live_state import SeatPick, reconstruct
-from liveboard.sleeper import config_from_draft
-from draftsim.valuation import Player, load_players, market_value
+from liveboard.sleeper import rules_from_draft
+from draftsim.player import MarketData, Player, load_players, load_projections
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -37,19 +38,28 @@ def catalog():
 
 
 @pytest.fixture(scope="module")
-def mock_config():
-    return config_from_draft(_load("draft-mock"))
+def proj():
+    return load_projections(free_agents=True)
 
 
 @pytest.fixture(scope="module")
-def midway(mock_config, pool, catalog):
+def mock_rules():
+    return rules_from_draft(_load("draft-mock"))
+
+
+@pytest.fixture(scope="module")
+def midway(mock_rules, pool, proj, catalog):
     picks = sorted(_load("picks-mock"), key=lambda p: p["pick_no"])[:60]
-    return reconstruct(picks, mock_config, pool, catalog=catalog)
+    return reconstruct(picks, mock_rules, pool, proj, catalog=catalog)
 
 
-def _pick(price: int, proj, points: float = 100.0, pick_no: int = 1) -> SeatPick:
+def _pick(price: int, proj, pick_no: int = 1) -> SeatPick:
     player = Player(
-        id="p", name="Sam Test", pos="WR", team="NE", points=points, proj_dollar=proj
+        id="p",
+        name="Sam Test",
+        position="WR",
+        team="NE",
+        market=MarketData(proj_dollar=proj),
     )
     return SeatPick(pick_no=pick_no, slot=1, player=player, price=price)
 
@@ -86,7 +96,7 @@ def test_the_pool_never_shows_a_player_who_is_gone(midway):
 def _ranked(state):
     """The available sheet in the order the pool draws it."""
     return sorted(
-        state.available, key=lambda p: (-market_value(p), -p.points, p.name)
+        state.available, key=lambda p: (-market_value(p), -state.points(p), p.name)
     )
 
 
@@ -110,19 +120,25 @@ def test_every_position_is_carried_deep_enough_to_filter_on(midway):
     # "nobody worth having". `_POOL_PER_POS` is the floor that prevents it.
     html = render_pool(midway)
     drawn = re.findall(r'class="prow" data-pos="([A-Z]+)"', html)
-    for pos in {p.pos for p in midway.available}:
-        have = len([p for p in midway.available if p.pos == pos])
+    for pos in {p.position for p in midway.available}:
+        have = len([p for p in midway.available if p.position == pos])
         assert drawn.count(pos) >= min(have, _POOL_PER_POS)
 
 
 def test_an_unpriced_player_still_gets_a_row():
     # Most of the sheet carries no $PROJ. Dropping them would hide bodies that
     # can still be nominated; they sort last and show a dash.
-    priced = Player(id="a", name="A Rich", pos="WR", team="NE", points=200.0, proj_dollar=30)
-    free = Player(id="b", name="B Free", pos="WR", team="NE", points=190.0)
+    priced = Player(
+        id="a", name="A Rich", position="WR", team="NE", market=MarketData(proj_dollar=30)
+    )
+    free = Player(id="b", name="B Free", position="WR", team="NE")
 
     class _S:
         available = [free, priced]
+        proj = {"a": 200.0, "b": 190.0}
+
+        def points(self, player):
+            return self.proj.get(player.id, 0.0)
 
     html = render_pool(_S())
     assert html.index(priced.name) < html.index(free.name)
@@ -132,6 +148,9 @@ def test_an_unpriced_player_still_gets_a_row():
 def test_an_empty_board_says_so():
     class _S:
         available = []
+
+        def points(self, player):
+            return 0.0
 
     assert "the board is empty" in render_pool(_S())
 
@@ -165,9 +184,9 @@ def test_the_log_says_what_position_went_and_how_deep(midway):
     nth = sum(
         1
         for p in midway.picks
-        if p.player.pos == newest.player.pos and p.pick_no <= newest.pick_no
+        if p.player.position == newest.player.position and p.pick_no <= newest.pick_no
     )
-    assert f">{newest.player.pos}{nth}</span>" in top
+    assert f">{newest.player.position}{nth}</span>" in top
 
 
 @pytest.mark.parametrize(
