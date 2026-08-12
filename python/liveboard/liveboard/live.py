@@ -38,7 +38,7 @@ from .live_state import LeagueState, reconstruct
 from .seat_names import MAX_NAME, SeatNames
 from .sleeper import (
     SleeperError,
-    config_from_draft,
+    rules_from_draft,
     draft_pulse,
     fetch_draft,
     fetch_league_rosters,
@@ -49,7 +49,8 @@ from .sleeper import (
     seat_for_user,
     seat_names,
 )
-from draftsim.valuation import Player, by_sleeper_id, load_players
+from draftsim.player import Player, by_sleeper_id, load_players
+from draftsim.player import load_projections
 
 DEFAULT_PORT = 8765
 DEFAULT_INTERVAL = 3.0
@@ -131,6 +132,9 @@ class DraftPoller:
         # other warnings.
         self.bids_note = ""
         self.pool = load_players(csv_path)
+        # Projections live outside `Player` in the rebuilt library, so the board
+        # carries the mapping alongside the pool and hands it to every fold.
+        self.proj = load_projections(csv_path)
         # The wider sheet identifies picks the draftable pool excludes; see
         # live_state.reconstruct.
         self.catalog = load_players(csv_path, free_agents=True)
@@ -143,10 +147,10 @@ class DraftPoller:
         # pick list a live snapshot was last built from -- the same list a
         # checkpoint is just a prefix of, since `reconstruct` is a pure fold
         # over picks. `_view` is None while live; otherwise it is how many of
-        # those picks the board is currently showing. `_config`/`_draft` are
+        # those picks the board is currently showing. `_rules`/`_draft` are
         # kept alongside so a checkpoint can be rebuilt without a network call.
         self._all_picks: List[Dict[str, Any]] = []
-        self._config: Optional[Any] = None
+        self._rules: Optional[Any] = None
         self._draft: Optional[Dict[str, Any]] = None
         self._view: Optional[int] = None
 
@@ -393,7 +397,7 @@ class DraftPoller:
                     self._error = None
                 return
 
-            config = config_from_draft(draft)
+            rules = rules_from_draft(draft)
             picks = fetch_picks(self.draft_id)
             # Sorted once, here, rather than left to `reconstruct` alone: this
             # is also the list `_build_checkpoint` slices a prefix of, so it
@@ -406,7 +410,7 @@ class DraftPoller:
                 # against one. It also caps how far checkpoint nav can go --
                 # a rehearsal has nothing beyond pick `replay` to rewind past.
                 picks = picks[: self.replay]
-            state = reconstruct(picks, config, self.pool, catalog=self.catalog)
+            state = reconstruct(picks, rules, self.pool, self.proj, catalog=self.catalog)
             nom = parse_nomination(draft)
             # Under the lock because a checkpoint built on the request thread
             # now reads the in-flight lot directly, and must never catch it
@@ -429,7 +433,7 @@ class DraftPoller:
                 self._pulse = pulse
                 self._snapshot = snapshot
                 self._all_picks = picks
-                self._config = config
+                self._rules = rules
                 self._draft = draft
                 self._error = None
         except (SleeperError, ValueError) as exc:
@@ -476,7 +480,7 @@ class DraftPoller:
         name = (draft.get("metadata") or {}).get("name") or "draft"
         seat = self.my_seat(draft)
         return {
-            "teams": state.config.teams,
+            "teams": state.rules.teams,
             "subtitle": subtitle,
             "draft_label": f"{name} · …{str(self.draft_id)[-6:]}",
             "my_seat": seat,
@@ -520,7 +524,7 @@ class DraftPoller:
             # the old subtitle -- what the room has spent -- is now drawn.
             status,
             render_nomination(state, nom, nominee, self._bidders, self._bid_events),
-            nominee.pos if nominee is not None else "",
+            nominee.position if nominee is not None else "",
             # A live snapshot is always "caught up to itself" -- index and
             # total are the same number. `snapshot()` only ever substitutes a
             # checkpoint in place of this dict; it never edits this one.
@@ -557,7 +561,7 @@ class DraftPoller:
         self,
         index: int,
         picks: List[Dict[str, Any]],
-        config,
+        rules,
         draft: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
         """The board as it stood after exactly `index` picks. Always after a
@@ -569,13 +573,13 @@ class DraftPoller:
         that state already drives -- the ledger chart, the pressure tile --
         rather than the checkpoint inventing a visual language of its own."""
         draft = draft or {}
-        state = reconstruct(picks[:index], config, self.pool, catalog=self.catalog)
+        state = reconstruct(picks[:index], rules, self.pool, self.proj, catalog=self.catalog)
         winner = max(state.picks, key=lambda p: p.pick_no) if state.picks else None
         for slot, seat in state.seats.items():
             seat.name = self.names.label(slot)
             seat.bidding = "high" if winner is not None and slot == winner.slot else ""
         bidders, events = self._trace_for(
-            winner.player.sleeper_id if winner is not None else None
+            winner.player.market.sleeper_id if winner is not None else None
         )
         total = len(picks)
         return self._snapshot_of(
@@ -583,7 +587,7 @@ class DraftPoller:
             state,
             f"Pick {index} of {total} — rewound",
             render_settled_lot(state, bidders, events),
-            winner.player.pos if winner is not None else "",
+            winner.player.position if winner is not None else "",
             {"index": index, "total": total, "live": False},
         )
 
@@ -638,12 +642,12 @@ class DraftPoller:
         with self._lock:
             view = self._view
             picks = list(self._all_picks)
-            config = self._config
+            rules = self._rules
             draft = self._draft
             snap = dict(self._snapshot) if self._snapshot else None
             error = self._error
-        if view is not None and config is not None:
-            checkpoint = self._build_checkpoint(view, picks, config, draft)
+        if view is not None and rules is not None:
+            checkpoint = self._build_checkpoint(view, picks, rules, draft)
             if error:
                 checkpoint["warning"] = f"{error} (showing last good data)"
             return checkpoint

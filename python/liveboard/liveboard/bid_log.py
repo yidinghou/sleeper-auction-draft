@@ -25,7 +25,7 @@ import tempfile
 from pathlib import Path
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
-from draftsim.valuation import REPO_ROOT
+from draftsim.player import REPO_ROOT
 
 BIDS_DIR = REPO_ROOT / "data"
 

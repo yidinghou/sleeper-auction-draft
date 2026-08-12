@@ -37,7 +37,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence
 
-from draftsim.config import BENCH, DraftConfig
+from draftsim.rules import BENCH, DraftRules
 
 API_BASE = "https://api.sleeper.app/v1"
 
@@ -222,8 +222,8 @@ def seat_names(
     return named
 
 
-def config_from_draft(draft: Dict[str, Any]) -> DraftConfig:
-    """Build a DraftConfig from the draft's own settings.
+def rules_from_draft(draft: Dict[str, Any]) -> DraftRules:
+    """Build a DraftRules from the draft's own settings.
 
     Reading the league shape off the API rather than hardcoding it means the
     board values a mock exactly as it values the real draft, and notices when
@@ -258,7 +258,7 @@ def config_from_draft(draft: Dict[str, Any]) -> DraftConfig:
     if not slots:
         raise SleeperError("draft declares no roster slots")
 
-    return DraftConfig(
+    return DraftRules(
         teams=int(settings.get("teams") or 0),
         budget=int(settings.get("budget") or 0),
         roster_slots=tuple(slots),

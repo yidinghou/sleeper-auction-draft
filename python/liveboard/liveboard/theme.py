@@ -1,18 +1,19 @@
-"""Shared dark-theme look for the HTML surfaces.
-
-Two pages render draft data: `report.py` (the post-mortem board for a finished
-simulation) and `live.py` (the live board polling a real Sleeper draft). They
-should read as the same product, so the palette, the position badge and the
-page chrome live here rather than being copied.
+"""The board's palette, position badge and page chrome.
 
 Colors mirror the Next.js app (`lib/positions.ts` / `app/globals.css`).
-Page-specific rules — roster cards, the points matrix, the pick timeline, the
-live table — stay in their own module; only what both pages use belongs here.
+Page-specific rules — roster cards, the pick timeline, the live table — stay in
+`live_render`; only the shared vocabulary belongs here.
 
-There are two palettes. The report is dark; the live board is **light**, so that
-a tool sitting open beside Sleeper's dark app for three hours can never be
-mistaken for it mid-auction. `BASE_CSS` / `POS_COLOR` are the dark set,
-`BASE_CSS_LIGHT` / `POS_COLOR_LIGHT` the light one — each surface picks once.
+The live board is **light**, so that a tool sitting open beside Sleeper's dark
+app for three hours can never be mistaken for it mid-auction. That is what
+`BASE_CSS_LIGHT` / `POS_COLOR_LIGHT` are for, and the board picks them once.
+
+Lifted out of `draftsim` in the ledger rebuild. It lived there to be shared with
+a simulation post-mortem page that the rebuild deleted, which left a presentation
+module inside a domain model with no second consumer to justify it. The dark
+palette below (`BASE_CSS` / `POS_COLOR`) is that page's, and is now unused --
+kept for one release in case the post-mortem comes back, and safe to delete with
+`badge`'s `light` default flipped if it does not.
 """
 
 from __future__ import annotations

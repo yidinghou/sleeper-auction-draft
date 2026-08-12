@@ -5,13 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "draftsim"
 version = "0.1.0"
-description = "Deterministic auction fantasy-draft simulator / strategy research harness"
+description = "A fantasy football auction draft as an append-only ledger of picks"
 requires-python = ">=3.9"
 dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=7"]
-analysis = ["pandas>=2"]  # only used by the Stage 5 batch tooling
 
 [tool.setuptools.packages.find]
 where = ["."]

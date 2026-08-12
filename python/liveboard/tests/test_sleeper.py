@@ -12,10 +12,10 @@ from pathlib import Path
 
 import pytest
 
-from draftsim.config import DEFAULT_ROSTER_SLOTS, BENCH
+from draftsim.rules import DEFAULT_ROSTER_SLOTS, BENCH
 from liveboard.sleeper import (
     SleeperError,
-    config_from_draft,
+    rules_from_draft,
     draft_pulse,
     parse_nomination,
     seat_for_user,
@@ -43,22 +43,22 @@ def mock_picks():
     return _load("picks-mock")
 
 
-# -- config ------------------------------------------------------------------
+# -- rules -------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("fixture", ["draft-mock", "draft-real"])
-def test_config_matches_the_leagues_default_roster(fixture):
+def test_rules_match_the_leagues_default_roster(fixture):
     # Both drafts are the same league, and its settings are what
-    # DEFAULT_ROSTER_SLOTS was written from -- so deriving the config from the
+    # DEFAULT_ROSTER_SLOTS was written from -- so deriving the rules from the
     # API must reproduce it exactly, slot for slot and in order.
-    config = config_from_draft(_load(fixture))
-    assert config.teams == 12
-    assert config.budget == 200
-    assert config.roster_slots == DEFAULT_ROSTER_SLOTS
+    rules = rules_from_draft(_load(fixture))
+    assert rules.teams == 12
+    assert rules.budget == 200
+    assert rules.roster_slots == DEFAULT_ROSTER_SLOTS
 
 
 def test_slots_are_ordered_starters_then_bench(mock_draft):
-    slots = config_from_draft(mock_draft).roster_slots
+    slots = rules_from_draft(mock_draft).roster_slots
     bench_at = [i for i, s in enumerate(slots) if s == BENCH]
     assert bench_at == list(range(min(bench_at), len(slots)))
 
@@ -69,20 +69,20 @@ def test_unmodelled_slot_is_rejected_not_dropped(mock_draft):
     draft = json.loads(json.dumps(mock_draft))
     draft["settings"]["slots_idp_flex"] = 2
     with pytest.raises(SleeperError, match="slots_idp_flex"):
-        config_from_draft(draft)
+        rules_from_draft(draft)
 
 
 def test_an_empty_unmodelled_slot_is_harmless(mock_draft):
     draft = json.loads(json.dumps(mock_draft))
     draft["settings"]["slots_idp_flex"] = 0
-    assert config_from_draft(draft).roster_slots == DEFAULT_ROSTER_SLOTS
+    assert rules_from_draft(draft).roster_slots == DEFAULT_ROSTER_SLOTS
 
 
 def test_non_auction_drafts_are_refused(mock_draft):
     draft = json.loads(json.dumps(mock_draft))
     draft["type"] = "snake"
     with pytest.raises(SleeperError, match="snake"):
-        config_from_draft(draft)
+        rules_from_draft(draft)
 
 
 # -- nomination --------------------------------------------------------------
@@ -140,9 +140,9 @@ def test_pulse_moves_when_a_pick_settles(mock_draft):
 
 
 def test_mock_feed_is_a_complete_auction(mock_draft, mock_picks):
-    config = config_from_draft(mock_draft)
+    rules = rules_from_draft(mock_draft)
     assert mock_draft["status"] == "complete"
-    assert len(mock_picks) == config.teams * config.roster_size
+    assert len(mock_picks) == rules.teams * rules.roster_size
     assert all(p["metadata"]["amount"] for p in mock_picks)
 
 
