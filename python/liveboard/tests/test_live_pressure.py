@@ -11,12 +11,13 @@ from liveboard.live_pressure import TIERS, PositionPressure, pressure, split_tie
 from liveboard.live_render import (
     _pressure_detail,
     _short_name,
+    market_value,
     render_page,
     render_pressure,
 )
 from liveboard.live_state import DRAFT_TARGETS, reconstruct
-from liveboard.sleeper import config_from_draft
-from draftsim.valuation import Player, load_players, market_value
+from liveboard.sleeper import rules_from_draft
+from draftsim.player import Player, load_players, load_projections
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -36,25 +37,42 @@ def catalog():
 
 
 @pytest.fixture(scope="module")
-def mock_config():
-    return config_from_draft(_load("draft-mock"))
+def proj():
+    return load_projections(free_agents=True)
 
 
 @pytest.fixture(scope="module")
-def midway(mock_config, pool, catalog):
+def mock_rules():
+    return rules_from_draft(_load("draft-mock"))
+
+
+@pytest.fixture(scope="module")
+def midway(mock_rules, pool, proj, catalog):
     """The mock rewound to pick 60 -- a board with real runs in progress."""
     picks = sorted(_load("picks-mock"), key=lambda p: p["pick_no"])[:60]
-    return reconstruct(picks, mock_config, pool, catalog=catalog)
+    return reconstruct(picks, mock_rules, pool, proj, catalog=catalog)
 
 
 @pytest.fixture(scope="module")
-def finished(mock_config, pool, catalog):
+def finished(mock_rules, pool, proj, catalog):
     """The mock played out: rosters are deep, and positions have settled."""
-    return reconstruct(_load("picks-mock"), mock_config, pool, catalog=catalog)
+    return reconstruct(_load("picks-mock"), mock_rules, pool, proj, catalog=catalog)
+
+
+_PROJ: dict = {}
+"""Points for the hand-built players below.
+
+Projections live outside `Player` now, so a body and its points travel as two
+things. Building one registers its points here, and this is the sheet the tier
+cut is handed -- which keeps each test reading as one list of numbers rather
+than a body list zipped against a points list.
+"""
 
 
 def _wr(points: float, name: str = "x") -> Player:
-    return Player(id=f"{name}-{points}", name=name, pos="WR", team="NE", points=points)
+    player = Player(id=f"{name}-{points}", name=name, position="WR", team="NE")
+    _PROJ[player.id] = points
+    return player
 
 
 # -- the tier cut -------------------------------------------------------------
@@ -64,40 +82,40 @@ def test_the_cut_falls_to_the_highest_floor_anyone_still_clears():
     # WR floors are 240/205/175/145/120. Nobody is over 240, so the cut is 205
     # and the tier is the two above it -- not everyone left at the position.
     pool = [_wr(230), _wr(210), _wr(190), _wr(150)]
-    current, beneath, drop = split_tier("WR", pool)
-    assert [p.points for p in current] == [230.0, 210.0]
-    assert [p.points for p in beneath] == [190.0, 150.0]
+    current, beneath, drop = split_tier("WR", pool, _PROJ)
+    assert [_PROJ[p.id] for p in current] == [230.0, 210.0]
+    assert [_PROJ[p.id] for p in beneath] == [190.0, 150.0]
     assert drop == 20  # 210 -> 190, what you fall to when the tier empties
 
 
 def test_the_cut_follows_the_pool_down_as_the_top_band_drains():
     # The same position once the 205+ band is gone: the cut drops a floor by
     # itself, so the card keeps describing what is actually on the block.
-    current, _, _ = split_tier("WR", [_wr(190), _wr(180), _wr(150)])
-    assert [p.points for p in current] == [190.0, 180.0]
+    current, _, _ = split_tier("WR", [_wr(190), _wr(180), _wr(150)], _PROJ)
+    assert [_PROJ[p.id] for p in current] == [190.0, 180.0]
 
 
 def test_a_pool_beneath_every_floor_is_one_undifferentiated_bin():
     # Past the last floor nobody is distinguishable by tier, and saying so beats
     # inventing a break. No tier below means no cliff to quote.
-    current, beneath, drop = split_tier("WR", [_wr(110), _wr(90)])
-    assert [p.points for p in current] == [110.0, 90.0]
+    current, beneath, drop = split_tier("WR", [_wr(110), _wr(90)], _PROJ)
+    assert [_PROJ[p.id] for p in current] == [110.0, 90.0]
     assert beneath == [] and drop == 0
 
 
 def test_an_empty_pool_is_empty_rather_than_an_error():
-    assert split_tier("WR", []) == ([], [], 0)
+    assert split_tier("WR", [], _PROJ) == ([], [], 0)
 
 
 def test_a_tier_with_nothing_under_it_reports_no_cliff():
-    current, beneath, drop = split_tier("WR", [_wr(230), _wr(210)])
+    current, beneath, drop = split_tier("WR", [_wr(230), _wr(210)], _PROJ)
     assert len(current) == 2 and beneath == [] and drop == 0
 
 
 def test_the_cut_only_ever_sees_its_own_position():
-    qb = Player(id="q", name="q", pos="QB", team="NE", points=310.0)
-    current, _, _ = split_tier("WR", [qb, _wr(230)])
-    assert [p.pos for p in current] == ["WR"]
+    qb = Player(id="q", name="q", position="QB", team="NE")
+    current, _, _ = split_tier("WR", [qb, _wr(230)], {**_PROJ, "q": 310.0})
+    assert [p.position for p in current] == ["WR"]
 
 
 # -- demand -------------------------------------------------------------------
@@ -112,7 +130,7 @@ def test_demand_sums_the_fractional_shortfalls(midway):
     # made a seat holding three receivers look finished.
     wr = _one(midway, "WR")
     expected = sum(
-        max(0.0, DRAFT_TARGETS["WR"] - sum(1 for p in seat.roster if p.pos == "WR"))
+        max(0.0, DRAFT_TARGETS["WR"] - sum(1 for p in seat.roster if p.position == "WR"))
         for seat in midway.seats.values()
     )
     assert wr.wanted == pytest.approx(expected)
@@ -281,7 +299,7 @@ def test_the_health_bar_is_need_answered_over_need_total(midway):
     for pr in pressure(midway):
         card = html.split(f'data-pos="{pr.pos}"')[1].split("</section>")[0]
         met, over = _health(card)
-        total = round(DRAFT_TARGETS[pr.pos] * midway.config.teams)
+        total = round(DRAFT_TARGETS[pr.pos] * midway.rules.teams)
         assert met == pytest.approx(100 * (total - pr.wanted) / total, abs=0.1)
         assert met + over <= 100.0 + 1e-6
         grew += met > 0
@@ -296,7 +314,7 @@ def test_the_health_bar_greys_what_answered_nobody(midway, finished):
     for pr in pressure(midway):
         card = html.split(f'data-pos="{pr.pos}"')[1].split("</section>")[0]
         met, over = _health(card)
-        total = round(DRAFT_TARGETS[pr.pos] * midway.config.teams)
+        total = round(DRAFT_TARGETS[pr.pos] * midway.rules.teams)
         bought = sum(min(l.have, l.want) for l in pr.lines.values())
         assert over == pytest.approx(
             100 * min(max(0.0, pr.drafted - bought), total - bought) / total, abs=0.1
@@ -373,7 +391,7 @@ def test_a_tier_with_nothing_under_it_says_so_rather_than_printing_zero():
         pos="WR", avail=[_wr(230, "a"), _wr(210, "b")], next_tier=[],
         cliff_drop=0, drafted=0, wanted=2.0, need_seats=[], lines={},
     )
-    panel = _pressure_detail(pr)
+    panel = _pressure_detail(pr, _PROJ)
     assert "nothing below this tier" in panel
     assert "−0" not in panel
 
@@ -383,16 +401,16 @@ def test_an_emptied_tier_says_so():
         pos="WR", avail=[], next_tier=[_wr(120, "c")], cliff_drop=0,
         drafted=0, wanted=4.0, need_seats=[], lines={},
     )
-    assert "nobody left in this tier" in _pressure_detail(pr)
+    assert "nobody left in this tier" in _pressure_detail(pr, _PROJ)
 
 
 def test_the_rows_quote_the_same_dollars_the_block_does(midway):
     # $PROJ is market_value, so the tier list and the nomination strip cannot
     # disagree about what a player is expected to cost.
     pr = next(p for p in pressure(midway) if p.avail)
-    panel = _pressure_detail(pr)
-    proj = market_value(pr.avail[0])
-    assert (f"${proj:.0f}" if proj else "—") in panel
+    panel = _pressure_detail(pr, midway.proj)
+    dollar = market_value(pr.avail[0])
+    assert (f"${dollar:.0f}" if dollar else "—") in panel
 
 
 def test_the_panel_lists_more_than_the_card_does(midway):
@@ -614,7 +632,7 @@ def test_a_folded_card_still_reports_the_position(midway):
     html = render_pressure(midway)
     for pr in pressure(midway):
         head = html.split(f'data-pos="{pr.pos}"')[1].split("</div>")[0]
-        total = round(DRAFT_TARGETS[pr.pos] * midway.config.teams)
+        total = round(DRAFT_TARGETS[pr.pos] * midway.rules.teams)
         assert f'<span class="pcount"><b>{pr.drafted}</b>/{total}</span>' in head
 
 
@@ -712,7 +730,7 @@ def test_nothing_is_dropped_that_the_hover_does_not_keep(midway):
         tip = _card(html, pr.pos).split('class="trow')[1].split('title="')[1].split('"')[0]
         assert top.name.split()[-1] in tip
         assert (top.team or "FA") in tip
-        assert f"{top.points:.0f} pts" in tip
+        assert f"{midway.points(top):.0f} pts" in tip
 def test_containment_never_touches_a_folded_card():
     # `container-type: inline-size` forbids an element sizing to its contents,
     # and a folded card is exactly that -- `flex: 0 0 auto`, a rail as wide as
