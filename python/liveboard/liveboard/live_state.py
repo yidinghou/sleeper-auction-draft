@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from draftsim.draft import Draft
-from draftsim.evaluation import Market, marginal_points, positional_need
+from draftsim.evaluation import Market, marginal_points_of, positional_need_of
 from draftsim.lineup import Lineup, empty_lineup
 from draftsim.player import MarketData, Player, by_sleeper_id, make_id
 from draftsim.rules import CONCRETE_POSITIONS, DraftRules, Position
@@ -98,16 +98,15 @@ def seat_from(state: DraftState, slot: int) -> Seat:
     rebuilt from the ledger every poll and is never a source of truth.
     """
     ts: TeamState = state.teams[str(slot)]
-    rules = state.rules
     return Seat(
         slot=slot,
         roster=list(ts.roster),
         picks=[],  # filled by `reconstruct`, which alone knows the pick numbers
         spent=ts.spent,
-        budget_left=ts.remaining(rules),
-        open_slots=ts.open_slots(rules),
-        needs=positional_need(state, str(slot)),
-        max_bid=ts.max_bid(rules),
+        budget_left=ts.remaining,
+        open_slots=ts.open_slots,
+        needs=positional_need_of(state, str(slot)),
+        max_bid=ts.max_bid,
         lineup=ts.lineup,
         by_position=ts.by_position,
     )
@@ -296,7 +295,7 @@ def seat_value_of(
     """
     if player is None or state.ledger is None or state.market is None:
         return 0.0
-    return marginal_points(
+    return marginal_points_of(
         state.ledger, str(seat.slot), player, state.market.replacement
     )
 
