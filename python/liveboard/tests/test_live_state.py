@@ -3,11 +3,12 @@
 import json
 import math
 import re
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from draftsim.config import BENCH, DraftConfig
+from draftsim.rules import BENCH, DraftRules
 from liveboard.live_render import (
     _NEED_SKIP,
     _short_name,
@@ -24,9 +25,15 @@ from liveboard.live_state import (
     seat_value_of,
     spend_by_position,
 )
-from draftsim.roster import display_slots, starters
-from liveboard.sleeper import Nomination, config_from_draft
-from draftsim.valuation import Player, load_players
+from draftsim.lineup import display_slots
+from liveboard.sleeper import Nomination, rules_from_draft
+from draftsim.player import (
+    MarketData,
+    Player,
+    WeeklyPoints,
+    load_players,
+    load_projections,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -46,37 +53,42 @@ def catalog():
 
 
 @pytest.fixture(scope="module")
-def mock_config():
-    return config_from_draft(_load("draft-mock"))
+def proj():
+    return load_projections(free_agents=True)
 
 
 @pytest.fixture(scope="module")
-def finished(mock_config, pool, catalog):
-    return reconstruct(_load("picks-mock"), mock_config, pool, catalog=catalog)
+def mock_rules():
+    return rules_from_draft(_load("draft-mock"))
 
 
 @pytest.fixture(scope="module")
-def midway(mock_config, pool, catalog):
+def finished(mock_rules, pool, proj, catalog):
+    return reconstruct(_load("picks-mock"), mock_rules, pool, proj, catalog=catalog)
+
+
+@pytest.fixture(scope="module")
+def midway(mock_rules, pool, proj, catalog):
     """The same mock rewound to pick 60 -- the state the board exists for."""
     picks = sorted(_load("picks-mock"), key=lambda p: p["pick_no"])[:60]
-    return reconstruct(picks, mock_config, pool, catalog=catalog)
+    return reconstruct(picks, mock_rules, pool, proj, catalog=catalog)
 
 
 # -- a finished draft is the strongest end-state assertion --------------------
 
 
-def test_every_seat_ends_full_and_solvent(finished, mock_config):
-    assert len(finished.seats) == mock_config.teams
+def test_every_seat_ends_full_and_solvent(finished, mock_rules):
+    assert len(finished.seats) == mock_rules.teams
     for seat in finished.seats.values():
-        assert seat.filled == mock_config.roster_size
+        assert seat.filled == mock_rules.roster_size
         assert seat.open_slots == 0
         assert seat.budget_left >= 0
         assert seat.max_bid == 0  # no room left to bid into
 
 
-def test_league_spend_never_exceeds_the_pooled_budget(finished, mock_config):
+def test_league_spend_never_exceeds_the_pooled_budget(finished, mock_rules):
     spent = sum(seat.spent for seat in finished.seats.values())
-    assert 0 < spent <= mock_config.budget * mock_config.teams
+    assert 0 < spent <= mock_rules.budget * mock_rules.teams
     assert spent == sum(pick.price for pick in finished.picks)
 
 
@@ -98,11 +110,11 @@ def test_drafted_players_leave_the_available_pool(finished, pool):
 # -- mid-draft is where the numbers have to be right -------------------------
 
 
-def test_midway_seats_have_money_and_room(midway, mock_config):
+def test_midway_seats_have_money_and_room(midway, mock_rules):
     assert sum(s.filled for s in midway.seats.values()) == 60
     assert any(s.open_slots > 0 for s in midway.seats.values())
     for seat in midway.seats.values():
-        assert seat.budget_left == mock_config.budget - seat.spent
+        assert seat.budget_left == mock_rules.budget - seat.spent
 
 
 def test_max_bid_reserves_a_dollar_for_every_other_open_slot(midway):
@@ -126,23 +138,63 @@ def test_spend_by_position_totals_the_feed(midway):
 # -- valuation wiring --------------------------------------------------------
 
 
+def _invent(id, points, *, name=None, pos="WR", team="KC", week=None, **market):
+    """A player who is not on the sheet, and his projection.
+
+    Points live in a `player_id -> points` mapping now rather than on `Player`,
+    so a made-up body and his number are two things and have to be returned as
+    two. Pair with `_knowing` to hand both to a state.
+
+    Keyword `market` fields land on `MarketData` -- `proj_dollar=44` reads the
+    same as it did when it sat on the player itself.
+    """
+    return (
+        Player(
+            id=id,
+            name=name or id.title(),
+            position=pos,
+            team=team,
+            market=MarketData(**market),
+            week=week,
+        ),
+        points,
+    )
+
+
+def _knowing(state, player, points):
+    """`state`, told what `player` projects for.
+
+    Both copies of the sheet get told: the board reads points off its own
+    `proj` for what it draws, and draftsim's ledger reads them off its own for
+    what it values. Telling only one is the failure this spells out -- a player
+    who renders at 400 and prices at nothing.
+    """
+    return replace(
+        state,
+        proj={**state.proj, player.id: points},
+        ledger=replace(
+            state.ledger, proj={**state.ledger.proj, player.id: points}
+        ),
+    )
+
+
 def test_a_seat_that_cannot_start_a_player_values_them_at_zero(midway):
     seat = next(iter(midway.seats.values()))
     # A kicker has no startable slot in this lineup, so no seat can ever gain
     # from one -- the check that "value" means lineup gain, not raw points.
-    kicker = Player(id="k", name="Kicker", pos="K", team="KC", points=200.0)
-    assert seat_value_of(midway, seat, kicker) == 0.0
+    kicker, points = _invent("k", 200.0, pos="K")
+    assert seat_value_of(_knowing(midway, kicker, points), seat, kicker) == 0.0
 
 
 def test_a_strong_player_is_worth_points_to_a_seat_with_room(midway):
-    star = Player(id="star", name="Star", pos="WR", team="KC", points=400.0)
+    star, points = _invent("star", 400.0)
     seat = next(s for s in midway.seats.values() if s.needs.get("WR", 0) > 0)
-    assert seat_value_of(midway, seat, star) > 0.0
+    assert seat_value_of(_knowing(midway, star, points), seat, star) > 0.0
 
 
 def test_contenders_are_seats_that_can_both_pay_and_play(midway):
-    star = Player(id="star", name="Star", pos="WR", team="KC", points=400.0)
-    shortlist = contenders(midway, star)
+    star, points = _invent("star", 400.0)
+    shortlist = contenders(_knowing(midway, star, points), star)
     assert shortlist
     assert all(s.max_bid > 0 for s in shortlist)
     reaches = [s.max_bid for s in shortlist]
@@ -150,35 +202,35 @@ def test_contenders_are_seats_that_can_both_pay_and_play(midway):
 
 
 def test_nobody_contends_for_a_player_nobody_can_start(midway):
-    kicker = Player(id="k", name="Kicker", pos="K", team="KC", points=200.0)
-    assert contenders(midway, kicker) == []
+    kicker, points = _invent("k", 200.0, pos="K")
+    assert contenders(_knowing(midway, kicker, points), kicker) == []
 
 
 def test_a_finished_league_has_no_contenders(finished):
-    star = Player(id="star", name="Star", pos="WR", team="KC", points=400.0)
-    assert contenders(finished, star) == []
+    star, points = _invent("star", 400.0)
+    assert contenders(_knowing(finished, star, points), star) == []
 
 
 # -- feed shapes that would otherwise fail silently --------------------------
 
 
-def test_an_empty_feed_is_a_full_board_of_untouched_seats(mock_config, pool):
-    state = reconstruct([], mock_config, pool)
-    assert len(state.seats) == mock_config.teams
+def test_an_empty_feed_is_a_full_board_of_untouched_seats(mock_rules, pool, proj):
+    state = reconstruct([], mock_rules, pool, proj)
+    assert len(state.seats) == mock_rules.teams
     for seat in state.seats.values():
         assert seat.spent == 0
-        assert seat.budget_left == mock_config.budget
-        assert seat.max_bid == mock_config.budget - (mock_config.roster_size - 1)
+        assert seat.budget_left == mock_rules.budget
+        assert seat.max_bid == mock_rules.budget - (mock_rules.roster_size - 1)
 
 
-def test_a_pick_from_an_impossible_seat_is_an_error(pool):
-    config = DraftConfig(teams=2, budget=50, roster_slots=("QB", "WR", "BN"))
+def test_a_pick_from_an_impossible_seat_is_an_error(pool, proj):
+    rules = DraftRules(teams=2, budget=50, roster_slots=("QB", "WR", "BN"))
     picks = [{"pick_no": 1, "draft_slot": 9, "player_id": "4984", "metadata": {}}]
     with pytest.raises(ValueError, match="outside 1..2"):
-        reconstruct(picks, config, pool)
+        reconstruct(picks, rules, pool, proj)
 
 
-def test_an_unknown_player_still_costs_money_and_a_slot(mock_config, pool):
+def test_an_unknown_player_still_costs_money_and_a_slot(mock_rules, pool, proj):
     picks = [
         {
             "pick_no": 1,
@@ -193,21 +245,27 @@ def test_an_unknown_player_still_costs_money_and_a_slot(mock_config, pool):
             },
         }
     ]
-    state = reconstruct(picks, mock_config, pool)
+    state = reconstruct(picks, mock_rules, pool, proj)
     seat = state.seats[1]
     assert state.unknown_player_ids == ["999999"]
     assert seat.spent == 23
     assert seat.filled == 1
     assert seat.roster[0].name == "Ghost Player"
-    assert seat.roster[0].points == 0.0
+    assert state.points(seat.roster[0]) == 0.0
 
 
-def test_a_pick_with_no_price_is_free_not_a_crash(mock_config, pool):
+def test_a_pick_with_no_price_costs_the_minimum_rather_than_crashing(
+    mock_rules, pool, proj
+):
+    # A blank `amount` used to read as $0. The rebuilt ledger refuses a sale
+    # under `min_bid` outright, so that reading now takes the board down on a
+    # feed it must survive -- and $0 was never true anyway. The floor is what a
+    # missing price is worth.
     picks = [
         {"pick_no": 1, "draft_slot": 1, "player_id": "4984", "metadata": {}},
     ]
-    state = reconstruct(picks, mock_config, pool)
-    assert state.seats[1].spent == 0
+    state = reconstruct(picks, mock_rules, pool, proj)
+    assert state.seats[1].spent == mock_rules.min_bid
     assert state.seats[1].filled == 1
 
 
@@ -219,7 +277,7 @@ def test_summary_targets_are_the_draft_plan_not_the_slot_count(midway):
     # draft target, not a legality check -- so it deliberately parts company
     # with seat.needs, which counts what makes a lineup legal.
     for seat in midway.seats.values():
-        for line in position_summary(seat, midway.config):
+        for line in position_summary(seat, midway.rules, midway.proj):
             if line.pos in DRAFT_TARGETS:
                 assert line.want == DRAFT_TARGETS[line.pos]
 
@@ -227,9 +285,9 @@ def test_summary_targets_are_the_draft_plan_not_the_slot_count(midway):
 def test_a_position_with_no_target_falls_back_to_the_slot_count(midway):
     # DEF has no entry in the plan. It must still report a target rather than
     # silently reading as "wants none" beside the positions that have one.
-    counts = midway.config.starter_counts()
+    counts = midway.rules.starter_counts()
     for seat in midway.seats.values():
-        for line in position_summary(seat, midway.config):
+        for line in position_summary(seat, midway.rules, midway.proj):
             if line.pos not in DRAFT_TARGETS:
                 assert line.want == counts.get(line.pos, 0)
 
@@ -239,7 +297,7 @@ def test_targets_stay_fractional_all_the_way_to_the_line(midway):
     # short; the half has to survive into the PositionLine.
     assert any(t % 1 for t in DRAFT_TARGETS.values())
     for seat in midway.seats.values():
-        lines = {line.pos: line for line in position_summary(seat, midway.config)}
+        lines = {line.pos: line for line in position_summary(seat, midway.rules, midway.proj)}
         for pos, target in DRAFT_TARGETS.items():
             if pos in lines:
                 assert lines[pos].want == pytest.approx(target)
@@ -247,16 +305,19 @@ def test_targets_stay_fractional_all_the_way_to_the_line(midway):
 
 def test_summary_points_add_up_to_the_starting_lineup(midway):
     for seat in midway.seats.values():
-        lineup = [p for p in starters(seat.roster, midway.config) if p is not None]
-        total = sum(line.starter_points for line in position_summary(seat, midway.config))
-        assert total == pytest.approx(sum(p.points for p in lineup))
+        lineup = [p for p in seat.lineup.slots if p is not None]
+        total = sum(
+            line.starter_points
+            for line in position_summary(seat, midway.rules, midway.proj)
+        )
+        assert total == pytest.approx(sum(midway.points(p) for p in lineup))
 
 
 def test_summary_counts_bench_depth_as_have_but_never_as_need(finished):
     seat = finished.seats[1]
-    lines = {line.pos: line for line in position_summary(seat, finished.config)}
+    lines = {line.pos: line for line in position_summary(seat, finished.rules, finished.proj)}
     for pos, line in lines.items():
-        assert line.have == sum(1 for p in seat.roster if p.pos == pos)
+        assert line.have == sum(1 for p in seat.roster if p.position == pos)
     # A finished roster is deeper than its target at some position, and depth
     # must never read as a hole.
     assert any(line.have > line.want for line in lines.values())
@@ -272,14 +333,14 @@ def test_a_position_nobody_starts_or_owns_is_left_out(midway):
     # target, so K is noise until someone drafts one -- at which point the body
     # has to show up somewhere.
     for seat in midway.seats.values():
-        positions = {line.pos for line in position_summary(seat, midway.config)}
-        has_kicker = any(p.pos == "K" for p in seat.roster)
+        positions = {line.pos for line in position_summary(seat, midway.rules, midway.proj)}
+        has_kicker = any(p.position == "K" for p in seat.roster)
         assert ("K" in positions) == has_kicker
 
 
-def test_an_empty_roster_summarizes_as_all_holes(mock_config, pool):
-    state = reconstruct([], mock_config, pool)
-    lines = position_summary(state.seats[1], mock_config)
+def test_an_empty_roster_summarizes_as_all_holes(mock_rules, pool, proj):
+    state = reconstruct([], mock_rules, pool, proj)
+    lines = position_summary(state.seats[1], mock_rules, proj)
     assert [(l.pos, l.have, l.want) for l in lines] == [
         ("QB", 0, 3.0), ("RB", 0, 2.5), ("WR", 0, 3.5), ("TE", 0, 1.0),
         ("DEF", 0, 1.0),
@@ -292,14 +353,11 @@ def test_an_empty_roster_summarizes_as_all_holes(mock_config, pool):
 
 
 def test_nomination_strip_names_the_player_and_the_bid(midway):
-    star = Player(
-        id="star", name="Star Guy", pos="WR", team="KC", points=400.0,
-        proj_dollar=44,
-    )
+    star, points = _invent("star", 400.0, name="Star Guy", proj_dollar=44)
     nom = Nomination(
         player_id="star", nominating_slot=3, high_bid=17, offering_slot=8
     )
-    html = render_nomination(midway, nom, star)
+    html = render_nomination(_knowing(midway, star, points), nom, star)
     assert "Star Guy" in html
     assert "$17" in html
     assert "$44" in html  # the crowd's price, to bid against
@@ -317,14 +375,11 @@ def test_the_two_figures_share_one_column(midway):
     the gap between them -- which only exists if they are stacked in the same
     fixed-width cell. Separately positioned, they are two facts; in a column,
     they are one."""
-    star = Player(
-        id="star", name="Star Guy", pos="WR", team="KC", points=400.0,
-        proj_dollar=44,
-    )
+    star, points = _invent("star", 400.0, name="Star Guy", proj_dollar=44)
     nom = Nomination(
         player_id="star", nominating_slot=3, high_bid=17, offering_slot=8
     )
-    html = render_nomination(midway, nom, star)
+    html = render_nomination(_knowing(midway, star, points), nom, star)
     money = html.split('class="onmoney"')[1].split("</div></div>")[0]
     assert money.index("$44") < money.index("$17")  # opinion above fact
     assert money.count('class="figv') == 2
@@ -339,12 +394,9 @@ def test_a_teamless_player_does_not_draw_a_dangling_separator(midway):
     """Free agents carry no team. The dot between the facts is drawn rather than
     typed, so an empty span between two of them is a visible dot with nothing on
     one side -- which is what the old `·` run did too, less noticeably."""
-    fa = Player(
-        id="fa", name="Free Agent", pos="RB", team="", points=12.0,
-        proj_dollar=1,
-    )
+    fa, points = _invent("fa", 12.0, name="Free Agent", pos="RB", team="", proj_dollar=1)
     nom = Nomination(player_id="fa", nominating_slot=3, high_bid=1, offering_slot=3)
-    sub = render_nomination(midway, nom, fa).split('class="onsub"')[1]
+    sub = render_nomination(_knowing(midway, fa, points), nom, fa).split('class="onsub"')[1]
     sub = sub.split("</div>")[0]
     assert sub.count('class="onsep"') == 1  # pts | nom, and nothing before pts
     assert not sub.lstrip('">').startswith('<span class="onsep"')
@@ -353,14 +405,11 @@ def test_a_teamless_player_does_not_draw_a_dangling_separator(midway):
 def test_a_bid_of_nothing_is_not_money_green(midway):
     """At 20.8px the em dash in #1a7f37 reads as a filled bar -- a small green
     amount rather than the absence of one."""
-    star = Player(
-        id="star", name="Star Guy", pos="WR", team="KC", points=400.0,
-        proj_dollar=44,
-    )
+    star, points = _invent("star", 400.0, name="Star Guy", proj_dollar=44)
     nom = Nomination(
         player_id="star", nominating_slot=3, high_bid=None, offering_slot=None
     )
-    html = render_nomination(midway, nom, star)
+    html = render_nomination(_knowing(midway, star, points), nom, star)
     assert 'class="figv bidamt none">—<' in html
 
 
@@ -373,14 +422,14 @@ def test_the_block_reads_the_division_round_off_season_pace(midway):
     Star Guy paces 400/17 = 23.5: week 1 clears the 15% margin, week 2 sits
     inside it, week 3 falls through the bottom of it.
     """
-    star = Player(
-        id="star", name="Star Guy", pos="WR", team="KC", points=400.0,
-        proj_dollar=44, week1=30.0, week2=24.0, week3=15.0,
+    star, points = _invent(
+        "star", 400.0, name="Star Guy", proj_dollar=44,
+        week=WeeklyPoints(week1=30.0, week2=24.0, week3=15.0),
     )
     nom = Nomination(
         player_id="star", nominating_slot=3, high_bid=17, offering_slot=8
     )
-    strip = render_nomination(midway, nom, star).split('class="onwk"')[1]
+    strip = render_nomination(_knowing(midway, star, points), nom, star).split('class="onwk"')[1]
     strip = strip.split("</div>")[0]
     assert 'class="onwkv g">30.0<' in strip
     assert 'class="onwkv">24.0<' in strip
@@ -394,14 +443,11 @@ def test_the_block_draws_no_week_strip_without_a_read(midway):
     """A CSV predating the week columns leaves all three None. Three dashes
     would take the height without answering anything, so the strip stays away
     rather than standing in for a read nobody has."""
-    star = Player(
-        id="star", name="Star Guy", pos="WR", team="KC", points=400.0,
-        proj_dollar=44,
-    )
+    star, points = _invent("star", 400.0, name="Star Guy", proj_dollar=44)
     nom = Nomination(
         player_id="star", nominating_slot=3, high_bid=17, offering_slot=8
     )
-    assert 'class="onwk"' not in render_nomination(midway, nom, star)
+    assert 'class="onwk"' not in render_nomination(_knowing(midway, star, points), nom, star)
     # Nor for a lot that is not on the sheet at all -- there is no player to
     # take weeks from, and the panel already says so.
     off_sheet = Nomination(
@@ -440,8 +486,8 @@ def test_settled_lot_shows_the_pick_that_just_landed(midway):
     assert "no bids yet" not in html
 
 
-def test_settled_lot_is_idle_before_the_first_pick(mock_config, pool, catalog):
-    empty = reconstruct([], mock_config, pool, catalog=catalog)
+def test_settled_lot_is_idle_before_the_first_pick(mock_rules, pool, proj, catalog):
+    empty = reconstruct([], mock_rules, pool, proj, catalog=catalog)
     html = render_settled_lot(empty)
     assert "Nothing nominated" in html
     assert "bid-high" not in html
@@ -477,8 +523,8 @@ def test_a_card_shows_each_player_with_price_points_and_bye(midway):
     for pick in seat.picks:
         assert pick.player.name.replace("'", "&#x27;") in card
         assert f"${pick.price}" in card
-        if pick.player.bye:
-            assert f">{pick.player.bye}<" in card
+        if pick.player.market.bye:
+            assert f">{pick.player.market.bye}<" in card
 
 
 def test_a_card_leads_with_money_and_reach(midway):
@@ -506,7 +552,7 @@ def test_a_card_totals_what_its_starters_project(midway):
     for seat in midway.seats.values():
         card = _card(midway, seat.slot)
         assert 'class="proj"' in card
-        total = sum(p.points for p in starters(seat.roster, midway.config) if p)
+        total = sum(midway.points(p) for p in seat.lineup.slots if p)
         figure = card.split('class="proj"')[1].split("<b>")[1].split("</b>")[0]
         assert figure == f"{total:,.0f}"
 
@@ -516,12 +562,12 @@ def test_a_card_counts_the_starters_it_has_bought(midway):
     # kickers are left out, the same ones `_NEED_SKIP` drops: bought once,
     # late, by everyone, so counting them only makes the same denominator mean
     # different things on different cards.
-    wanted = [s for s in midway.config.starter_slots if s not in _NEED_SKIP]
+    wanted = [s for s in midway.rules.slots if s not in _NEED_SKIP]
     for seat in midway.seats.values():
         foot = _card(midway, seat.slot).split('class="proj"')[1]
         have = sum(
             1
-            for slot, player in display_slots(seat.roster, midway.config)
+            for slot, player in display_slots(seat.lineup, seat.roster, midway.rules)
             if slot != BENCH and slot not in _NEED_SKIP and player
         )
         assert f">{have}<i>/{len(wanted)}</i>" in foot
@@ -539,10 +585,10 @@ def test_a_lineup_with_a_hole_in_it_says_so(midway):
     assert any('class="fill short"' in c for c in cards)
 
 
-def test_an_empty_seat_projects_nothing_rather_than_zero(mock_config, pool):
+def test_an_empty_seat_projects_nothing_rather_than_zero(mock_rules, pool, proj):
     # A seat that has bought nothing has no projection; a bold 0 reads as a
     # measurement rather than as absence.
-    state = reconstruct([], mock_config, pool)
+    state = reconstruct([], mock_rules, pool, proj)
     card = render_rosters(state).split('data-seat="1"')[1].split("</section>")[0]
     assert "<b>—</b>" in card.split('class="proj"')[1]
 
@@ -564,18 +610,18 @@ def test_the_budget_bar_splits_spendable_from_reserved(midway):
         assert len(widths) == 2
         assert sum(widths) <= 100.0 + 1e-6
         held = max(0, seat.open_slots - 1)
-        assert widths[1] == pytest.approx(100 * held / midway.config.budget, abs=0.1)
+        assert widths[1] == pytest.approx(100 * held / midway.rules.budget, abs=0.1)
 
 
-def test_a_seat_out_of_the_market_is_flagged(mock_config, pool):
+def test_a_seat_out_of_the_market_is_flagged(mock_rules, pool, proj):
     # A max bid that cannot win anyone is a seat you have stopped bidding
     # against, and the card says so rather than leaving you to notice.
-    state = reconstruct([], mock_config, pool)
+    state = reconstruct([], mock_rules, pool, proj)
     rich = render_rosters(state)
     assert 'class="card broke"' not in rich
     for seat in state.seats.values():
         seat.max_bid = 3
-    assert render_rosters(state).count('class="card broke"') == mock_config.teams
+    assert render_rosters(state).count('class="card broke"') == mock_rules.teams
 
 
 def test_unfilled_starter_slots_are_shown(midway):
@@ -585,21 +631,21 @@ def test_unfilled_starter_slots_are_shown(midway):
     assert 'class="ln open"' in card
 
 
-def test_empty_rosters_still_render_their_shape(mock_config, pool):
-    state = reconstruct([], mock_config, pool)
+def test_empty_rosters_still_render_their_shape(mock_rules, pool, proj):
+    state = reconstruct([], mock_rules, pool, proj)
     html = render_rosters(state)
-    assert html.count("data-seat=") == mock_config.teams
+    assert html.count("data-seat=") == mock_rules.teams
     # Every seat shows the full lineup shape, all of it empty.
-    assert html.count('class="ln open"') == mock_config.teams * len(
-        [s for s in mock_config.roster_slots if s != "BN"]
+    assert html.count('class="ln open"') == mock_rules.teams * len(
+        [s for s in mock_rules.roster_slots if s != "BN"]
     )
 
 
 def test_a_seat_with_no_bench_says_so_rather_than_showing_a_blank_pane(
-    mock_config, pool
+    mock_rules, pool, proj
 ):
-    state = reconstruct([], mock_config, pool)
-    assert render_rosters(state).count('class="empty"') == mock_config.teams
+    state = reconstruct([], mock_rules, pool, proj)
+    assert render_rosters(state).count('class="empty"') == mock_rules.teams
 
 
 def test_rows_carry_position_colour_and_price(midway):
@@ -611,7 +657,7 @@ def test_rows_carry_position_colour_and_price(midway):
     # but every drafted player's colour must be present to mix that tint from.
     assert 'class="badge"' not in card
     for pick in seat.picks:
-        assert f"--pos:{POS_COLOR_LIGHT[pick.player.pos]}" in card
+        assert f"--pos:{POS_COLOR_LIGHT[pick.player.position]}" in card
         assert f"${pick.price}" in card
 
 
@@ -629,7 +675,7 @@ def test_one_player_per_line(midway):
     # lineup pane has exactly one line per starting slot.
     seat = next(s for s in midway.seats.values() if s.roster)
     lineup = _pane(midway, seat.slot, "lineup")
-    starter_slots = len(midway.config.starter_slots)
+    starter_slots = len(midway.rules.slots)
     assert lineup.count('<div class="ln') == starter_slots + 1  # + column labels
 
 
@@ -638,12 +684,12 @@ def test_bench_is_its_own_pane_labelled_by_real_position(finished):
     # is the player's position rather than a fungible BN.
     seat = finished.seats[1]
     bench = _pane(finished, 1, "bench")
-    starting = {id(p) for p in starters(seat.roster, finished.config) if p}
+    starting = {id(p) for p in seat.lineup.slots if p}
     depth = [p for p in seat.roster if id(p) not in starting]
     assert bench.count('<div class="ln bench"') == len(depth)
     assert f">{BENCH}</i>" not in bench
     for player in depth:
-        assert f'class="ms">{player.pos}<' in bench
+        assert f'class="ms">{player.position}<' in bench
 
 
 def test_bench_rows_keep_their_position_tint_but_sit_back():
@@ -865,7 +911,7 @@ def test_the_strip_says_what_is_filled_and_what_is_not(midway):
     # drops, drawn as pips. What the run counts against is a separate question,
     # on purpose; see below.
     strip = _strip(midway, 1)
-    for line in position_summary(midway.seats[1], midway.config):
+    for line in position_summary(midway.seats[1], midway.rules, midway.proj):
         if line.pos in _NEED_SKIP:
             assert f">{line.pos}<" not in strip
         else:
@@ -873,15 +919,15 @@ def test_the_strip_says_what_is_filled_and_what_is_not(midway):
     assert 'class="pips"' in strip
 
 
-def test_the_strips_run_is_the_slots_a_position_owns_outright(mock_config, pool):
+def test_the_strips_run_is_the_slots_a_position_owns_outright(mock_rules, pool, proj):
     # Folded, a card is read off rather than shopped for: the question is what a
     # seat *has*, so the run is `owned_starters()` -- 2 QB / 2 RB / 3 WR / 1 TE,
     # the whole slots the lineup seats no matter what -- not the fractional
     # DRAFT_TARGETS a draft plan buys against.
-    assert mock_config.owned_starters() == {
+    assert mock_rules.owned_starters() == {
         "QB": 2, "RB": 2, "WR": 3, "TE": 1, "DEF": 1, "K": 0
     }
-    state = reconstruct([], mock_config, pool)
+    state = reconstruct([], mock_rules, pool, proj)
     strip = _strip(state, 1)
     runs = dict(zip(re.findall(r">(\w+)</i>", strip), strip.split('class="pips"')[1:]))
     for pos, want in (("QB", 2), ("RB", 2), ("WR", 3), ("TE", 1)):
@@ -900,14 +946,14 @@ def test_depth_stacks_under_its_position_rather_than_widening_the_run(finished):
         s
         for s in finished.seats.values()
         if any(
-            line.have > finished.config.owned_starters().get(line.pos, 0)
-            for line in position_summary(s, finished.config)
+            line.have > finished.rules.owned_starters().get(line.pos, 0)
+            for line in position_summary(s, finished.rules, finished.proj)
             if line.pos not in _NEED_SKIP
         )
     )
     strip = _strip(finished, seat.slot)
-    owned = finished.config.owned_starters()
-    for line in position_summary(seat, finished.config):
+    owned = finished.rules.owned_starters()
+    for line in position_summary(seat, finished.rules, finished.proj):
         if line.pos in _NEED_SKIP:
             continue
         cell = next(c for c in strip.split('class="fpos"')[1:] if f">{line.pos}<" in c)
@@ -922,10 +968,10 @@ def test_a_depth_line_holds_twice_the_slots_it_sits_under(finished):
     # the one line beneath two RB slots. A position only takes a third line when
     # a seat holds more than twice what it can start, which is deeper than seats
     # go: every position of a finished 16-man roster is at most two lines.
-    owned = finished.config.owned_starters()
+    owned = finished.rules.owned_starters()
     for seat in finished.seats.values():
         strip = _strip(finished, seat.slot)
-        for line in position_summary(seat, finished.config):
+        for line in position_summary(seat, finished.rules, finished.proj):
             if line.pos in _NEED_SKIP:
                 continue
             cell = next(c for c in strip.split('class="fpos"')[1:] if f">{line.pos}<" in c)
@@ -1159,7 +1205,7 @@ def test_the_filter_names_the_seats_in_each_row_from_the_client():
 
 
 def _P(name, pos="WR"):
-    return Player(id=name, name=name, pos=pos, team="KC", points=0.0)
+    return Player(id=name, name=name, position=pos, team="KC")
 
 
 def test_short_name_is_initial_plus_surname():
