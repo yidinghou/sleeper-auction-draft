@@ -164,13 +164,23 @@ def _player_from_pick(pick: Dict[str, Any]) -> Player:
     )
 
 
-def _price(pick: Dict[str, Any]) -> int:
-    """The auction price, from `metadata.amount`. Snake picks have none."""
+def _price(pick: Dict[str, Any], rules: DraftRules) -> int:
+    """The auction price, from `metadata.amount`.
+
+    A missing `amount` reads as `rules.min_bid`, not as free. Nothing sells for
+    nothing in an auction, so a blank cell is missing data rather than a $0
+    sale, and the floor is the least-wrong thing to say about it -- which is
+    also the only thing the ledger will accept, since `Draft.record_pick`
+    refuses a price under the minimum.
+
+    Snake picks have no amount either, but a snake draft is refused upstream in
+    `rules_from_draft`, so it is never this function's problem.
+    """
     raw = str((pick.get("metadata") or {}).get("amount") or "").strip()
     try:
-        return int(float(raw))
+        return max(int(float(raw)), rules.min_bid)
     except ValueError:
-        return 0
+        return rules.min_bid
 
 
 def reconstruct(
@@ -240,7 +250,7 @@ def reconstruct(
             pick_no=int(pick.get("pick_no") or 0),
             slot=slot,
             player=player,
-            price=_price(pick),
+            price=_price(pick, rules),
         )
         all_picks.append(entry)
         resolved.append((slot, entry))
