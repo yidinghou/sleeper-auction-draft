@@ -18,7 +18,7 @@ from liveboard.live_render import (
 )
 from liveboard.live_state import SeatPick, reconstruct
 from liveboard.sleeper import rules_from_draft
-from draftsim.player import MarketData, Player, load_players, load_projections
+from liveboard.draftsim_compat import MarketData, Player, load_players, load_projections
 
 FIXTURES = Path(__file__).parent / "fixtures"
 

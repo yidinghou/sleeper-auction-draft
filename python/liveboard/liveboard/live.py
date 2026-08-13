@@ -49,8 +49,8 @@ from .sleeper import (
     seat_for_user,
     seat_names,
 )
-from draftsim.player import Player, by_sleeper_id, load_players
-from draftsim.player import load_projections
+from liveboard.draftsim_compat import Player, by_sleeper_id, load_players
+from liveboard.draftsim_compat import load_projections
 
 DEFAULT_PORT = 8765
 DEFAULT_INTERVAL = 3.0

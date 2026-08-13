@@ -24,7 +24,7 @@ import html
 from pathlib import Path
 from typing import Dict, Mapping, Optional, Sequence, Tuple, Union
 
-from draftsim.rules import BENCH
+from liveboard.draftsim_compat import BENCH
 from .live_pressure import PositionPressure, pressure
 from .live_state import (
     DRAFT_TARGETS,
@@ -34,7 +34,7 @@ from .live_state import (
     SeatPick,
     position_summary,
 )
-from draftsim.lineup import display_slots, is_legal
+from liveboard.draftsim_compat import display_slots, is_legal
 from .sleeper import Nomination
 from .theme import (
     BASE_CSS_LIGHT,
@@ -43,7 +43,7 @@ from .theme import (
     SLOT_LABEL,
     badge,
 )
-from draftsim.player import Player
+from liveboard.draftsim_compat import Player
 
 def market_value(player: Player) -> float:
     """Sleeper's projected auction dollar; a player with none prices at 0.

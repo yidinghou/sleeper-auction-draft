@@ -27,13 +27,13 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from draftsim.draft import Draft
-from draftsim.evaluation import Market, marginal_points_of, positional_need_of
-from draftsim.lineup import Lineup, empty_lineup
-from draftsim.player import MarketData, Player, by_sleeper_id, make_id
-from draftsim.rules import CONCRETE_POSITIONS, DraftRules, Position
-from draftsim.state import DraftState, TeamState
-from draftsim.team import Team
+from liveboard.draftsim_compat import Draft
+from liveboard.draftsim_compat import Market, marginal_points_of, positional_need_of
+from liveboard.draftsim_compat import Lineup, empty_lineup
+from liveboard.draftsim_compat import MarketData, Player, by_sleeper_id, make_id
+from liveboard.draftsim_compat import CONCRETE_POSITIONS, DraftRules, Position
+from liveboard.draftsim_compat import DraftState, TeamState
+from liveboard.draftsim_compat import Team
 
 
 @dataclass(frozen=True)

@@ -26,15 +26,23 @@ Then open <http://127.0.0.1:8765>.
 
 It runs in the foreground — `Ctrl-C` stops it. If a prior instance was
 backgrounded (`&`) or its shell got closed, `--port 8765` is still taken and
-the new one exits with `Address already in use`. Find and stop the old one
-first:
+the new one exits with `Address already in use`. Stop whatever holds the port
+and start again in one line:
+
+```bash
+kill $(lsof -ti :8765) 2>/dev/null; python -m liveboard.live --draft-id <id>
+```
+
+The `2>/dev/null` is for the ordinary case where nothing is listening: `kill`
+gets no arguments and says so, which is not a failure worth reading.
+
+To look before killing — worth doing if the port might be holding something
+that isn't a board:
 
 ```bash
 lsof -i :8765             # PID listening on the board's port
 kill <pid>                 # ask it to stop
 ```
-
-Then re-run `python -m liveboard.live --draft-id <id>`.
 
 `--user` takes a Sleeper username and finds that account's slot in the draft's
 own `draft_order`, so the card is marked and the money band's dashed line is
