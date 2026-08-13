@@ -181,9 +181,14 @@ class LeagueRules:
 
         This is a different question from the rounded one and both get asked. A
         body past this count may well start; what it is not is a slot the roster
-        was owed. The hair added before flooring absorbs the wobble of summing
-        shares in binary floating point, so that a share that is arithmetically
-        3.0 cannot floor to 2.
+        was owed.
+
+        The hair added before flooring absorbs the wobble of summing shares in
+        binary floating point, so that a share which is arithmetically 3.0
+        cannot floor to 2. No template can provoke that wobble out of the
+        shares as measured today; the guard is there for the table as
+        re-measured, since a future set of shares that sums to a whole number
+        in decimal may well not in binary.
         """
         return {
             position: math.floor(share + 1e-9)

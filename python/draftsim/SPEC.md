@@ -63,8 +63,10 @@ Claims:
   than allowed to fail later.
 - A league with no seats, or no roster slots, or a minimum bid below a dollar, is
   likewise not a league.
-- The league configuration is fixed for the duration of a draft and shared by
-  everyone. Nothing about it knows a draft is in progress.
+- The league configuration is frozen once made and shared by everyone: no rule
+  changes mid-draft, and a seat's copy is the same league every other seat is
+  playing. That freeze is the whole of the claim — it carries no count of picks,
+  no clock, no who's-on-the-block, because none of that is a rule of the league.
 
 Positions arrive from a spreadsheet as strings — `QB`, `RB`, `WR`, `TE`, `K`,
 `DEF` — and every comparison in this system is against one of those literals.
@@ -159,18 +161,36 @@ Claims:
   early-week read is not the same as one projected for zero in that week, and the
   distinction must survive into the model. (The weekly columns exist because the
   spreadsheet sometimes predates them entirely.)
-- **A rank or price cell may read empty or `-`; both mean unknown.**
+- **Any number the sheet doesn't have may read empty or `-`; both mean unknown.**
+  Rank, price and bye week all arrive that way on the real export, and so may a
+  projection. The dash is the export's way of writing "no figure", wherever it
+  appears.
 - **A player's identity is derived from his name, position, and NFL team**, not
   from the provider's id — so a spreadsheet exported before the `player_id`
   column existed still loads and still joins. Identity is case- and
   spacing-insensitive.
-- **Player identities are unique across the sheet.**
+- **Draftable players have unique identities.** Two players with an NFL team who
+  share a name and position are a broken export and must be refused outright,
+  because the sheet cannot say which of them a seat bought. Unsigned bodies are a
+  different matter: the real sheet carries several pairs of identical
+  name-and-position free agents, and since neither can be drafted, owned, or
+  started, telling them apart buys nothing. Let them through when free agents are
+  asked for. Refusing them would make the whole-sheet reading unusable against
+  the actual export, and silently dropping the later one would quietly change how
+  many bodies the caller asked for.
 - **A player knows nothing about any draft.** No owned flag, no owner, no price
   paid. Those are answers the sales record already has, and a second copy of a
   fact is a chance for the two to disagree.
-- **Projections live beside the player table, not inside it** — a mapping from
+- **Season points live beside the player table, not inside it** — a mapping from
   player identity to season points. Re-running a draft against a different
   forecast should mean supplying different numbers, not rebuilding every player.
+- **The weekly reads stay on the player.** Nothing in this model values, bids,
+  ranks or starts on them; they are descriptive facts about a body, like his bye
+  week, carried so a caller can show them. Only the number the valuation actually
+  swings on has to be swappable, and pulling the weeks out beside it would mean
+  keeping a second forecast in step with the first for no behavior that reads it.
+  If a later model ever prices a player off week one, the weeks move out then and
+  the claim changes with them.
 - **A player absent from the projections scores zero rather than raising.**
 - There must also be a way to index players by the external provider's id, for
   matching live picks; players from a sheet without that column are simply absent

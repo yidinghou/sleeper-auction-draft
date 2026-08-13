@@ -133,3 +133,28 @@ def test_the_rules_cannot_be_changed_once_the_draft_is_under_way():
 
     with pytest.raises(dataclasses.FrozenInstanceError):
         league.budget = 500
+
+
+def test_the_league_carries_no_picks_no_clock_and_nobody_on_the_block():
+    """The league is only what everyone agreed to before the draft started.
+
+    How far along a draft is, whose turn it is and who is on the block are all
+    read off the record of sales; none of them is a rule of the league. And
+    because the rules hold nothing that moves, one seat's copy of them is the
+    same league every other seat is playing.
+    """
+    league = LeagueRules()
+
+    for the_draft_so_far in (
+        "picks",
+        "sales",
+        "spent",
+        "clock",
+        "deadline",
+        "on_the_block",
+        "nominating_seat",
+        "turn",
+    ):
+        assert not hasattr(league, the_draft_so_far)
+
+    assert LeagueRules() == league
