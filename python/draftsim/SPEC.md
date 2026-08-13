@@ -100,10 +100,11 @@ genuinely contested.
 **Why this matters enough to measure rather than assume**, and this must survive
 into the code as a comment or docstring, because it is the kind of thing someone
 will later "simplify": splitting every flex slot evenly across its eligible
-positions instead would put quarterback replacement at the 15th quarterback
-rather than the 24th — fifty points of difference — and tight end replacement at
-the 25th tight end rather than the 12th. That is a factor of two, and it comes
-from assuming a tight end is as likely to take the superflex as a quarterback.
+positions instead would put quarterback replacement at the sixteenth quarterback
+rather than the twenty-fifth — fifty points of difference — and tight end
+replacement at the twenty-sixth tight end rather than the thirteenth. That is a
+factor of two, and it comes from assuming a tight end is as likely to take the
+superflex as a quarterback.
 
 If the lineup template ever changes, these get re-measured: run drafts, tally
 which position filled each slot, normalise per slot.
@@ -410,7 +411,11 @@ player *past* what the league **still wants** there.
 
 Twelve seats wanting 2.77 running backs each want about 33. So the 34th back —
 index 33 in a zero-based ranking — is what a dollar buys, and anything above his
-points is what you are actually paying for.
+points is what you are actually paying for. Same rule at tight end: twelve seats
+wanting one each want twelve, so a dollar buys the *thirteenth* tight end — index
+12. The need names how many the league takes; the bar is the man after them.
+Every ordinal in this spec counts from one and every index from zero, and the two
+are never the same number.
 
 Claims:
 
@@ -423,11 +428,30 @@ Claims:
 - **Both halves shrink as the draft runs.** Supply shrinks because players
   already bought leave the ranking. Demand shrinks because it counts only
   *unfilled* starting slots.
-- **So the bar falls as a position fills up.** Once nine of twelve seats have
-  their tight end, the bar drops to the third-best tight end left — which is
-  exactly why a mediocre tight end is genuinely worth something to the three
-  seats still short. This is the single most important behavioral claim in this
-  section and it deserves a test that reads like that sentence.
+- **When a position is bought as fast as it is needed, the bar holds where it is
+  and walks down the line.** Nine of twelve seats taking the top nine tight ends
+  removes nine bodies and closes nine tight end slots, so the index moves down by
+  exactly as much as the line shortens and the bar lands on the same man scoring
+  the same points. What changes is where he sits in what is left: from the
+  thirteenth tight end going at the opening bell to the fourth still on the
+  board, and the count of tight ends clearing the bar collapses from twelve to
+  three. That is why a middling tight end is genuinely worth something to the
+  three seats still short — not because he got cheaper to beat, but because he is
+  the only surplus left at the position and the men who used to be worth more
+  than him are gone. This is the single most important behavioral claim in this
+  section and it deserves a test that reads like that sentence, asserting both
+  halves: the points unmoved and the position in the line moved.
+- **The bar only falls when supply shrinks faster than demand** — when tight ends
+  leave the board without taking tight end slots with them. One seat stockpiling
+  four of them is the case: it takes four bodies off the line while closing one
+  tight end slot, because the other three land in flexes that the tight end share
+  was never counting on (§2). Supply falls by four, demand by one, and the bar
+  drops three rungs for everyone.
+- **And it rises when demand shrinks faster than supply.** A seat that fills its
+  tight end slot from far down the line closes a slot without removing anybody
+  the bar was resting on, so the line above the bar is untouched while the need
+  shrinks, and the bar climbs a rung. Scarcity is the race between the two, not
+  the passage of the draft.
 - **Remaining need is counted from the open slots themselves**, not by
   subtracting each seat's starters from its share. Subtracting double-counts: a
   seat that started four running backs has consumed the superflex its quarterback
@@ -522,6 +546,15 @@ Claims:
   roster size), over the surplus of the players who will go — because nothing has
   been spent.
 
+- **The bar and the rate are two different reasons a price moves, and they are
+  not interchangeable.** The bar says what a player has to beat; the rate says
+  what a point above it costs. A position bought at the pace the league needs it
+  moves prices through the rate alone, because the bar it is measured against has
+  not moved (§10); which way the rate then goes is the race between the money
+  left and the surplus left, and the spending-spree claim above is the one that
+  settles it. Don't explain a moving price by a moving bar without checking that
+  the bar actually moved.
+
 The bar and the rate travel together, as of one moment in the record. The rate's
 denominator is measured over *that* bar, so handing a caller two numbers derived
 from different moments is a mistake worth designing out rather than documenting.
@@ -601,7 +634,8 @@ function, never a rank, never a generated identity:
 
 - `test_a_third_elite_tight_end_is_worth_nothing_to_you`
 - `test_an_early_spending_spree_makes_the_back_half_cheap`
-- `test_the_bar_falls_as_the_league_fills_its_tight_end_slots`
+- `test_the_bar_holds_when_tight_ends_go_as_fast_as_they_are_needed`
+- `test_a_seat_hoarding_tight_ends_drops_the_bar_for_everyone`
 - `test_max_bid_reserves_a_dollar_for_every_slot_the_bid_will_not_fill`
 - `test_a_kicker_can_never_start`
 
@@ -634,6 +668,7 @@ Five stages. Stop at the end of each one.
    passes across many random legal sequences, with the two paths written
    independently.
 4. **The bar and what a player is worth** — §10, §11, §14. Done when a third
-   elite tight end is worth nothing and the bar falls as seats fill a position.
+   elite tight end is worth nothing, the bar holds steady while walking down the
+   line as seats fill a position one apiece, and it drops when one seat hoards.
 5. **The price** — §12, §13, §15, and a README explaining the model. Done when
    the books balance.

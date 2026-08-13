@@ -18,28 +18,9 @@ import random
 
 import pytest
 
-from draftsim.board import Player, Projections
+from draftsim.board import Projections
 from draftsim.league import LeagueRules, slot_accepts
 from draftsim.lineup import best_lineup, lay_out_roster, roster_can_field_a_lineup
-
-TEAM = "NFL"
-
-
-def a_roster(*described):
-    """A roster and the forecast that goes with it, from name/position/points.
-
-    Every player is given the same NFL team: nothing in a lineup reads a team,
-    and the identities stay distinct because the names do.
-    """
-    roster = tuple(
-        Player(name=name, position=position, team=TEAM)
-        for name, position, _ in described
-    )
-    forecast = Projections(
-        {player.identity: points for player, (_, _, points) in zip(roster, described)}
-    )
-    return roster, forecast
-
 
 def reads_as(lineup):
     """The lineup as a reader sees it: slot by slot, who is in it."""
@@ -51,7 +32,7 @@ def reads_as(lineup):
 # --- It is the best lineup, not merely a legal one -------------------------
 
 
-def test_an_elite_tight_end_starts_at_tight_end_so_the_flex_can_take_a_back():
+def test_an_elite_tight_end_starts_at_tight_end_so_the_flex_can_take_a_back(a_roster):
     """The claim that separates a real solve from a first-fit fill.
 
     The flex is written ahead of the tight end slot here so the trap is
@@ -75,7 +56,7 @@ def test_an_elite_tight_end_starts_at_tight_end_so_the_flex_can_take_a_back():
     )
 
 
-def test_a_third_receiver_fills_the_flex():
+def test_a_third_receiver_fills_the_flex(a_roster):
     league = LeagueRules()
     roster, forecast = a_roster(
         ("Ja'Marr Chase", "WR", 300),
@@ -96,7 +77,7 @@ def test_a_third_receiver_fills_the_flex():
     assert ("FLEX", "Puka Nacua") in reads_as(lineup)
 
 
-def test_a_second_defense_adds_nothing():
+def test_a_second_defense_adds_nothing(a_roster):
     league = LeagueRules()
     roster, forecast = a_roster(("Ravens D/ST", "DEF", 130))
     two_deep, deeper_forecast = a_roster(
@@ -108,7 +89,7 @@ def test_a_second_defense_adds_nothing():
     assert best_lineup(two_deep, deeper_forecast, league).points == 130
 
 
-def test_a_kicker_never_appears_in_the_lineup():
+def test_a_kicker_never_appears_in_the_lineup(a_roster):
     league = LeagueRules()
     roster, forecast = a_roster(
         ("Justin Tucker", "K", 150),
@@ -121,7 +102,7 @@ def test_a_kicker_never_appears_in_the_lineup():
     assert "Justin Tucker" not in [name for _, name in reads_as(lineup)]
 
 
-def test_no_way_of_filling_the_template_scores_more_than_the_lineup_it_fields():
+def test_no_way_of_filling_the_template_scores_more_than_the_lineup_it_fields(a_random_roster):
     """The optimality proof, and the only one over rosters nobody chose.
 
     Every legal assignment of these players to slots is tried by the brute
@@ -159,7 +140,7 @@ def test_a_roster_with_nobody_on_it_scores_nothing_with_every_slot_open():
     )
 
 
-def test_the_slots_a_half_built_roster_cannot_fill_read_as_gaps():
+def test_the_slots_a_half_built_roster_cannot_fill_read_as_gaps(a_roster):
     league = LeagueRules()
     roster, forecast = a_roster(
         ("Josh Allen", "QB", 360),
@@ -185,7 +166,7 @@ def test_the_slots_a_half_built_roster_cannot_fill_read_as_gaps():
 # --- The lineup reads best-first down the template ------------------------
 
 
-def test_the_better_back_starts_at_running_back_and_the_spare_spills_to_the_flex():
+def test_the_better_back_starts_at_running_back_and_the_spare_spills_to_the_flex(a_roster):
     league = LeagueRules()
     roster, forecast = a_roster(
         ("A Spare Back", "RB", 90),
@@ -202,7 +183,7 @@ def test_the_better_back_starts_at_running_back_and_the_spare_spills_to_the_flex
     assert ("FLEX", "A Spare Back") in reads_as(lineup)
 
 
-def test_a_quarterback_takes_the_superflex_only_once_the_first_slot_is_his():
+def test_a_quarterback_takes_the_superflex_only_once_the_first_slot_is_his(a_roster):
     league = LeagueRules()
     roster, forecast = a_roster(
         ("Jayden Daniels", "QB", 300),
@@ -215,7 +196,7 @@ def test_a_quarterback_takes_the_superflex_only_once_the_first_slot_is_his():
     assert ("SUPER_FLEX", "Jayden Daniels") in reads_as(lineup)
 
 
-def test_a_back_shuffled_along_to_make_room_still_reads_at_running_back():
+def test_a_back_shuffled_along_to_make_room_still_reads_at_running_back(a_roster):
     """Making room for the last back walks the others down the template.
 
     Seating the third back means moving the second into the flex and the
@@ -240,7 +221,7 @@ def test_a_back_shuffled_along_to_make_room_still_reads_at_running_back():
     )
 
 
-def test_no_player_sits_in_a_later_slot_than_one_a_worse_player_holds():
+def test_no_player_sits_in_a_later_slot_than_one_a_worse_player_holds(a_random_roster):
     """What "reads best-first" means, stated so it can be checked.
 
     Where two slots could legally trade their players, the better player is in
@@ -269,7 +250,7 @@ def test_no_player_sits_in_a_later_slot_than_one_a_worse_player_holds():
 # --- The order players were bought in changes nothing ---------------------
 
 
-def test_the_lineup_does_not_depend_on_the_order_the_players_were_bought():
+def test_the_lineup_does_not_depend_on_the_order_the_players_were_bought(a_random_roster):
     """Stage after stage rests on this: two paths through the same roster see
     the players in different orders and must still agree, name for name."""
     league = LeagueRules()
@@ -288,7 +269,7 @@ def test_the_lineup_does_not_depend_on_the_order_the_players_were_bought():
             )
 
 
-def test_two_players_projected_at_the_same_points_always_start_in_the_same_order():
+def test_two_players_projected_at_the_same_points_always_start_in_the_same_order(a_roster):
     """The tiebreak is load-bearing, not tidiness: without it the same roster
     could read two ways depending on which player happened to arrive first."""
     league = LeagueRules()
@@ -307,7 +288,7 @@ def test_two_players_projected_at_the_same_points_always_start_in_the_same_order
 # --- Whether a roster can field a legal lineup at all ---------------------
 
 
-def test_a_roster_can_field_a_lineup_when_every_starting_slot_has_somebody():
+def test_a_roster_can_field_a_lineup_when_every_starting_slot_has_somebody(a_roster):
     league = LeagueRules()
     roster, _ = a_roster(
         ("Josh Allen", "QB", 360),
@@ -325,7 +306,7 @@ def test_a_roster_can_field_a_lineup_when_every_starting_slot_has_somebody():
     assert roster_can_field_a_lineup(roster, league)
 
 
-def test_a_roster_of_nothing_but_receivers_cannot_field_a_lineup():
+def test_a_roster_of_nothing_but_receivers_cannot_field_a_lineup(a_roster):
     league = LeagueRules()
     roster, _ = a_roster(
         *[(f"Receiver {number}", "WR", 100) for number in range(1, 11)]
@@ -334,7 +315,7 @@ def test_a_roster_of_nothing_but_receivers_cannot_field_a_lineup():
     assert not roster_can_field_a_lineup(roster, league)
 
 
-def test_whether_a_roster_is_legal_has_nothing_to_do_with_points():
+def test_whether_a_roster_is_legal_has_nothing_to_do_with_points(a_roster):
     """Two rosters of the same shape, one projected at nothing: both legal."""
     league = LeagueRules(roster_template=("QB", "FLEX", "BN"))
     scorers, _ = a_roster(("Josh Allen", "QB", 360), ("Bijan Robinson", "RB", 150))
@@ -347,7 +328,7 @@ def test_whether_a_roster_is_legal_has_nothing_to_do_with_points():
 # --- Laying a roster out for display --------------------------------------
 
 
-def test_a_starter_is_shown_in_the_slot_he_would_actually_start_in():
+def test_a_starter_is_shown_in_the_slot_he_would_actually_start_in(a_roster):
     league = LeagueRules()
     roster, forecast = a_roster(
         ("Puka Nacua", "WR", 260),
@@ -366,7 +347,7 @@ def test_a_starter_is_shown_in_the_slot_he_would_actually_start_in():
     ]
 
 
-def test_the_bench_reads_in_the_order_the_players_were_bought():
+def test_the_bench_reads_in_the_order_the_players_were_bought(a_roster):
     league = LeagueRules()
     roster, forecast = a_roster(
         ("Ravens D/ST", "DEF", 130),
@@ -391,7 +372,7 @@ def test_a_roster_with_nobody_on_it_lays_out_as_sixteen_gaps():
     assert [spot.slot for spot in laid_out] == list(league.roster_template)
 
 
-def test_a_seventeenth_player_is_shown_anyway_rather_than_dropped():
+def test_a_seventeenth_player_is_shown_anyway_rather_than_dropped(a_roster):
     """An ugly display beats one that has quietly lost a player."""
     league = LeagueRules()
     roster, forecast = a_roster(
@@ -418,17 +399,22 @@ def test_a_seventeenth_player_is_shown_anyway_rather_than_dropped():
 # --- The brute force, and the random rosters it checks --------------------
 
 
-def a_random_roster(seed, most_players=16):
+@pytest.fixture
+def a_random_roster(a_roster):
     """Random bodies, weighted towards the positions that compete for the
     flexes, since a contested flex is where a solve goes wrong."""
-    dice = random.Random(seed)
-    positions = ["QB", "RB", "RB", "WR", "WR", "TE", "K", "DEF"]
-    return a_roster(
-        *[
-            (f"Player {number}", dice.choice(positions), dice.randrange(0, 300))
-            for number in range(1, dice.randrange(2, most_players + 1))
-        ]
-    )
+
+    def build(seed, most_players=16):
+        dice = random.Random(seed)
+        positions = ["QB", "RB", "RB", "WR", "WR", "TE", "K", "DEF"]
+        return a_roster(
+            *[
+                (f"Player {number}", dice.choice(positions), dice.randrange(0, 300))
+                for number in range(1, dice.randrange(2, most_players + 1))
+            ]
+        )
+
+    return build
 
 
 def the_best_points_by_brute_force(roster, forecast, league):

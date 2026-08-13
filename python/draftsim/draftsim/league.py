@@ -76,6 +76,17 @@ STANDARD_TEMPLATE = (
 )
 
 
+def who_fills(slot: str) -> Dict[str, float]:
+    """How one filled slot divides among the positions that compete for it.
+
+    A concrete slot is all its own position. A flex splits by the measured
+    shares. Asked of one slot rather than a whole template, because what a
+    league still wants is counted a slot at a time — the ones nobody has filled
+    yet.
+    """
+    return MEASURED_FLEX_SHARES.get(slot, {slot: 1.0})
+
+
 def slot_accepts(slot: str, position: str) -> bool:
     """Would this starting slot take a player at this position?
 
@@ -152,8 +163,7 @@ class LeagueRules:
         """
         wanted = {position: 0.0 for position in POSITIONS}
         for slot in self.starting_slots:
-            shares = MEASURED_FLEX_SHARES.get(slot, {slot: 1.0})
-            for position, share in shares.items():
+            for position, share in who_fills(slot).items():
                 wanted[position] += share
         return wanted
 
