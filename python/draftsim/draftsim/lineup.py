@@ -30,7 +30,7 @@ from __future__ import annotations
 import itertools
 from typing import Iterable, List, NamedTuple, Optional, Sequence, Tuple
 
-from draftsim.board import Player, Projections
+from draftsim.board import Player, PlayerIdentity, Projections
 from draftsim.league import BENCH, LeagueRules, slot_accepts
 
 
@@ -49,16 +49,21 @@ class Lineup(NamedTuple):
     points: float
 
 
-def best_first(players: Iterable[Player], forecast: Projections) -> List[Player]:
-    """Most points first, with the player's identity breaking ties.
+def standing_of(player: Player, forecast: Projections) -> Tuple[float, PlayerIdentity]:
+    """Where a player stands against another: most points first, name to settle it.
 
     The tiebreak is load-bearing rather than tidy: two players projected at the
-    same points would otherwise land in either order depending on which was
-    bought first, and the same roster would read two different ways.
+    same points would otherwise fall in whichever order they happened to arrive
+    in, and the same roster would read two different ways depending on how it
+    was assembled. Everything that puts players in order asks this, so there is
+    one answer rather than several that agree until somebody edits one.
     """
-    return sorted(
-        players, key=lambda player: (-forecast[player.identity], player.identity)
-    )
+    return (-forecast[player.identity], player.identity)
+
+
+def best_first(players: Iterable[Player], forecast: Projections) -> List[Player]:
+    """These players, best first."""
+    return sorted(players, key=lambda player: standing_of(player, forecast))
 
 
 def best_lineup(
