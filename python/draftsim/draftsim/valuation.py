@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Dict, List, Mapping, Sequence
+from typing import Dict, Iterable, List, Mapping, Optional, Sequence
 
 from draftsim.board import Player, PlayerIdentity, Projections
 from draftsim.draft import Draft, Holdings
@@ -122,12 +122,19 @@ def what_he_adds(
     forecast: Projections,
     league: LeagueRules,
     bar: Mapping[str, float],
+    baseline: Optional[float] = None,
 ) -> float:
     """What this player adds to that roster's starting lineup over a dollar body.
 
     Solve the lineup with him on the roster; solve it again with a
     freely-available body at his position, projected at the bar; the difference
     is what he is worth. Nobody is ever worth less than nothing.
+
+    `baseline` is that second solve, handed in by a caller who has already done
+    it for this position — see `what_a_dollar_body_makes_of` — and done here
+    when nobody has. It is one parameter rather than a second function so that
+    the player-at-a-time answer and the whole-board one cannot drift into
+    disagreeing about what a player is worth.
 
     **The baseline is the freely-available body, never an empty slot**, and this
     is the one thing in the module most likely to be "simplified" back. You are
@@ -155,25 +162,47 @@ def what_he_adds(
             "question about a player who might be bought"
         )
 
+    if baseline is None:
+        baseline = what_a_dollar_body_makes_of(
+            roster, forecast, league, bar, player.position
+        )
+
+    with_him = best_lineup(tuple(roster) + (player,), forecast, league).points
+
+    return max(0.0, with_him - baseline)
+
+
+def what_a_dollar_body_makes_of(
+    roster: Sequence[Player],
+    forecast: Projections,
+    league: LeagueRules,
+    bar: Mapping[str, float],
+    position: str,
+) -> float:
+    """What this roster's lineup scores with a freely-available body at
+    `position` — the baseline a player there has to beat.
+
+    Named and separate because it is a fact about the position and not about
+    the man: every quarterback a seat might buy is measured against the same
+    dollar quarterback. Pricing a whole board asks this once per position
+    rather than once per player, which is most of the work of a price list —
+    on a full roster it is the difference between four seconds and one and a
+    half.
+    """
     a_dollar_body = Player(
-        name=f"A freely available {player.position}",
-        position=player.position,
-        team="FA",
+        name=f"A freely available {position}", position=position, team="FA"
     )
     # He has to be a real enough player to be solved into a lineup — that is
     # the whole point of measuring against him — so he needs a forecast that
     # mentions him. It is copied rather than written into: asking what somebody
     # might be worth has no business changing the numbers of the draft itself.
-    with_a_dollar_body_forecast = Projections(
-        {**forecast, a_dollar_body.identity: bar.get(player.position, 0.0)}
+    with_a_dollar_body = Projections(
+        {**forecast, a_dollar_body.identity: bar.get(position, 0.0)}
     )
 
-    with_him = best_lineup(tuple(roster) + (player,), forecast, league).points
-    with_a_dollar_body = best_lineup(
-        tuple(roster) + (a_dollar_body,), with_a_dollar_body_forecast, league
+    return best_lineup(
+        tuple(roster) + (a_dollar_body,), with_a_dollar_body, league
     ).points
-
-    return max(0.0, with_him - with_a_dollar_body)
 
 
 def what_the_roster_still_needs(
@@ -320,30 +349,79 @@ def what_a_seat_should_pay(player: Player, seat: Seat, draft: Draft) -> int:
     )
 
 
-def a_price_list(seat: Seat, draft: Draft) -> Dict[PlayerIdentity, int]:
+def a_price_list(
+    seat: Seat,
+    draft: Draft,
+    players: Optional[Iterable[Player]] = None,
+    rate: Optional[ExchangeRate] = None,
+) -> Dict[PlayerIdentity, int]:
     """What this seat should pay for every player still on the board.
 
-    The rate is worked out once for the lot, which is the only difference from
-    asking player by player — a board of three hundred would otherwise rescan
-    itself three hundred times to arrive at the same number.
+    Two things are worked out once for the lot rather than once per player, and
+    both are the only difference from asking player by player. The rate, or a
+    board of three hundred would rescan itself three hundred times to arrive at
+    the same number. And the dollar body each price is measured against, which
+    is a fact about a position rather than about a man — see
+    `what_a_dollar_body_makes_of`.
+
+    `players` narrows the list to those worth pricing. A caller drawing the top
+    of the board has no use for a price on the four hundredth tight end, and
+    the difference is most of the work. Anyone already sold is dropped whatever
+    is passed: a price is advice on a bid, and there is no bidding on a player
+    who has gone.
+
+    `rate` is for pricing the same board for several seats. What a point costs
+    is a fact about the league and not about who is asking, so twelve seats
+    priced one after another would otherwise scan the board twelve times to
+    arrive at the same number twelve times — a third of the work of pricing a
+    pane. It carries its own bar, which is what stops the points being priced
+    and the price of a point coming from two different draughts of the draft.
     """
-    rate = the_exchange_rate(draft)
+    if rate is None:
+        rate = the_exchange_rate(draft)
     holdings = draft.holdings(seat)
+    league = holdings.seat.league
+
+    for_sale = [
+        player
+        for player in (draft.board.players if players is None else players)
+        if draft.owner_of(player) is None
+    ]
+    baselines = {
+        position: what_a_dollar_body_makes_of(
+            holdings.roster, draft.forecast, league, rate.bar, position
+        )
+        for position in {player.position for player in for_sale}
+    }
 
     return {
-        player.identity: _priced_against(player, holdings, rate, draft)
-        for player in draft.board.players
-        if draft.owner_of(player) is None
+        player.identity: _priced_against(
+            player, holdings, rate, draft, baselines[player.position]
+        )
+        for player in for_sale
     }
 
 
 def _priced_against(
-    player: Player, holdings: Holdings, rate: ExchangeRate, draft: Draft
+    player: Player,
+    holdings: Holdings,
+    rate: ExchangeRate,
+    draft: Draft,
+    baseline: Optional[float] = None,
 ) -> int:
-    """One price, against a rate and a roster already in hand."""
+    """One price, against a rate and a roster already in hand.
+
+    The baseline is passed through when the caller has already solved it for
+    this position, and left to `what_he_adds` when nobody has.
+    """
     return price_from_worth(
         worth=what_he_adds(
-            player, holdings.roster, draft.forecast, holdings.seat.league, rate.bar
+            player,
+            holdings.roster,
+            draft.forecast,
+            holdings.seat.league,
+            rate.bar,
+            baseline,
         ),
         dollars_per_point=rate.dollars_per_point,
         ceiling=holdings.most_it_can_bid,

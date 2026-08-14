@@ -282,12 +282,62 @@ def test_pricing_a_whole_board_agrees_with_pricing_one_man(
     draft, seats, on_the_board
 ):
     """The board is priced in one pass only to save rescanning it per player;
-    the answer must not depend on which way it was asked."""
-    allen = on_the_board("Josh Allen")
+    the answer must not depend on which way it was asked.
 
-    assert a_price_list(seats[0], draft)[allen.identity] == what_a_seat_should_pay(
-        allen, seats[0], draft
-    )
+    One man at each position, because the saving is per position: the whole
+    board shares one dollar quarterback, one dollar back and so on, where
+    asking about a single player solves his own. A kicker rides along as the
+    position no slot will take.
+    """
+    priced_together = a_price_list(seats[0], draft)
+
+    for name in ("Josh Allen", "Bijan Robinson", "Puka Nacua", "Brock Bowers",
+                 "Brandon Aubrey"):
+        player = on_the_board(name)
+        assert priced_together[player.identity] == what_a_seat_should_pay(
+            player, seats[0], draft
+        ), f"{name} is priced two different ways"
+
+
+def test_pricing_a_shortlist_quotes_the_same_prices_as_the_whole_board(
+    draft, seats, on_the_board
+):
+    """A board can be priced a few men at a time, for a caller who is only
+    drawing the top of it. Narrowing who is asked about must not change the
+    answer for anybody — the rate and the bar are still read off the whole
+    league, and only the pricing is skipped."""
+    shortlist = [on_the_board(name) for name in ("Josh Allen", "Bijan Robinson")]
+
+    priced_alone = a_price_list(seats[0], draft, shortlist)
+    priced_among_everyone = a_price_list(seats[0], draft)
+
+    assert priced_alone == {
+        player.identity: priced_among_everyone[player.identity]
+        for player in shortlist
+    }
+
+
+def test_a_table_of_seats_priced_against_one_rate_agrees_with_pricing_each(
+    draft, seats
+):
+    """What a point costs is a fact about the league, not about who is asking,
+    so a whole table can be priced against one rate. Every seat must be quoted
+    exactly what it would have been quoted on its own."""
+    rate = the_exchange_rate(draft)
+
+    for seat in seats:
+        assert a_price_list(seat, draft, rate=rate) == a_price_list(seat, draft)
+
+
+def test_a_player_already_sold_is_left_off_the_price_list(
+    draft, seats, on_the_board
+):
+    """A price is advice on a bid, and there is no bidding on a player who has
+    gone — so he is dropped even when a caller asks about him by name."""
+    allen = on_the_board("Josh Allen")
+    draft.sell(seats[3], allen, 58)
+
+    assert a_price_list(seats[0], draft, [allen]) == {}
 
 
 def test_a_kicker_costs_a_dollar_and_never_a_penny_more(draft, seats, on_the_board):
