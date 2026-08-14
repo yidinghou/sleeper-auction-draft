@@ -230,6 +230,19 @@ def test_a_seat_with_nowhere_to_put_anybody_pays_nothing_a_point():
     assert market.what_a_point_costs(biddable_money=180, open_slots=0) == 0
 
 
+def test_at_the_opening_bell_every_seat_is_quoted_the_rooms_rate(draft):
+    """Nobody has spent, so nobody's share is off the average, so the seat's
+    rate and the room's are the same number — and a board nobody has touched
+    prices exactly as it did before any of this existed."""
+    rate = the_exchange_rate(draft)
+
+    for seat in draft.seats:
+        holdings = draft.holdings(seat)
+        assert rate.what_a_point_costs(
+            holdings.biddable_money, holdings.open_slots
+        ) == pytest.approx(rate.dollars_per_point)
+
+
 def test_the_seats_rates_add_back_to_the_money_in_the_room(draft, seats, on_the_board):
     """The headline claim: this divides the league's money up, it does not
     invent any.
@@ -421,22 +434,56 @@ def test_the_best_quarterback_going_costs_more_than_the_twentieth(
         what_a_seat_should_pay(on_the_board("Malik Willis"), seats[0], draft)
     )
 
-def test_a_seat_down_to_its_last_few_dollars_is_quoted_what_it_can_pay(
+def test_a_seat_that_blew_its_budget_is_quoted_below_what_it_could_still_bid(
     draft, seats, on_the_board
 ):
-    """The cap is the seat's own ceiling, out of §5, wired straight through.
+    """The seat's own rate, and it bites long before the ceiling does.
 
     Anna blows $183 on Lamar Jackson and has $17 left against fifteen empty
-    slots, so she can bid $3 — and the best quarterback going is quoted to her
-    at $3, where a seat with money is quoted $51.
+    slots. She may legally bid $3, but $2 is all she has in play against a
+    fifteenth of the surplus left, so the best quarterback going is quoted to
+    her at a dollar — the price of a body in an empty slot and no more.
+
+    Ben, who has watched, is quoted $55 for the same man — and he is the reason
+    to read the rate rather than the price. The room got cheaper on that sale
+    (41 cents a point down to 38), and Ben got dearer, because the money that
+    left was somebody else's and his share of what remains is richer.
     """
     anna, ben = seats[0], seats[1]
-    draft.sell(anna, on_the_board("Lamar Jackson"), 183)
     allen = on_the_board("Josh Allen")
 
+    draft.sell(anna, on_the_board("Lamar Jackson"), 183)
+    rate = the_exchange_rate(draft)
+    bens = draft.holdings(ben)
+
     assert draft.holdings(anna).most_it_can_bid == 3
-    assert what_a_seat_should_pay(allen, anna, draft) == 3
-    assert what_a_seat_should_pay(allen, ben, draft) == 51
+    assert what_a_seat_should_pay(allen, anna, draft) == 1
+
+    assert rate.dollars_per_point == pytest.approx(0.378, abs=0.001)
+    assert rate.what_a_point_costs(
+        bens.biddable_money, bens.open_slots
+    ) == pytest.approx(0.410, abs=0.001)
+    assert what_a_seat_should_pay(allen, ben, draft) == 55
+
+
+def test_a_seat_down_to_one_slot_is_quoted_no_more_than_it_can_bid(
+    draft, seats, on_the_board
+):
+    """The ceiling out of §5, still wired straight through.
+
+    Anna fills fifteen of her sixteen slots for a dollar apiece and comes to the
+    last one holding $185. A seat with one slot left is priced against a
+    sixteenth of nothing, so her rate runs away and the best quarterback going is
+    worth more to her than the table has money — the ceiling is what stops it.
+    """
+    anna = seats[0]
+    for player in [
+        player for player in draft.board.players if player.name != "Josh Allen"
+    ][:15]:
+        draft.sell(anna, player, 1)
+
+    assert draft.holdings(anna).most_it_can_bid == 185
+    assert what_a_seat_should_pay(on_the_board("Josh Allen"), anna, draft) == 185
 
 
 # --- The books balance ----------------------------------------------------

@@ -454,7 +454,9 @@ def _priced_against(
             rate.bar,
             baseline,
         ),
-        dollars_per_point=rate.dollars_per_point,
+        dollars_per_point=rate.what_a_point_costs(
+            holdings.biddable_money, holdings.open_slots
+        ),
         ceiling=holdings.most_it_can_bid,
         minimum_bid=draft.league.minimum_bid,
     )
