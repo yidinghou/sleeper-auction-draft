@@ -188,6 +188,73 @@ def test_a_price_that_moved_while_the_bar_stood_still_moved_through_the_rate(
     assert after.dollars_per_point == pytest.approx(0.420, abs=0.001)
 
 
+# --- What a point costs one seat ------------------------------------------
+
+
+def test_a_seat_holding_its_share_of_the_money_pays_the_rooms_rate():
+    """Forty cents a point in the room, and this seat is holding exactly a
+    quarter of the money against a quarter of the slots, so it pays forty
+    cents too. Everybody equal is the opening bell, and nothing moves there."""
+    market = ExchangeRate(
+        bar={}, biddable_money=400, surplus_to_be_bought=1000.0, slots_left=40
+    )
+
+    assert market.what_a_point_costs(biddable_money=100, open_slots=10) == 0.4
+
+
+def test_a_seat_that_spent_early_pays_less_a_point_than_the_room():
+    """Same room, same forty cents. This seat has bought a quarter of the slots
+    going but has only an eighth of the money left, so its points are worth half
+    what the room's are — it cannot pay the room's rate for what it has left."""
+    market = ExchangeRate(
+        bar={}, biddable_money=400, surplus_to_be_bought=1000.0, slots_left=40
+    )
+
+    assert market.what_a_point_costs(biddable_money=50, open_slots=10) == 0.2
+
+
+def test_a_seat_that_sat_on_its_hands_pays_more_a_point_than_the_room():
+    market = ExchangeRate(
+        bar={}, biddable_money=400, surplus_to_be_bought=1000.0, slots_left=40
+    )
+
+    assert market.what_a_point_costs(biddable_money=200, open_slots=10) == 0.8
+
+
+def test_a_seat_with_nowhere_to_put_anybody_pays_nothing_a_point():
+    """However much it is sitting on: it is out of the market."""
+    market = ExchangeRate(
+        bar={}, biddable_money=400, surplus_to_be_bought=1000.0, slots_left=40
+    )
+
+    assert market.what_a_point_costs(biddable_money=180, open_slots=0) == 0
+
+
+def test_the_seats_rates_add_back_to_the_money_in_the_room(draft, seats, on_the_board):
+    """The headline claim: this divides the league's money up, it does not
+    invent any.
+
+    Each seat's rate times the share of the surplus it is priced against is the
+    money that seat has in play, so the twelve of them sum to the money in the
+    room — after a lopsided first round as much as before one.
+    """
+    for seat, name in zip(seats, ("Josh Allen", "Bijan Robinson", "Drake Maye")):
+        draft.sell(seat, on_the_board(name), 90)
+
+    rate = the_exchange_rate(draft)
+    back_out = sum(
+        rate.what_a_point_costs(
+            draft.holdings(seat).biddable_money, draft.holdings(seat).open_slots
+        )
+        * rate.surplus_to_be_bought
+        * draft.holdings(seat).open_slots
+        / rate.slots_left
+        for seat in draft.seats
+    )
+
+    assert back_out == pytest.approx(rate.biddable_money)
+
+
 def test_a_seat_that_cannot_bid_puts_no_money_into_the_market(
     draft, seats, board
 ):

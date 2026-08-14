@@ -255,6 +255,40 @@ class ExchangeRate:
 
         return self.biddable_money / self.surplus_to_be_bought
 
+    def what_a_point_costs(self, biddable_money: int, open_slots: int) -> float:
+        """What a point above the bar costs *this* seat.
+
+        The rate above is what a point costs the room. It is the right number
+        for asking what the market is doing and the wrong one for asking what
+        one seat should pay, because the room's money is not spread evenly over
+        the room's seats. A seat that spent early cannot pay the room's rate for
+        the slots it has left however much a player is worth to it, and a seat
+        that has sat on its hands can pay more than the room for the same man.
+
+        A seat's share of the surplus still to be bought is its share of the
+        slots still to be filled — it will buy one player per open slot, and
+        nobody at the table has a claim on a bigger share of what is left than
+        that. Its rate is its own money over its own share.
+
+        Two things follow, and they are why this is a division of the league
+        total rather than a scale factor invented to make the board move. A seat
+        holding exactly the average money per open slot comes out at exactly the
+        league rate, so at the opening bell, when everyone is equal, every seat
+        prices the board the way the room does. And the seats' rates weighted by
+        their shares add back to the money in the room: what one seat gains by
+        hoarding, the others lose.
+
+        Nothing in play, or nowhere to put anybody, is a rate of nothing — the
+        seat is out of the market, which its ceiling of nought would enforce
+        anyway.
+        """
+        if not open_slots or not self.slots_left or not self.surplus_to_be_bought:
+            return 0.0
+
+        its_share = self.surplus_to_be_bought * open_slots / self.slots_left
+
+        return biddable_money / its_share
+
 
 def the_exchange_rate(draft: Draft) -> ExchangeRate:
     """Biddable money, divided by the value still to be bought.
