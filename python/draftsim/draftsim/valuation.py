@@ -296,10 +296,7 @@ def the_exchange_rate(draft: Draft) -> ExchangeRate:
     for seat in draft.seats:
         holdings = draft.holdings(seat)
         slots_left += holdings.open_slots
-        if holdings.open_slots:
-            biddable_money += (
-                holdings.money_left - holdings.open_slots * draft.league.minimum_bid
-            )
+        biddable_money += holdings.biddable_money
 
     surplus = sorted(
         (

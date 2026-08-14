@@ -55,3 +55,23 @@ class Seat:
             self.money_left(spent)
             - slots_left_after_this_one * self.league.minimum_bid
         )
+
+    def biddable_money(self, spent: int, players_bought: int) -> int:
+        """What this seat holds that is genuinely in play.
+
+        Everything it has, less a dollar for every slot it has yet to fill —
+        including the one it is bidding on. That last dollar is the difference
+        from `most_it_can_bid`, and the two are asking different questions: the
+        most it can bid is what it may put on *one* player, while this is what
+        it has to spread over everybody it has still to buy, over and above
+        filling those slots with dollar men.
+
+        A seat with a full roster has none of it in play. It may be sitting on a
+        fortune, but it has nowhere to put anybody, so counting the money would
+        price a market that is not there.
+        """
+        open_slots = self.open_slots(players_bought)
+        if open_slots <= 0:
+            return 0
+
+        return self.money_left(spent) - open_slots * self.league.minimum_bid

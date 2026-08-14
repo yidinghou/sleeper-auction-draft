@@ -82,6 +82,47 @@ def test_a_seat_that_has_spent_everything_but_the_reserve_can_still_bid_a_dollar
     assert anna.most_it_can_bid(spent=185, players_bought=1) == 1
 
 
+# --- What it has to spread over everybody it still has to buy -------------
+
+
+def test_a_fresh_seat_has_a_hundred_and_eighty_four_dollars_in_play():
+    """A dollar apiece for all sixteen slots is spoken for; the rest is what it
+    has to bid *with* across the whole draft.
+
+    One dollar below the $185 it may put on the man in front of it, and the two
+    are different questions: that is the most it can pay for one player, this is
+    what it has over and above filling every slot with a dollar man.
+    """
+    anna = a_seat()
+
+    assert anna.biddable_money(spent=0, players_bought=0) == 184
+    assert anna.most_it_can_bid(spent=0, players_bought=0) == 185
+
+
+def test_a_sixty_one_dollar_running_back_leaves_a_hundred_and_twenty_four_in_play():
+    anna = a_seat()
+
+    assert anna.biddable_money(spent=61, players_bought=1) == 124
+
+
+def test_a_seat_with_a_full_roster_has_none_of_its_money_in_play():
+    """It is sitting on $180 and cannot bid a penny of it, because there is
+    nowhere to put anybody."""
+    anna = a_seat()
+
+    assert anna.money_left(spent=20) == 180
+    assert anna.biddable_money(spent=20, players_bought=16) == 0
+
+
+def test_a_seat_down_to_the_reserve_has_nothing_left_in_play():
+    """It can still bid the minimum on every slot it has left — that is what
+    the reserve is for — but it has nothing to bid *over* the minimum with."""
+    anna = a_seat()
+
+    assert anna.biddable_money(spent=185, players_bought=1) == 0
+    assert anna.most_it_can_bid(spent=185, players_bought=1) == 1
+
+
 # --- Under its own league's rules and nobody else's -----------------------
 
 

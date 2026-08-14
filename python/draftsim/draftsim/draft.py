@@ -129,6 +129,10 @@ class Holdings:
     def most_it_can_bid(self) -> int:
         return self.seat.most_it_can_bid(self.spent, len(self.roster))
 
+    @property
+    def biddable_money(self) -> int:
+        return self.seat.biddable_money(self.spent, len(self.roster))
+
 
 def count_the_whole_record(
     seats: Sequence[Seat],
