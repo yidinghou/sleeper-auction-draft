@@ -454,6 +454,42 @@ def marginal_points_of(
     )
 
 
+def price_lists_of(
+    state: DraftState, players: Sequence[Player]
+) -> Dict[str, Dict[str, int]]:
+    """What every seat should pay for each of these players, by team and id.
+
+    Every seat in one call rather than one call per seat, because the exchange
+    rate and the board the players are read off are the same for all of them.
+    Asked seat by seat, twelve seats rescan the board twelve times to arrive at
+    the same rate twelve times, which is a third of the work of pricing a pane.
+
+    Handed the players to price rather than pricing the whole board: the pool
+    draws a few hundred names out of a sheet of three thousand, and pricing the
+    ones nobody will draw is the bulk of the rest.
+
+    Anyone already sold comes back missing rather than at zero, which is the
+    model's own answer and the one the caller wants — a sold player has no
+    price because there is no bidding on him.
+    """
+    rate = _valuation.the_exchange_rate(state.draft)
+    on_the_board = [_as_board_player(player) for player in players]
+
+    priced_by_seat = {
+        seat.name: _valuation.a_price_list(seat, state.draft, on_the_board, rate)
+        for seat in state.draft.seats
+    }
+
+    return {
+        team_id: {
+            player.id: priced[_identity_of(player)]
+            for player in players
+            if _identity_of(player) in priced
+        }
+        for team_id, priced in priced_by_seat.items()
+    }
+
+
 def positional_need_of(state: DraftState, team_id: str) -> Dict[Position, int]:
     """How many more bodies of each position a seat needs to start a lineup."""
     roster = [

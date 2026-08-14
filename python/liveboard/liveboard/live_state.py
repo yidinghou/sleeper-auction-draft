@@ -24,11 +24,13 @@ roster arithmetic either.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 from liveboard.draftsim_compat import Draft
 from liveboard.draftsim_compat import Market, marginal_points_of, positional_need_of
+from liveboard.draftsim_compat import price_lists_of
 from liveboard.draftsim_compat import Lineup, empty_lineup
 from liveboard.draftsim_compat import MarketData, Player, by_sleeper_id, make_id
 from liveboard.draftsim_compat import CONCRETE_POSITIONS, DraftRules, Position
@@ -298,6 +300,67 @@ def seat_value_of(
     return marginal_points_of(
         state.ledger, str(seat.slot), player, state.market.replacement
     )
+
+
+# Pricing three hundred names for twelve seats costs about a second on full
+# rosters, and the answer only moves when a *sale* does. The poller rebuilds the
+# whole board on any change to the draft, a bid included, so without this a live
+# auction would pay that second on every bid -- at exactly the moment the board
+# is polling fastest and you are least willing to wait for it.
+#
+# Small on purpose: the live board and one rewound checkpoint are as many
+# moments as anybody holds at once.
+_PRICES_REMEMBERED = 4
+_priced: "OrderedDict[Any, Dict[int, Dict[str, int]]]" = OrderedDict()
+
+
+def _what_the_prices_turn_on(
+    state: LeagueState, players: Sequence[Player]
+) -> Tuple[Any, ...]:
+    """Everything a price list depends on, as a key.
+
+    The settled sales and who is being asked about, and nothing else. Not the
+    nomination and not the bidding: neither has changed a roster or a budget,
+    so neither can have changed a price.
+    """
+    return (
+        tuple((pick.slot, pick.player.id, pick.price) for pick in state.picks),
+        tuple(player.id for player in players),
+    )
+
+
+def seat_price_lists(
+    state: LeagueState, players: Sequence[Player]
+) -> Dict[int, Dict[str, int]]:
+    """What every seat should pay for each of these players, by seat and id.
+
+    The pool's price view in one call, so the twelve columns of a row are all
+    read off the same moment in the record. Asking seat by seat as the renderer
+    walked the rows would let a sale land between two columns and put two
+    different drafts into one row.
+
+    Only the players actually drawn are priced. That is not a nicety: pricing
+    the whole sheet for twelve seats takes seconds, and the pane draws a few
+    hundred names out of a few thousand.
+
+    A state with no ledger prices nobody, and says so with an empty answer
+    rather than with a zero -- there is a difference between "no seat would pay
+    anything" and "nobody has been asked".
+    """
+    if state.ledger is None:
+        return {}
+
+    turns_on = _what_the_prices_turn_on(state, players)
+    if turns_on in _priced:
+        _priced.move_to_end(turns_on)
+        return _priced[turns_on]
+
+    by_team = price_lists_of(state.ledger, players)
+    prices = {slot: by_team[str(slot)] for slot in state.seats}
+    _priced[turns_on] = prices
+    while len(_priced) > _PRICES_REMEMBERED:
+        _priced.popitem(last=False)
+    return prices
 
 
 def contenders(state: LeagueState, player: Optional[Player]) -> List[Seat]:
