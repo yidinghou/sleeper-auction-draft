@@ -1,62 +1,102 @@
-"""Shared builders. Imported as `from conftest import ...` -- pytest puts the
-tests directory on sys.path."""
+"""A table, a board, and a draft to run over them.
 
-from __future__ import annotations
+The frozen board is read once for the whole session, because it is the same
+292 players every time and parsing it per test is the slowest thing in the
+suite. Alongside it is ``a_roster``, for the tests whose claim is arithmetic
+and whose players are better written out on the page than looked up.
+"""
 
-from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+from pathlib import Path
 
-from draftsim import Draft, DraftRules, Player, Team
+import pytest
 
+from draftsim.board import Player, Projections, read_board
+from draftsim.draft import Draft
+from draftsim.league import LeagueRules
+from draftsim.seat import Seat
 
-def make_player(name: str, position: str, points: float = 0.0) -> Tuple[Player, float]:
-    """A player and his projection. Points live outside `Player`, so tests get
-    both and feed the second into a `proj` mapping."""
-    return Player(id=f"{name}|{position}", name=name, position=position, team="XX"), points
-
-
-def make_pool(*specs: Tuple[str, str, float]) -> Tuple[Dict[str, Player], Dict[str, float]]:
-    """Build `(players, proj)` from (name, position, points) triples."""
-    players: Dict[str, Player] = {}
-    proj: Dict[str, float] = {}
-    for name, position, points in specs:
-        player, pts = make_player(name, position, points)
-        players[player.id] = player
-        proj[player.id] = pts
-    return players, proj
-
-
-def deep_pool(
-    per_position: int = 40,
-    positions: Sequence[str] = ("QB", "RB", "WR", "TE", "DEF"),
-) -> Tuple[Dict[str, Player], Dict[str, float]]:
-    """A pool deep enough to fill a full 12x16 draft, points descending within
-    each position so rankings are unambiguous."""
-    specs = [
-        (f"{position}{i:02d}", position, float(per_position - i))
-        for position in positions
-        for i in range(per_position)
-    ]
-    return make_pool(*specs)
+MANAGERS = (
+    "Anna",
+    "Ben",
+    "Chloe",
+    "Dev",
+    "Elena",
+    "Femi",
+    "Gus",
+    "Hana",
+    "Ivan",
+    "Jo",
+    "Kip",
+    "Lena",
+)
 
 
-def make_teams(n: int) -> List[Team]:
-    return [Team(id=f"t{i}", name=f"Team {i}") for i in range(n)]
+@pytest.fixture(scope="session")
+def frozen_sheet():
+    return read_board(Path(__file__).parent / "data" / "board-2026.csv")
 
 
-def make_draft(
-    players: Optional[Dict[str, Player]] = None,
-    proj: Optional[Dict[str, float]] = None,
-    *,
-    teams: int = 12,
-    rules: Optional[DraftRules] = None,
-) -> Draft:
-    if players is None or proj is None:
-        players, proj = deep_pool()
-    rules = rules or DraftRules(teams=teams)
-    return Draft(
-        rules=rules, players=players, teams=make_teams(teams), proj=proj
-    )
+@pytest.fixture
+def board(frozen_sheet):
+    return frozen_sheet[0]
 
 
-def roster_of(draft: Draft, team_id: str) -> Iterable[str]:
-    return [p.id for p in draft.team_state(team_id).roster]
+@pytest.fixture
+def forecast(frozen_sheet):
+    return frozen_sheet[1]
+
+
+@pytest.fixture
+def league():
+    return LeagueRules()
+
+
+@pytest.fixture
+def seats(league):
+    return tuple(Seat(manager, league) for manager in MANAGERS)
+
+
+@pytest.fixture
+def draft(league, board, seats, forecast):
+    return Draft(league, board, seats, forecast)
+
+
+@pytest.fixture
+def on_the_board(board):
+    """Look a player up by name, the way a person at the table would."""
+
+    def find(name):
+        for player in board.players:
+            if player.name == name:
+                return player
+        raise LookupError(f"nobody called {name} is on this board")
+
+    return find
+
+
+@pytest.fixture
+def a_roster():
+    """Build a roster and the forecast that goes with it, from the page.
+
+    Each player is given as a name, a position and his projected points, so a
+    reader can do the lineup arithmetic without leaving the test.
+
+    Everybody is given the same NFL team. Nothing in a lineup, a count or a
+    valuation reads a team — it is there because identity is name, position and
+    team — and the names keep the identities apart on their own.
+    """
+
+    def build(*described):
+        roster = tuple(
+            Player(name=name, position=position, team="NFL")
+            for name, position, _ in described
+        )
+        forecast = Projections(
+            {
+                player.identity: points
+                for player, (_, _, points) in zip(roster, described)
+            }
+        )
+        return roster, forecast
+
+    return build

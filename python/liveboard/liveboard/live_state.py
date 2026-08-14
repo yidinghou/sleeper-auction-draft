@@ -24,16 +24,18 @@ roster arithmetic either.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-from draftsim.draft import Draft
-from draftsim.evaluation import Market, marginal_points, positional_need
-from draftsim.lineup import Lineup, empty_lineup
-from draftsim.player import MarketData, Player, by_sleeper_id, make_id
-from draftsim.rules import CONCRETE_POSITIONS, DraftRules, Position
-from draftsim.state import DraftState, TeamState
-from draftsim.team import Team
+from liveboard.draftsim_compat import Draft
+from liveboard.draftsim_compat import Market, marginal_points_of, positional_need_of
+from liveboard.draftsim_compat import price_lists_of
+from liveboard.draftsim_compat import Lineup, empty_lineup
+from liveboard.draftsim_compat import MarketData, Player, by_sleeper_id, make_id
+from liveboard.draftsim_compat import CONCRETE_POSITIONS, DraftRules, Position
+from liveboard.draftsim_compat import DraftState, TeamState
+from liveboard.draftsim_compat import Team
 
 
 @dataclass(frozen=True)
@@ -98,16 +100,15 @@ def seat_from(state: DraftState, slot: int) -> Seat:
     rebuilt from the ledger every poll and is never a source of truth.
     """
     ts: TeamState = state.teams[str(slot)]
-    rules = state.rules
     return Seat(
         slot=slot,
         roster=list(ts.roster),
         picks=[],  # filled by `reconstruct`, which alone knows the pick numbers
         spent=ts.spent,
-        budget_left=ts.remaining(rules),
-        open_slots=ts.open_slots(rules),
-        needs=positional_need(state, str(slot)),
-        max_bid=ts.max_bid(rules),
+        budget_left=ts.remaining,
+        open_slots=ts.open_slots,
+        needs=positional_need_of(state, str(slot)),
+        max_bid=ts.max_bid,
         lineup=ts.lineup,
         by_position=ts.by_position,
     )
@@ -296,9 +297,70 @@ def seat_value_of(
     """
     if player is None or state.ledger is None or state.market is None:
         return 0.0
-    return marginal_points(
+    return marginal_points_of(
         state.ledger, str(seat.slot), player, state.market.replacement
     )
+
+
+# Pricing three hundred names for twelve seats costs about a second on full
+# rosters, and the answer only moves when a *sale* does. The poller rebuilds the
+# whole board on any change to the draft, a bid included, so without this a live
+# auction would pay that second on every bid -- at exactly the moment the board
+# is polling fastest and you are least willing to wait for it.
+#
+# Small on purpose: the live board and one rewound checkpoint are as many
+# moments as anybody holds at once.
+_PRICES_REMEMBERED = 4
+_priced: "OrderedDict[Any, Dict[int, Dict[str, int]]]" = OrderedDict()
+
+
+def _what_the_prices_turn_on(
+    state: LeagueState, players: Sequence[Player]
+) -> Tuple[Any, ...]:
+    """Everything a price list depends on, as a key.
+
+    The settled sales and who is being asked about, and nothing else. Not the
+    nomination and not the bidding: neither has changed a roster or a budget,
+    so neither can have changed a price.
+    """
+    return (
+        tuple((pick.slot, pick.player.id, pick.price) for pick in state.picks),
+        tuple(player.id for player in players),
+    )
+
+
+def seat_price_lists(
+    state: LeagueState, players: Sequence[Player]
+) -> Dict[int, Dict[str, int]]:
+    """What every seat should pay for each of these players, by seat and id.
+
+    The pool's price view in one call, so the twelve columns of a row are all
+    read off the same moment in the record. Asking seat by seat as the renderer
+    walked the rows would let a sale land between two columns and put two
+    different drafts into one row.
+
+    Only the players actually drawn are priced. That is not a nicety: pricing
+    the whole sheet for twelve seats takes seconds, and the pane draws a few
+    hundred names out of a few thousand.
+
+    A state with no ledger prices nobody, and says so with an empty answer
+    rather than with a zero -- there is a difference between "no seat would pay
+    anything" and "nobody has been asked".
+    """
+    if state.ledger is None:
+        return {}
+
+    turns_on = _what_the_prices_turn_on(state, players)
+    if turns_on in _priced:
+        _priced.move_to_end(turns_on)
+        return _priced[turns_on]
+
+    by_team = price_lists_of(state.ledger, players)
+    prices = {slot: by_team[str(slot)] for slot in state.seats}
+    _priced[turns_on] = prices
+    while len(_priced) > _PRICES_REMEMBERED:
+        _priced.popitem(last=False)
+    return prices
 
 
 def contenders(state: LeagueState, player: Optional[Player]) -> List[Seat]:

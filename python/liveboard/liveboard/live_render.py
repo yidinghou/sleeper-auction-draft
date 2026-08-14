@@ -24,7 +24,7 @@ import html
 from pathlib import Path
 from typing import Dict, Mapping, Optional, Sequence, Tuple, Union
 
-from draftsim.rules import BENCH
+from liveboard.draftsim_compat import BENCH
 from .live_pressure import PositionPressure, pressure
 from .live_state import (
     DRAFT_TARGETS,
@@ -33,8 +33,9 @@ from .live_state import (
     Seat,
     SeatPick,
     position_summary,
+    seat_price_lists,
 )
-from draftsim.lineup import display_slots, is_legal
+from liveboard.draftsim_compat import display_slots, is_legal
 from .sleeper import Nomination
 from .theme import (
     BASE_CSS_LIGHT,
@@ -43,7 +44,7 @@ from .theme import (
     SLOT_LABEL,
     badge,
 )
-from draftsim.player import Player
+from liveboard.draftsim_compat import Player
 
 def market_value(player: Player) -> float:
     """Sleeper's projected auction dollar; a player with none prices at 0.
@@ -1030,17 +1031,70 @@ def _early_week_strip(player: Optional[Player], points: float) -> str:
     return f'<div class="onwk">{cells}</div>'
 
 
-# The pool's own column header -- unlike the roster card's `_column_header`,
-# this one is not gated behind maximized: the pane has the width for it at any
-# size, and it is the only place these nine columns are named at all. Written
-# once per render rather than once per row, since it never varies with the data.
-_POOL_HEADER = (
-    '<div class="prow phdr">'
-    '<i></i><i class="phdname">PLAYER</i><i class="ptm">TM</i>'
-    '<i class="pby">BYE</i><i class="ppt">PTS</i>'
-    '<i class="pwk">WK1</i><i class="pwk">WK2</i><i class="pwk">WK3</i>'
-    '<i class="ppr">$</i></div>'
-)
+def _pool_header(seats: Sequence[int], my_seat: Optional[int]) -> str:
+    """The pool's own column header, naming both views' columns at once.
+
+    Unlike the roster card's `_column_header` this is not gated behind
+    maximized: the pane has the width for it at any size, and it is the only
+    place these columns are named at all.
+
+    Both views' columns are named in the one header and CSS shows the set the
+    pane is on -- the same trade the roster cards' panes make, so the view
+    switches without a fetch and the two can never be showing different moments
+    of the draft.
+    """
+    numbered = "".join(
+        f'<i class="psh{" me" if n == my_seat else ""}">{n}</i>' for n in seats
+    )
+    return (
+        '<div class="prow phdr">'
+        '<i></i><i class="phdname">PLAYER</i><i class="ptm">TM</i>'
+        '<i class="pby">BYE</i><i class="ppt">PTS</i>'
+        '<i class="pwk">WK1</i><i class="pwk">WK2</i><i class="pwk">WK3</i>'
+        f'<i class="ppr">$</i>{numbered}</div>'
+    )
+
+
+# The deepest price anywhere in the pane is what every cell is shaded against.
+# One scale for the whole list rather than one per row: against a per-row top,
+# twelve seats that agree read as twelve seats that are all keen, and a $2
+# receiver's row comes out as dark as a $37 back's.
+#
+# Held non-linear because prices bunch low -- most of a pool is worth a dollar
+# or two -- and a straight ramp leaves the whole middle of the board looking
+# alike.
+_SHADE_EASE = 0.65
+_SHADE_PALE = (247, 251, 248)
+_SHADE_DEEP = (26, 108, 61)
+# Past this much of the ramp the fill is too dark to read a dark figure on.
+_SHADE_FLIPS_THE_INK_AT = 0.62
+
+
+def _price_cell(
+    price: Optional[int], dearest: int, seat: int, my_seat: Optional[int]
+) -> str:
+    """One seat's price for one player, shaded on the pane-wide scale.
+
+    A player nobody has priced draws a dash rather than a dollar. It cannot
+    happen for a man the pane is showing -- the pool is what is still for sale,
+    and that is exactly what gets priced -- but a blank is the honest mark for
+    it, where a $1 would be a figure the model never said.
+    """
+    mine = " me" if seat == my_seat else ""
+    if price is None:
+        return f'<i class="psh{mine}">—</i>'
+
+    depth = (price / dearest) ** _SHADE_EASE
+    fill = "#%02x%02x%02x" % tuple(
+        round(pale + (deep - pale) * depth)
+        for pale, deep in zip(_SHADE_PALE, _SHADE_DEEP)
+    )
+    ink = "#fff" if depth > _SHADE_FLIPS_THE_INK_AT else "#2c3e33"
+    return (
+        f'<i class="psh{mine}"'
+        f' style="background:{fill};color:{ink}"'
+        f' title="Seat {seat} should pay ${price}">{price}</i>'
+    )
 
 
 def render_pool(state: LeagueState, my_seat: Optional[int] = None) -> str:
@@ -1060,6 +1114,12 @@ def render_pool(state: LeagueState, my_seat: Optional[int] = None) -> str:
     Team, bye and points ride alongside the price because the pane is where you
     decide who to nominate, and "another receiver on my quarterback's bye" is
     part of that decision rather than something to go and look up.
+
+    Every row also carries what each of the seats should pay for the man, which
+    the pane's second view shows in place of the byes and the weeks. The order
+    does not change with the view: this pane, the nomination strip and the tier
+    list all quote one order, and a pane that resorted under you when you paged
+    would be a fourth opinion about where a player stands.
     """
     ranked = sorted(
         state.available, key=lambda p: (-market_value(p), -state.points(p), p.name)
@@ -1077,6 +1137,19 @@ def render_pool(state: LeagueState, my_seat: Optional[int] = None) -> str:
     shown = [p for p in ranked if p.id in keep]
     late_bye = _late_bye_active(state, my_seat)
 
+    # The seats come from the price lists rather than from the rules, so a
+    # board that has priced nobody simply draws no price columns -- which is
+    # the honest picture, and saves the pane needing to know how many seats it
+    # would have had.
+    prices = seat_price_lists(state, shown)
+    seats = sorted(prices)
+    # A pane with nobody in it still has to shade against something, and a
+    # dearest of nothing would divide by nothing. Both the empty pane and the
+    # one where every seat is out of money land on the same fallback.
+    dearest = max(
+        (price for row in prices.values() for price in row.values()), default=0
+    ) or 1
+
     rows = "".join(
         f'<div class="prow" data-pos="{_esc(player.position)}"'
         f' title="{_esc(_meta_tip(player, state.points(player), late_bye))}">'
@@ -1090,12 +1163,22 @@ def render_pool(state: LeagueState, my_seat: Optional[int] = None) -> str:
         f'{_early_week_cell(_wk(player, 2), state.points(player) / 17)}'
         f'{_early_week_cell(_wk(player, 3), state.points(player) / 17)}'
         f'<i class="ppr">{f"${market_value(player):.0f}" if market_value(player) else "—"}</i>'
-        "</div>"
+        + "".join(
+            _price_cell(prices[seat].get(player.id), dearest, seat, my_seat)
+            for seat in seats
+        )
+        + "</div>"
         for player in shown
     )
-    if not rows:
-        return f'<div class="poollist">{_POOL_HEADER}<div class="pnone">the board is empty</div></div>'
-    return f'<div class="poollist">{_POOL_HEADER}{rows}</div>'
+    # How many seat columns there are is something only the server knows, and a
+    # stylesheet cannot count. It rides on the list as a custom property, which
+    # the row grid reads to lay the seat columns out.
+    style = f"--seats:{len(seats)}"
+    body = rows or '<div class="pnone">the board is empty</div>'
+    return (
+        f'<div class="poollist" style="{style}">'
+        f"{_pool_header(seats, my_seat)}{body}</div>"
+    )
 
 
 def _log_price(pick: SeatPick) -> str:

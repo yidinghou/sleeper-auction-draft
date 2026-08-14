@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from draftsim.rules import DEFAULT_ROSTER_SLOTS, BENCH
+from liveboard.draftsim_compat import DEFAULT_ROSTER_SLOTS, BENCH
 from liveboard.sleeper import (
     SleeperError,
     rules_from_draft,

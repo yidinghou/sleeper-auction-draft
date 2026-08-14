@@ -16,9 +16,9 @@ from liveboard.live_render import (
     render_page,
     render_pool,
 )
-from liveboard.live_state import SeatPick, reconstruct
+from liveboard.live_state import SeatPick, reconstruct, seat_price_lists
 from liveboard.sleeper import rules_from_draft
-from draftsim.player import MarketData, Player, load_players, load_projections
+from liveboard.draftsim_compat import MarketData, Player, load_players, load_projections
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -100,9 +100,14 @@ def _ranked(state):
     )
 
 
+def _each_pool_row(html):
+    """The player rows, and not the header row that shares their class."""
+    return re.findall(r'<div class="prow" data-pos=.*?</div>', html)
+
+
 def _pool_rows(html):
-    """Player rows, less the header row that shares their class."""
-    return html.count('class="prow"') - html.count('class="prow phdr"')
+    """How many players the pane drew."""
+    return len(_each_pool_row(html))
 
 
 def test_the_pool_is_a_shortlist_not_the_sheet(midway):
@@ -125,6 +130,57 @@ def test_every_position_is_carried_deep_enough_to_filter_on(midway):
         assert drawn.count(pos) >= min(have, _POOL_PER_POS)
 
 
+def test_every_seat_is_quoted_a_price_for_every_man_in_the_pool(midway):
+    """The pane's second view: twelve columns, one per seat, on every row.
+
+    Both views ship in the same markup and CSS shows one, so a row that is
+    short of a seat is a row that would silently lose a column when the reader
+    pages over to it.
+    """
+    for row in _each_pool_row(render_pool(midway)):
+        assert len(re.findall(r'class="psh[^"]*"', row)) == midway.rules.teams
+
+
+def test_a_seat_is_quoted_what_the_model_says_it_should_pay(midway):
+    """The pane quotes draftsim and does not do any pricing of its own.
+
+    Read off the first row, which is the dearest man on the board -- if the
+    pane were quoting something else, this is where it would show.
+    """
+    dearest = max(midway.available, key=lambda p: market_value(p))
+    seven = seat_price_lists(midway, [dearest])[7][dearest.id]
+
+    row = next(
+        row for row in _each_pool_row(render_pool(midway, 7)) if dearest.name in row
+    )
+    assert f"Seat 7 should pay ${seven}" in row
+
+
+def test_your_own_seat_is_marked_and_nobody_elses(midway):
+    """One column of the twelve is yours, and it is marked so you can run down
+    it without counting across. A board that does not know which seat you are
+    marks none of them rather than guessing."""
+    html = render_pool(midway, 7)
+    # The header names the seat, and every row quotes it.
+    assert len(re.findall(r'class="psh me"', html)) == _pool_rows(html) + 1
+
+    assert 'class="psh me"' not in render_pool(midway)
+
+
+def test_a_board_nobody_has_bid_on_draws_no_price_columns():
+    """No sales, no seats, no prices. The pane falls back to what it has
+    always shown rather than drawing a grid of nothing."""
+
+    class _S:
+        available = []
+        ledger = None
+
+        def points(self, player):
+            return 0.0
+
+    assert "psh" not in render_pool(_S())
+
+
 def test_an_unpriced_player_still_gets_a_row():
     # Most of the sheet carries no $PROJ. Dropping them would hide bodies that
     # can still be nominated; they sort last and show a dash.
@@ -136,6 +192,9 @@ def test_an_unpriced_player_still_gets_a_row():
     class _S:
         available = [free, priced]
         proj = {"a": 200.0, "b": 190.0}
+        # No sales behind this board, so there is nobody to price it for and the
+        # pane draws its $PROJ view alone.
+        ledger = None
 
         def points(self, player):
             return self.proj.get(player.id, 0.0)
@@ -148,6 +207,7 @@ def test_an_unpriced_player_still_gets_a_row():
 def test_an_empty_board_says_so():
     class _S:
         available = []
+        ledger = None
 
         def points(self, player):
             return 0.0

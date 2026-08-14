@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from draftsim.rules import BENCH, DraftRules
+from liveboard.draftsim_compat import BENCH, DraftRules
 from liveboard.live_render import (
     _NEED_SKIP,
     _short_name,
@@ -25,9 +25,9 @@ from liveboard.live_state import (
     seat_value_of,
     spend_by_position,
 )
-from draftsim.lineup import display_slots
+from liveboard.draftsim_compat import display_slots
 from liveboard.sleeper import Nomination, rules_from_draft
-from draftsim.player import (
+from liveboard.draftsim_compat import (
     MarketData,
     Player,
     WeeklyPoints,

@@ -1153,6 +1153,7 @@
      The checkpoint nav is not a filter on this band's own list -- it is what
      moment the whole board is showing -- so it stays visible even folded. */
   .collapsed > .bandhd .fseg,
+  .collapsed > .bandhd .viewseg,
   .collapsed > .bandhd .rseg { display: none; }
   /* Said when a filter matches nothing, in place of an empty box that reads as
      a broken pane. Outside the scroller, since it is about the list rather than
@@ -1186,7 +1187,62 @@
     calc(14px * var(--fs)) calc(22px * var(--fs))
     calc(24px * var(--fs)) calc(24px * var(--fs)) calc(24px * var(--fs))
     calc(24px * var(--fs)); }
-  /* The pool's own column header, `_POOL_HEADER` -- sticky at the top of the
+
+  /* -- the pool's second view: what each seat should pay -------------------
+     Every row ships both sets of columns and this picks one, the same trade
+     the roster cards' three panes make -- paging costs no fetch, and the two
+     views can never be showing different moments of the draft.
+
+     The price columns are hidden by default rather than the $PROJ ones, so a
+     browser that never runs the script gets the pane the board loads on. */
+  .pane2:not([data-view="prices"]) .psh { display: none; }
+  .pane2[data-view="prices"] .pby,
+  .pane2[data-view="prices"] .pwk { display: none; }
+  /* One seat column's width -- the number to tune when twelve of them stop
+     fitting, or when a sixteen-seat league needs to. */
+  .poollist { --pcol: 21px; }
+  /* The byes and the three weeks give up their width to the seats. `--seats`
+     is written on the list by the server, which is the only place that knows
+     whether this is a twelve- or a sixteen-seat league. */
+  .pane2[data-view="prices"] .prow { grid-template-columns:
+    calc(22px * var(--fs)) minmax(calc(72px * var(--fs)), 1fr)
+    calc(20px * var(--fs))
+    calc(22px * var(--fs)) calc(24px * var(--fs))
+    repeat(var(--seats), calc(var(--pcol) * var(--fs))); }
+  /* Twelve numeric columns and a name are more than this pane has when the
+     draft log is open beside it -- the fixed columns alone overrun it, and a
+     plain `1fr` answers that by collapsing the name to nothing, which is the
+     one column you cannot do without. So the name keeps a floor and the list
+     scrolls sideways for the rest. Fold the log and the whole grid fits with
+     no scrolling at all, which is how this view is worth reading. */
+  .pane2[data-view="prices"] .listwrap { overflow-x: auto; }
+  .pane2[data-view="prices"] .poollist { min-width: max-content; }
+  .psh { text-align: center; }
+  /* The row's 5px gap is closed over the seats alone, so the shading reads as
+     one band across the row rather than as twelve chips. The header keeps the
+     gap: it carries seat numbers, not a scale. */
+  .pane2[data-view="prices"] .prow:not(.phdr) .psh { margin: 0 -2.5px;
+    padding: 1px 2.5px; }
+  /* Your own seat, marked in weight rather than boxed. Twelve columns of small
+     figures is a dense enough picture already, and a rule drawn down one of
+     them was a third thing on top of the shading and the numbers. Bold carries
+     it: the header number tells you which column is yours, and the figures in
+     it stay found as you run down the list. */
+  .prow.phdr .psh.me { color: #2d5fb3; }
+  .prow .psh.me { font-weight: 700; }
+  /* The view pager. Nothing of its own -- it is `.navseg` with a wider
+     readout, because it is the same control the checkpoint nav is: an arrow,
+     where you are, an arrow. */
+  .viewseg .navpos { min-width: calc(52px * var(--fs)); text-align: center;
+    color: #555; }
+  .vdots { display: inline-flex; gap: 3px; align-items: center; padding: 0 3px; }
+  .vdots u { width: 4px; height: 4px; border-radius: 50%; background: #cfcfcf;
+    text-decoration: none; }
+  .vdots u.on { background: #1a1a1a; }
+  /* Only the note for the view you are on. Both ship, like the columns. */
+  .pane2:not([data-view="prices"]) .note[data-view="prices"],
+  .pane2[data-view="prices"] .note[data-view="proj"] { display: none; }
+  /* The pool's own column header, `_pool_header` -- sticky at the top of the
      scrolling list rather than fixed above it, so it survives the pane's own
      scroll the way the band's title above it does not. A heavier rule than
      the row divider below marks it as the fixed row rather than the first of

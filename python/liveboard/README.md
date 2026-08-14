@@ -26,15 +26,23 @@ Then open <http://127.0.0.1:8765>.
 
 It runs in the foreground — `Ctrl-C` stops it. If a prior instance was
 backgrounded (`&`) or its shell got closed, `--port 8765` is still taken and
-the new one exits with `Address already in use`. Find and stop the old one
-first:
+the new one exits with `Address already in use`. Stop whatever holds the port
+and start again in one line:
+
+```bash
+kill $(lsof -ti :8765) 2>/dev/null; python -m liveboard.live --draft-id <id>
+```
+
+The `2>/dev/null` is for the ordinary case where nothing is listening: `kill`
+gets no arguments and says so, which is not a failure worth reading.
+
+To look before killing — worth doing if the port might be holding something
+that isn't a board:
 
 ```bash
 lsof -i :8765             # PID listening on the board's port
 kill <pid>                 # ask it to stop
 ```
-
-Then re-run `python -m liveboard.live --draft-id <id>`.
 
 `--user` takes a Sleeper username and finds that account's slot in the draft's
 own `draft_order`, so the card is marked and the money band's dashed line is
@@ -200,6 +208,46 @@ wanted, the half-slot drawn half as wide, so the row's own length *is* the
 requirement. A ratio bar pinned at 100% the moment you reached the target, which
 drew `4/2.5` and `2.5/2.5` identically when they mean opposite things — surplus
 now sits past the target as narrow outlined pips.
+
+## The player pool: two views over one list
+
+The pool pane pages between **two views**, stepped with `◀ ▶` in its header.
+Both ship in the same markup and CSS shows one — the same trade the roster
+cards' panes make, so paging costs no fetch and the two views can never be
+showing different moments of the draft. The dots say how many views there are
+and which you are on; the note under the title names the one you are reading.
+
+| View | Shows |
+| --- | --- |
+| `$PROJ` | Sleeper's dollar figure, the bye, and the three division-round weeks against the player's own season pace. |
+| `SEAT PRICES` | One column per seat — **what `draftsim` says that roster should pay**, via `valuation.a_price_list`. The byes and the weeks give up their width to it. |
+
+The order never changes with the view. This pane, the nomination strip and the
+tier list all quote one order, and a pane that resorted under you when you paged
+would be a fourth opinion about where a player stands.
+
+Cells are shaded on **one absolute scale** for the whole pane, not per row.
+Against a per-row top, twelve seats that agree read as twelve seats that are all
+keen, and a $2 receiver's row comes out as dark as a $37 back's. The ramp is
+eased rather than straight because prices bunch low — most of a pool is worth a
+dollar or two. Your own seat is marked in **weight**, not boxed: twelve columns
+of small figures is a dense enough picture without a rule drawn down one of them.
+
+Two things are worth knowing about what you are reading:
+
+- **A short column is usually a ceiling, not a judgement.** A seat down to its
+  last few dollars is quoted what it can actually bid (`most_it_can_bid`), so a
+  broke seat shows a flat pale stripe down the whole list regardless of who it
+  needs.
+- **A $1 quote means the seat gains nothing a freely-available body would not
+  also give it** — a filled position, or one it can never start. It does not
+  mean the player is bad.
+
+Pricing a few hundred names for twelve seats costs about a second on full
+rosters, so `live_state.seat_price_lists` remembers the answer against the
+settled sales. Prices move when a *sale* lands and not when somebody bids, and
+the poller rebuilds the whole board on either — without the memo a live auction
+would pay that second on every bid, at exactly the moment it is polling fastest.
 
 Everything comes from two unauthenticated endpoints — no scraping, no websocket,
 no session token:

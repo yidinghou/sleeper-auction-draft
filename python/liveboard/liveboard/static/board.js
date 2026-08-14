@@ -188,6 +188,45 @@ document.addEventListener("click", (e) => {
   applyFilters();
 });
 
+// Which of the pool's two views is showing: Sleeper's $PROJ with the byes and
+// the division-round weeks, or what each seat should pay.
+//
+// Needs no re-apply after a refresh, for the same reason the filter above does
+// not: the pager lives in the shell and the chosen view is written on the pane,
+// both of which outlive the swap of `#pool`'s insides. Which columns are drawn
+// is then a CSS rule keyed on that attribute, so a paged pane costs nothing per
+// tick.
+//
+// The order is the order ◀ / ▶ step through, and it wraps -- two views make
+// "previous" and "next" the same move, and a disabled arrow at each end would
+// be two dead controls out of two.
+const POOL_VIEWS = ["proj", "prices"];
+const POOL_VIEW_NAMES = { proj: "$PROJ", prices: "SEAT PRICES" };
+let poolview = localStorage.getItem("draftsim.poolview") || POOL_VIEWS[0];
+if (!POOL_VIEWS.includes(poolview)) poolview = POOL_VIEWS[0];
+
+function applyPoolView() {
+  const pane = document.querySelector('.pane2[data-band="pool"]');
+  if (!pane) return;
+  pane.dataset.view = poolview;
+  const at = POOL_VIEWS.indexOf(poolview);
+  const name = document.getElementById("poolview");
+  if (name) name.textContent = POOL_VIEW_NAMES[poolview];
+  pane.querySelectorAll(".viewseg .vdots u").forEach((dot, i) => {
+    dot.classList.toggle("on", i === at);
+  });
+}
+
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".viewseg button");
+  if (!btn) return;
+  const step = Number(btn.dataset.step);
+  const at = POOL_VIEWS.indexOf(poolview);
+  poolview = POOL_VIEWS[(at + step + POOL_VIEWS.length) % POOL_VIEWS.length];
+  localStorage.setItem("draftsim.poolview", poolview);
+  applyPoolView();
+});
+
 // Escape minimizes -- unless the seat menu is open, which is the one thing on
 // this page that covers anything. Innermost first: the key closes what it opened
 // last, and does not also throw you out of the maximized board you were naming
@@ -860,6 +899,9 @@ navSlider.addEventListener("pointerup", () => { navSliding = false; });
 applyCollapsed();
 applyPViews();
 applyFilters();
+// Before the first fetch too: the pane ships on $PROJ, and a reader who left it
+// on seat prices should not watch it load on the other view and then swap.
+applyPoolView();
 // No cards to sort yet, but the filter buttons are in the shell and can be shown
 // pressed before the first fetch lands -- so the band never opens on ALL and then
 // visibly folds three cards a moment later.

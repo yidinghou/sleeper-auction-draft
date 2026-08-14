@@ -37,7 +37,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence
 
-from draftsim.rules import BENCH, DraftRules
+from liveboard.draftsim_compat import BENCH, DraftRules
 
 API_BASE = "https://api.sleeper.app/v1"
 
