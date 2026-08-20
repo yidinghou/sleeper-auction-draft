@@ -1577,7 +1577,9 @@ def render_page(draft_id: str) -> str:
     )
 
 
-def render_home(live_hint: Optional[str] = None, error: str = "") -> str:
+def render_home(
+    shortcuts: Sequence[Tuple[str, str]] = (), error: str = ""
+) -> str:
     """The page you land on with no draft picked yet.
 
     A board pinned to one draft id at boot was fine when the whole point was
@@ -1585,28 +1587,31 @@ def render_home(live_hint: Optional[str] = None, error: str = "") -> str:
     Sleeper handed out five minutes ago, a fresh id every time, and typing
     `--draft-id` and restarting the process for each one is not a rehearsal,
     it's an errand. So `/` with no `draft_id` shows this instead: a box to
-    paste whatever draft you're pointed at right now, and -- when the process
-    was started with one -- a shortcut back to the league draft that never
-    changes.
+    paste whatever draft you're pointed at right now, plus a labelled shortcut
+    for each draft the process was started already knowing about -- the real
+    league draft, a standing rehearsal league, whatever `main()` was handed.
 
     A plain GET form rather than the client's own JS: this page exists for the
     moment before a draft id is known, which is exactly the moment nothing on
     this board can assume a draft to poll for its usual fetch-and-swap.
     """
-    cta = (
-        f'<a class="cta" href="/?draft_id={_esc(live_hint)}">'
-        f"Go to live draft &middot; &hellip;{_esc(live_hint[-6:])}</a>"
-        if live_hint
-        else '<p class="muted">No live draft configured for this server '
-        "(set --draft-id, or paste one below).</p>"
+    ctas = "".join(
+        f'<a class="cta" href="/?draft_id={_esc(draft_id)}">'
+        f"{_esc(label)} &middot; &hellip;{_esc(draft_id[-6:])}</a>"
+        for label, draft_id in shortcuts
     )
+    if not ctas:
+        ctas = (
+            '<p class="muted">No draft configured for this server '
+            "(set --draft-id, or paste one below).</p>"
+        )
     warn = f'<p class="warn">{_esc(error)}</p>' if error else ""
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Live draft board</title>
 <style>{BASE_CSS_LIGHT}
-  .cta {{ display: inline-block; margin: 4px 0 18px; padding: 10px 16px;
+  .cta {{ display: inline-block; margin: 4px 8px 18px 0; padding: 10px 16px;
     background: {POS_COLOR_LIGHT.get("RB")}; color: #fff; border-radius: 8px;
     text-decoration: none; font-weight: 700; }}
   form {{ display: flex; gap: 8px; max-width: 480px; }}
@@ -1620,7 +1625,7 @@ def render_home(live_hint: Optional[str] = None, error: str = "") -> str:
   <p class="sub">Point it at a mock first &mdash; the valuation is identical,
     so a mock is a real rehearsal &mdash; then at tonight's draft.</p>
   {warn}
-  {cta}
+  {ctas}
   <form method="get" action="/">
     <input name="draft_id" placeholder="paste a Sleeper draft URL or id" autofocus>
     <button type="submit">Go</button>

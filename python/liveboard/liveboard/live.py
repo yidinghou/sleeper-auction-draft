@@ -25,7 +25,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 from urllib.parse import parse_qs, urlsplit
 
 from .bid_log import BidLog
@@ -778,7 +778,9 @@ class DraftPollers:
             poller.stop()
 
 
-def _handler(pollers: DraftPollers, live_hint: Optional[str] = None):
+def _handler(
+    pollers: DraftPollers, shortcuts: Sequence[Tuple[str, str]] = ()
+):
     class Handler(BaseHTTPRequestHandler):
         def _send(self, body: bytes, content_type: str) -> None:
             self.send_response(200)
@@ -802,13 +804,13 @@ def _handler(pollers: DraftPollers, live_hint: Optional[str] = None):
                 # 400 the home page never gets to explain.
                 if raw and draft_id is None:
                     page = render_home(
-                        live_hint, error=f'"{raw}" doesn\'t look like a draft id'
+                        shortcuts, error=f'"{raw}" doesn\'t look like a draft id'
                     ).encode("utf-8")
                     self._send(page, "text/html; charset=utf-8")
                     return
                 poller = pollers.get(draft_id)
                 if poller is None:
-                    page = render_home(live_hint).encode("utf-8")
+                    page = render_home(shortcuts).encode("utf-8")
                 else:
                     page = render_page(poller.draft_id).encode("utf-8")
                 self._send(page, "text/html; charset=utf-8")
@@ -936,8 +938,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Sleeper draft id (from the draft URL). Optional -- omitted, the "
         "server opens on a page where any draft id can be pasted in; given, "
-        "that draft is also offered there as a one-click shortcut. Required "
-        "with --once.",
+        "that draft is also offered there as a one-click 'Live' shortcut. "
+        "Required with --once.",
+    )
+    parser.add_argument(
+        "--test-draft-id",
+        default=None,
+        help="a second draft id, offered on the home page as a 'Test' "
+        "shortcut alongside --draft-id's 'Live' one -- a standing rehearsal "
+        "league you come back to, as opposed to a fresh mock pasted in by "
+        "hand each time.",
     )
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument(
@@ -998,16 +1008,19 @@ def main() -> None:
         return
 
     pollers = DraftPollers(args.csv, args.interval, replay=args.replay, user=args.user)
-    if args.draft_id:
-        # Warmed, not defaulted -- see `DraftPollers`. The shortcut on the home
-        # page should not have to wait out a cold first poll, but a bare `/`
-        # still asks rather than assumes.
-        pollers.get(args.draft_id)
+    # Warmed, not defaulted -- see `DraftPollers`. A shortcut on the home page
+    # should not have to wait out a cold first poll, but a bare `/` still asks
+    # rather than assumes.
+    shortcuts = []
+    for label, draft_id in (("Live", args.draft_id), ("Test", args.test_draft_id)):
+        if draft_id:
+            pollers.get(draft_id)
+            shortcuts.append((label, draft_id))
 
-    server = ThreadingHTTPServer((args.host, args.port), _handler(pollers, args.draft_id))
+    server = ThreadingHTTPServer((args.host, args.port), _handler(pollers, shortcuts))
     print(f"Live draft board on http://{args.host}:{args.port}")
-    if args.draft_id:
-        print(f"  shortcut for {args.draft_id}, polling every {args.interval}s")
+    for label, draft_id in shortcuts:
+        print(f"  {label}: {draft_id}, polling every {args.interval}s")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

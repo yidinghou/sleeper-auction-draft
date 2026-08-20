@@ -864,12 +864,12 @@ def test_wrapped_pollers_resolve_a_bare_request_to_the_wrapped_draft(poller):
     assert pollers.get(poller.draft_id) is poller
 
 
-def _serve(pollers, live_hint=None):
+def _serve(pollers, shortcuts=()):
     """A running board server over `pollers`, torn down by the caller."""
     import threading
     from http.server import ThreadingHTTPServer
 
-    server = ThreadingHTTPServer(("127.0.0.1", 0), live_mod._handler(pollers, live_hint))
+    server = ThreadingHTTPServer(("127.0.0.1", 0), live_mod._handler(pollers, shortcuts))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     return server
@@ -900,9 +900,9 @@ def test_a_bare_request_with_nothing_configured_gets_the_home_page(stubbed_fetch
         pollers.stop()
 
 
-def test_the_home_page_offers_a_shortcut_to_the_configured_draft(stubbed_fetch):
+def test_the_home_page_offers_a_shortcut_per_configured_draft(stubbed_fetch):
     pollers = live_mod.DraftPollers(None, interval=0.05)
-    server = _serve(pollers, live_hint="mock-id")
+    server = _serve(pollers, shortcuts=[("Live", "mock-id"), ("Test", "other-id")])
     try:
         from urllib import request as urlreq
 
@@ -910,6 +910,9 @@ def test_the_home_page_offers_a_shortcut_to_the_configured_draft(stubbed_fetch):
         with urlreq.urlopen(base + "/") as resp:
             body = resp.read().decode()
         assert 'href="/?draft_id=mock-id"' in body
+        assert ">Live" in body
+        assert 'href="/?draft_id=other-id"' in body
+        assert ">Test" in body
     finally:
         server.shutdown()
         pollers.stop()
