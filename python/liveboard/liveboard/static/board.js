@@ -4,6 +4,15 @@
 // the same answer re-entered every session, kept in a place the server could
 // not see. Null when the draft has no order to look you up in, which is every
 // mock: the board then simply marks no card.
+// The draft this page is showing, read off the header rather than baked into
+// the fetch URLs at render time -- one board process now watches whatever
+// drafts have been opened, keyed by id, so every request has to say which one
+// it means. `withDraft` is the one place that's spelled out.
+const DRAFT_ID = document.getElementById("draft").textContent;
+function withDraft(path) {
+  return path + (path.includes("?") ? "&" : "?") + "draft_id=" + encodeURIComponent(DRAFT_ID);
+}
+
 let mySeat = null;
 // Whichever seat is on the clock right now, mirroring `mySeat` above. Null on
 // a rewound checkpoint, which never has a lot in progress.
@@ -647,7 +656,7 @@ function openMenu(slot, x, y) {
 async function post(path, body) {
   // The JSON content type is what the server checks for, and it is the check:
   // a form posted from another tab cannot set this header without a preflight.
-  return fetch(path, {
+  return fetch(withDraft(path), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body || {}),
@@ -839,7 +848,7 @@ function applyState(s, force) {
 async function tick() {
   const dot = document.getElementById("dot");
   try {
-    const res = await fetch("/api/state", { cache: "no-store" });
+    const res = await fetch(withDraft("/api/state"), { cache: "no-store" });
     applyState(await res.json());
     dot.classList.remove("stale");
   } catch (err) {

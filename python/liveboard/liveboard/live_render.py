@@ -1575,3 +1575,54 @@ def render_page(draft_id: str) -> str:
         .replace("/*__JS__*/", _asset("board.js"))
         .replace("__DRAFT_ID__", _esc(draft_id))
     )
+
+
+def render_home(live_hint: Optional[str] = None, error: str = "") -> str:
+    """The page you land on with no draft picked yet.
+
+    A board pinned to one draft id at boot was fine when the whole point was
+    tonight's league auction -- but a rehearsal is against whatever mock
+    Sleeper handed out five minutes ago, a fresh id every time, and typing
+    `--draft-id` and restarting the process for each one is not a rehearsal,
+    it's an errand. So `/` with no `draft_id` shows this instead: a box to
+    paste whatever draft you're pointed at right now, and -- when the process
+    was started with one -- a shortcut back to the league draft that never
+    changes.
+
+    A plain GET form rather than the client's own JS: this page exists for the
+    moment before a draft id is known, which is exactly the moment nothing on
+    this board can assume a draft to poll for its usual fetch-and-swap.
+    """
+    cta = (
+        f'<a class="cta" href="/?draft_id={_esc(live_hint)}">'
+        f"Go to live draft &middot; &hellip;{_esc(live_hint[-6:])}</a>"
+        if live_hint
+        else '<p class="muted">No live draft configured for this server '
+        "(set --draft-id, or paste one below).</p>"
+    )
+    warn = f'<p class="warn">{_esc(error)}</p>' if error else ""
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live draft board</title>
+<style>{BASE_CSS_LIGHT}
+  .cta {{ display: inline-block; margin: 4px 0 18px; padding: 10px 16px;
+    background: {POS_COLOR_LIGHT.get("RB")}; color: #fff; border-radius: 8px;
+    text-decoration: none; font-weight: 700; }}
+  form {{ display: flex; gap: 8px; max-width: 480px; }}
+  input {{ flex: 1; padding: 10px 12px; border: 1px solid #cfd8dc;
+    border-radius: 8px; font: inherit; }}
+  button {{ padding: 10px 16px; border: 0; border-radius: 8px;
+    background: #1a1a1a; color: #fff; font: inherit; cursor: pointer; }}
+</style></head>
+<body>
+  <h1>Live draft board</h1>
+  <p class="sub">Point it at a mock first &mdash; the valuation is identical,
+    so a mock is a real rehearsal &mdash; then at tonight's draft.</p>
+  {warn}
+  {cta}
+  <form method="get" action="/">
+    <input name="draft_id" placeholder="paste a Sleeper draft URL or id" autofocus>
+    <button type="submit">Go</button>
+  </form>
+</body></html>"""

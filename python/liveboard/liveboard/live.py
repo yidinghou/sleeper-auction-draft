@@ -1,10 +1,14 @@
 """Serve a live board for a real Sleeper draft.
 
     python -m liveboard.live --draft-id 1387809050569240576
+    python -m liveboard.live                                 # pick a draft on the page
 
 Opens a local page showing every seat's money, room and reach, refreshing as
 picks land. Point it at a mock first — the valuation is identical, so a mock is
-a real rehearsal — then at the league draft on the day.
+a real rehearsal — then at the league draft on the day. Without `--draft-id`
+the server opens on a page where any draft id (or `--draft-id`'s, as a
+shortcut) can be pasted in; one process can watch several drafts at once,
+each kept live in its own tab.
 
 Two loops, deliberately separated: a background thread owns all network I/O and
 keeps the newest snapshot, while request handlers only ever read that snapshot.
@@ -16,16 +20,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import parse_qs, urlsplit
 
 from .bid_log import BidLog
 from .live_render import (
     render_ledger,
     render_log,
+    render_home,
     render_nomination,
     render_page,
     render_pool,
@@ -68,6 +75,34 @@ NAME_TTL = 300.0
 # resolution the board has. Cheap: the tick is one small `/draft` request unless
 # the pulse moved.
 LIVE_INTERVAL = 1.0
+
+# What a pasted draft points at, whether it's a bare id or a full Sleeper URL
+# (`sleeper.com/draft/nfl/<id>`). Sleeper's ids are Twitter snowflakes,
+# seventeen-plus digits; eight is a safe floor against catching a stray small
+# number out of a URL path.
+_DRAFT_ID_RE = re.compile(r"\d{8,}")
+# A *league* URL -- .../leagues/<id>/predraft, .../leagues/<id>/drafts -- and a
+# draft URL both carry a long run of digits, but they are different numbers:
+# the league id names the league, not any one draft in it. Sleeper's own pages
+# do not say which kind of id a URL holds, so this is what tells them apart --
+# a "leagues/<id>" segment with no "draft/" segment alongside it.
+_LEAGUE_URL_RE = re.compile(r"leagues?/\d+")
+
+
+def _extract_draft_id(raw: str) -> Optional[str]:
+    """Pull a draft id out of whatever the home page's box was given.
+
+    A bare id and a full `.../draft/nfl/<id>` URL both end in the same run of
+    digits, so the last match is the id either way. None when nothing in the
+    box looked like one -- including a *league* URL, whose id is not a draft
+    id at all (see `_LEAGUE_URL_RE`) and would otherwise point the board at
+    the wrong Sleeper object without either side noticing.
+    """
+    raw = raw.strip()
+    if _LEAGUE_URL_RE.search(raw) and "draft/" not in raw:
+        return None
+    matches = _DRAFT_ID_RE.findall(raw)
+    return matches[-1] if matches else None
 
 
 class DraftPoller:
@@ -674,7 +709,76 @@ class DraftPoller:
         return snap
 
 
-def _handler(poller: DraftPoller):
+class DraftPollers:
+    """Every draft this process is currently watching, one poller per id.
+
+    Used to be one `DraftPoller`, built once at startup from `--draft-id` and
+    handed to every request. That was the whole board when the point was
+    tonight's league auction, but a rehearsal is against whatever mock Sleeper
+    just handed out -- a fresh id every time -- so the board now keeps a
+    poller per id it has been asked about, created the first time a request
+    names it and kept for as long as the process runs.
+
+    `default_id`, when set, is the poller a request with no `draft_id` of its
+    own resolves to. `main()` never sets it -- a bare `/` with nothing asked
+    for is the home page now, not a guess -- but `wrap()` does: a caller that
+    already built one `DraftPoller` of its own (a test with a stubbed feed) is
+    a single-draft world exactly like the old one, and its requests should
+    not have to start naming a `draft_id` they never had to before.
+    """
+
+    def __init__(
+        self,
+        csv_path: Optional[Path],
+        interval: float,
+        replay: Optional[int] = None,
+        user: Optional[str] = None,
+    ):
+        self._csv_path = csv_path
+        self._interval = interval
+        self._replay = replay
+        self._user = user
+        self._lock = threading.Lock()
+        self._pollers: Dict[str, DraftPoller] = {}
+        self.default_id: Optional[str] = None
+
+    @classmethod
+    def wrap(cls, poller: DraftPoller) -> "DraftPollers":
+        """A registry of exactly one already-built poller, as its default."""
+        pollers = cls(None, poller.interval, replay=poller.replay, user=poller.user)
+        pollers._pollers[poller.draft_id] = poller
+        pollers.default_id = poller.draft_id
+        return pollers
+
+    def get(self, draft_id: Optional[str]) -> Optional[DraftPoller]:
+        """The poller for `draft_id`, starting one the first time it's asked
+        for. None when there is no id to resolve -- no argument, and no
+        default either."""
+        draft_id = draft_id or self.default_id
+        if not draft_id:
+            return None
+        with self._lock:
+            poller = self._pollers.get(draft_id)
+            if poller is None:
+                poller = DraftPoller(
+                    draft_id,
+                    self._csv_path,
+                    self._interval,
+                    replay=self._replay,
+                    user=self._user,
+                )
+                poller.start()
+                self._pollers[draft_id] = poller
+        return poller
+
+    def stop(self) -> None:
+        with self._lock:
+            pollers = list(self._pollers.values())
+        for poller in pollers:
+            poller.stop()
+
+
+def _handler(pollers: DraftPollers, live_hint: Optional[str] = None):
     class Handler(BaseHTTPRequestHandler):
         def _send(self, body: bytes, content_type: str) -> None:
             self.send_response(200)
@@ -684,12 +788,35 @@ def _handler(poller: DraftPoller):
             self.end_headers()
             self.wfile.write(body)
 
+        def _split(self) -> Tuple[str, Dict[str, List[str]]]:
+            parts = urlsplit(self.path)
+            return parts.path, parse_qs(parts.query)
+
         def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler's API
-            path = self.path.split("?", 1)[0]
+            path, query = self._split()
             if path == "/":
-                page = render_page(poller.draft_id).encode("utf-8")
+                raw = (query.get("draft_id") or [""])[0]
+                draft_id = _extract_draft_id(raw) if raw else None
+                # A box submitted with something in it that wasn't a draft id
+                # -- a league URL, a typo -- lands back here rather than on a
+                # 400 the home page never gets to explain.
+                if raw and draft_id is None:
+                    page = render_home(
+                        live_hint, error=f'"{raw}" doesn\'t look like a draft id'
+                    ).encode("utf-8")
+                    self._send(page, "text/html; charset=utf-8")
+                    return
+                poller = pollers.get(draft_id)
+                if poller is None:
+                    page = render_home(live_hint).encode("utf-8")
+                else:
+                    page = render_page(poller.draft_id).encode("utf-8")
                 self._send(page, "text/html; charset=utf-8")
             elif path == "/api/state":
+                poller = pollers.get((query.get("draft_id") or [None])[0])
+                if poller is None:
+                    self.send_error(400, "missing or unknown draft_id")
+                    return
                 body = json.dumps(poller.snapshot()).encode("utf-8")
                 self._send(body, "application/json")
             else:
@@ -727,7 +854,11 @@ def _handler(poller: DraftPoller):
             return body
 
         def do_POST(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler's API
-            path = self.path.split("?", 1)[0]
+            path, query = self._split()
+            poller = pollers.get((query.get("draft_id") or [None])[0])
+            if poller is None:
+                self.send_error(400, "missing or unknown draft_id")
+                return
             if path == "/api/rescan-names":
                 poller.rescan_names()
                 self._send(b'{"ok":true}', "application/json")
@@ -801,7 +932,12 @@ def build_parser() -> argparse.ArgumentParser:
     server -- `--user` defaulting is the whole point of the flag now."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
-        "--draft-id", required=True, help="Sleeper draft id (from the draft URL)"
+        "--draft-id",
+        default=None,
+        help="Sleeper draft id (from the draft URL). Optional -- omitted, the "
+        "server opens on a page where any draft id can be pasted in; given, "
+        "that draft is also offered there as a one-click shortcut. Required "
+        "with --once.",
     )
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument(
@@ -844,12 +980,15 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
-    args = build_parser().parse_args()
+    parser = build_parser()
+    args = parser.parse_args()
 
-    poller = DraftPoller(
-        args.draft_id, args.csv, args.interval, replay=args.replay, user=args.user
-    )
     if args.once:
+        if not args.draft_id:
+            parser.error("--once needs --draft-id")
+        poller = DraftPoller(
+            args.draft_id, args.csv, args.interval, replay=args.replay, user=args.user
+        )
         poller.refresh()
         print(json.dumps(poller.snapshot(), indent=2))
         # The only lot this run will ever see, and it never gets a lot change
@@ -858,16 +997,23 @@ def main() -> None:
         poller.flush_lot()
         return
 
-    poller.start()
-    server = ThreadingHTTPServer((args.host, args.port), _handler(poller))
-    print(f"Live draft board for {args.draft_id}")
-    print(f"  http://{args.host}:{args.port}  (polling every {args.interval}s)")
+    pollers = DraftPollers(args.csv, args.interval, replay=args.replay, user=args.user)
+    if args.draft_id:
+        # Warmed, not defaulted -- see `DraftPollers`. The shortcut on the home
+        # page should not have to wait out a cold first poll, but a bare `/`
+        # still asks rather than assumes.
+        pollers.get(args.draft_id)
+
+    server = ThreadingHTTPServer((args.host, args.port), _handler(pollers, args.draft_id))
+    print(f"Live draft board on http://{args.host}:{args.port}")
+    if args.draft_id:
+        print(f"  shortcut for {args.draft_id}, polling every {args.interval}s")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\nstopping…")
     finally:
-        poller.stop()
+        pollers.stop()
         server.server_close()
 
 

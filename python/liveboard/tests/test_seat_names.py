@@ -309,7 +309,8 @@ def test_a_failed_scan_keeps_the_last_good_names_and_says_so(league, monkeypatch
 def board(poller):
     """The board's own HTTP server, on a port the OS picks."""
     poller.refresh()
-    server = ThreadingHTTPServer(("127.0.0.1", 0), live_mod._handler(poller))
+    pollers = live_mod.DraftPollers.wrap(poller)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), live_mod._handler(pollers))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     yield f"http://127.0.0.1:{server.server_address[1]}", poller

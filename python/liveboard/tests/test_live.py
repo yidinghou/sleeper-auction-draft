@@ -286,7 +286,8 @@ def test_nav_endpoint_dispatches_and_validates(poller):
     from urllib import request as urlreq
 
     poller.refresh()
-    server = ThreadingHTTPServer(("127.0.0.1", 0), live_mod._handler(poller))
+    pollers = live_mod.DraftPollers.wrap(poller)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), live_mod._handler(pollers))
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
 
@@ -802,3 +803,154 @@ def test_a_faster_interval_than_the_lot_rate_is_left_alone(poller):
     poller.interval = 0.5
     poller.refresh()
     assert poller.wait_for() == 0.5
+
+
+# -- picking a draft from the home page ---------------------------------------
+
+
+def test_extract_draft_id_reads_a_bare_id():
+    assert live_mod._extract_draft_id("1387809050569240576") == "1387809050569240576"
+
+
+def test_extract_draft_id_reads_it_out_of_a_draft_url():
+    url = "https://sleeper.com/draft/nfl/1387809050569240576"
+    assert live_mod._extract_draft_id(url) == "1387809050569240576"
+
+
+def test_extract_draft_id_declines_a_league_url():
+    # A league's predraft page carries the *league's* id, not a draft's --
+    # the two are different numbers, and pointing the board at one when you
+    # meant the other should never happen silently.
+    url = "https://sleeper.com/leagues/1372724723108036608/predraft"
+    assert live_mod._extract_draft_id(url) is None
+
+
+def test_extract_draft_id_declines_nonsense():
+    assert live_mod._extract_draft_id("not a draft") is None
+    assert live_mod._extract_draft_id("") is None
+
+
+@pytest.fixture
+def stubbed_fetch(monkeypatch):
+    """Sleeper stubbed for whichever draft id a poller under test asks for --
+    the home-page/registry tests below build more than one poller and none of
+    them should ever reach the network."""
+    monkeypatch.setattr(live_mod, "fetch_draft", lambda draft_id: _load("draft-mock"))
+    monkeypatch.setattr(live_mod, "fetch_picks", lambda draft_id: _load("picks-mock"))
+
+
+def test_pollers_create_once_and_cache_by_draft_id(stubbed_fetch):
+    pollers = live_mod.DraftPollers(None, interval=0.05)
+    first = pollers.get("mock-id")
+    again = pollers.get("mock-id")
+    other = pollers.get("other-id")
+    pollers.stop()
+    assert first is again
+    assert other is not first
+    assert other.draft_id == "other-id"
+
+
+def test_pollers_resolve_nothing_with_no_id_and_no_default():
+    pollers = live_mod.DraftPollers(None, interval=0.05)
+    assert pollers.get(None) is None
+    assert pollers.get("") is None
+
+
+def test_wrapped_pollers_resolve_a_bare_request_to_the_wrapped_draft(poller):
+    # `wrap()` is the single-draft world every test built before this feature
+    # existed -- a request naming no draft still finds the one poller there is.
+    pollers = live_mod.DraftPollers.wrap(poller)
+    assert pollers.get(None) is poller
+    assert pollers.get(poller.draft_id) is poller
+
+
+def _serve(pollers, live_hint=None):
+    """A running board server over `pollers`, torn down by the caller."""
+    import threading
+    from http.server import ThreadingHTTPServer
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), live_mod._handler(pollers, live_hint))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server
+
+
+def test_a_bare_request_with_nothing_configured_gets_the_home_page(stubbed_fetch):
+    pollers = live_mod.DraftPollers(None, interval=0.05)
+    server = _serve(pollers)
+    try:
+        from urllib import request as urlreq
+
+        base = f"http://127.0.0.1:{server.server_address[1]}"
+        with urlreq.urlopen(base + "/") as resp:
+            body = resp.read().decode()
+        assert "paste a Sleeper draft" in body
+
+        with urlreq.urlopen(base + "/?draft_id=13878090505692405") as resp:
+            board = resp.read().decode()
+        assert '<b id="draft">13878090505692405</b>' in board
+
+        import urllib.error
+
+        with pytest.raises(urllib.error.HTTPError) as exc:
+            urlreq.urlopen(base + "/api/state")
+        assert exc.value.code == 400
+    finally:
+        server.shutdown()
+        pollers.stop()
+
+
+def test_the_home_page_offers_a_shortcut_to_the_configured_draft(stubbed_fetch):
+    pollers = live_mod.DraftPollers(None, interval=0.05)
+    server = _serve(pollers, live_hint="mock-id")
+    try:
+        from urllib import request as urlreq
+
+        base = f"http://127.0.0.1:{server.server_address[1]}"
+        with urlreq.urlopen(base + "/") as resp:
+            body = resp.read().decode()
+        assert 'href="/?draft_id=mock-id"' in body
+    finally:
+        server.shutdown()
+        pollers.stop()
+
+
+def test_a_pasted_league_url_bounces_back_to_the_home_page_with_a_reason():
+    pollers = live_mod.DraftPollers(None, interval=0.05)
+    server = _serve(pollers)
+    try:
+        from urllib import request as urlreq
+        from urllib.parse import quote
+
+        base = f"http://127.0.0.1:{server.server_address[1]}"
+        pasted = quote(
+            "https://sleeper.com/leagues/1372724723108036608/predraft", safe=""
+        )
+        with urlreq.urlopen(f"{base}/?draft_id={pasted}") as resp:
+            body = resp.read().decode()
+        assert "look like a draft id" in body
+        assert "paste a Sleeper draft" in body  # still the home page, not a 400
+    finally:
+        server.shutdown()
+        pollers.stop()
+
+
+def test_two_drafts_are_watched_independently_in_one_process(stubbed_fetch):
+    # The whole point: a rehearsal against a mock must not disturb whatever the
+    # league draft poller (if any) is doing, and vice versa.
+    pollers = live_mod.DraftPollers(None, interval=0.05)
+    server = _serve(pollers)
+    try:
+        from urllib import request as urlreq
+
+        base = f"http://127.0.0.1:{server.server_address[1]}"
+        with urlreq.urlopen(base + "/?draft_id=13878090505692405"):
+            pass
+        with urlreq.urlopen(base + "/?draft_id=24681012141618203"):
+            pass
+        assert pollers.get("13878090505692405") is not pollers.get(
+            "24681012141618203"
+        )
+    finally:
+        server.shutdown()
+        pollers.stop()
