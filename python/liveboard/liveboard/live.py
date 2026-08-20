@@ -805,6 +805,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="bind address (use 0.0.0.0 to reach the board from another "
+        "machine, e.g. when hosting it)",
+    )
+    parser.add_argument(
         "--interval",
         type=float,
         default=DEFAULT_INTERVAL,
@@ -853,9 +859,9 @@ def main() -> None:
         return
 
     poller.start()
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), _handler(poller))
+    server = ThreadingHTTPServer((args.host, args.port), _handler(poller))
     print(f"Live draft board for {args.draft_id}")
-    print(f"  http://127.0.0.1:{args.port}  (polling every {args.interval}s)")
+    print(f"  http://{args.host}:{args.port}  (polling every {args.interval}s)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
